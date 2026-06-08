@@ -1,0 +1,25 @@
+'use client'
+import { motion } from 'framer-motion'
+import Image from 'next/image'
+import type { StoreProduct } from './types'
+
+interface Props { headline?: string; images?: Array<{ url: string; caption?: string }>; variant?: 'masonry'|'editorial'|'uniform'; products: StoreProduct[]; onAddToCart: (p: StoreProduct) => void }
+
+export function LookbookGrid({ headline, images, variant='editorial', products }: Props) {
+  const productImgs = products.flatMap((p) => (p.images??[]).map((img) => ({ url:img.url, caption:p.name }))).filter((i) => i.url && !i.url.startsWith('data:')).slice(0,6)
+  const display = images?.filter((i) => i.url && !i.url.startsWith('data:'))?.length ? images.filter((i) => i.url && !i.url.startsWith('data:')) : productImgs
+  if (!display.length) return null
+  const gridClass = variant==='masonry' ? 'columns-2 md:columns-3 gap-2' : 'grid gap-2 grid-cols-2 md:grid-cols-3'
+  return (
+    <section className="storefront-section border-t" style={{ borderColor:'var(--store-border)' }}>
+      {headline && <h2 className="store-heading mb-6 text-[clamp(1.5rem,3vw,2rem)] font-bold">{headline}</h2>}
+      <div className={gridClass}>
+        {display.map((img, i) => (
+          <motion.div key={i} initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }} transition={{ duration:0.5, delay:i*0.05 }} className={`relative overflow-hidden rounded-[var(--store-radius)] ${variant==='masonry'?'mb-2 break-inside-avoid':'aspect-square'}`}>
+            <Image src={img.url} alt={img.caption??''} fill className="object-cover" sizes="33vw" />
+          </motion.div>
+        ))}
+      </div>
+    </section>
+  )
+}

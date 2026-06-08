@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  tenants      Tenant[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Tenant {
+  id             String    @id @default(uuid())
+  ownerId        String?
+  owner          User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  name           String
+  slug           String    @unique
+  businessType   String?
+  targetAudience String?
+  platform       String    @default("Seltra")
+  status         String    @default("active")
+  canonical      Json
+  storeUrl       String?
+
+  storefrontCode          String?   //Generated HTML storefront (full page)
+  storefrontVersion       Int       @default(0)
+  storefrontGeneratedAt   DateTime?
+
+  products         Product[]
+  categories       Category[]
+  paymentProviders PaymentProvider[]
+  shippingZones    ShippingZone[]
+  orders           Order[]
+  customers        Customer[]
+  ledger           MerchantLedger?
+
+  storeDNA             Json?     // Extracted StoreDNA — industry, personality, composition
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model Conversation {
+  id        String    @id
+  title     String
+  userId    String    @map("user_id")
+  messages  Message[]
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, updatedAt(sort: Desc)], map: "Conversation_user_updated_idx")
+  @@map("Conversation")
+}
+
+model Message {
+  id             String       @id
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id")
+  role           String
+  content        String
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([conversationId, createdAt], map: "Message_conversation_created_idx")
+  @@map("Message")
+}
+
+model Category {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name     String
+
+  @@unique([tenantId, name])
+}
+
+model Product {
+  id          String  @id @default(uuid())
+  tenantId    String
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Decimal @db.Decimal(10, 2)
+  currency    String  @default("GHS")
+  category    String?
+  sku         String?
+  tags        Json?
+  status      String  @default("active")
+
+  images   ProductImage[]
+  variants ProductVariant[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProductImage {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  isPrimary Boolean @default(false)
+}
+
+model ProductVariant {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String
+  value     String
+}
+
+model PaymentProvider {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider String
+  config   Json?
+
+  @@unique([tenantId, provider])
+}
+
+model ShippingZone {
+  id           String  @id @default(uuid())
+  tenantId     String
+  tenant       Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  deliveryTime String?
+  fee          String?
+  metadata     Json?
+
+  @@unique([tenantId, name])
+}
+
+model Order {
+  id              String   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId      String?
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customerEmail   String
+  customerName    String?
+  customerPhone   String?
+  shippingAddress String?
+  shippingCity    String?
+  shippingCountry String?
+  marketingOptIn  Boolean  @default(false)
+  totalAmount     Decimal  @db.Decimal(10, 2)
+  currency        String   @default("GHS")
+  status          String   @default("pending")
+  paystackRef     String?
+  items           Json
+  disbursed       Boolean  @default(false)
+  disbursedAt     DateTime?
+  seltraFee       Decimal? @db.Decimal(10, 2)
+  merchantAmount  Decimal? @db.Decimal(10, 2)
+  ledgerTx        LedgerTransaction[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, customerEmail])
+  @@index([customerId])
+}
+
+model Customer {
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email          String
+  name           String?
+  phone          String?
+  address        String?
+  city           String?
+  country        String?
+  marketingOptIn Boolean  @default(false)
+  orders         Order[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, email])
+  @@index([tenantId, updatedAt])
+}
+
+// Subsidiary ledger account per merchant
+model MerchantLedger {
+  id           String   @id @default(uuid())
+  tenantId     String   @unique
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  balance      Decimal  @default(0) @db.Decimal(12, 2)
+  currency     String   @default("GHS")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transactions LedgerTransaction[]
+}
+
+// Every credit/debit on a merchant's ledger
+model LedgerTransaction {
+  id          String   @id @default(uuid())
+  ledgerId    String
+  ledger      MerchantLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  orderId     String?
+  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  type        String
+  amount      Decimal  @db.Decimal(12, 2)
+  currency    String   @default("GHS")
+  description String?
+  meta        Json?
+  createdAt   DateTime @default(now())
+}
+
+// Master account record of every Paystack event
+model PaystackEvent {
+  id            String   @id @default(uuid())
+  reference     String   @unique
+  event         String
+  tenantSlug    String?
+  tenantId      String?
+  amount        Decimal  @db.Decimal(12, 2)
+  currency      String   @default("GHS")
+  customerEmail String?
+  customerName  String?
+  rawPayload    Json
+  processed     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+}
+
+model MerchantApplication {
+  id             String   @id @default(uuid())
+  fullName       String
+  phone          String
+  email          String?
+  businessName   String
+  businessType   String
+  storeName      String
+  whatYouSell    String
+  basedIn        String
+  monthlyRevenue String
+  existingLinks  String?
+  aiFamiliarity  String?
+  aiUsedBefore   Boolean?
+  aiToolsUsed    String?
+  aiFeelings     String?
+  allowAiHelp    String?
+  status         String   @default("applied")
+  merchantId     String?  @unique
+  notionPageId   String?
+  reviewNotes    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status])
+  @@index([email])
+  @@index([merchantId])
+}
