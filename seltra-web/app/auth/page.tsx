@@ -35,7 +35,21 @@ function AuthContent() {
   const [name, setName]       = useState('')
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => { if (getToken()) router.replace('/dashboard') }, [router])
+  // useEffect(() => { if (getToken()) router.replace('/dashboard') }, [router])
+  useEffect(() => {
+  if (getToken()) {
+    // Check if they have stores
+    fetch(`${API_BASE}/api/v1/seltra/store`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    }).then(r => r.json()).then(stores => {
+      if (Array.isArray(stores) && stores.length > 0) {
+        router.replace('/dashboard')
+      } else {
+        router.replace('/onboarding')
+      }
+    }).catch(() => router.replace('/dashboard'))
+  }
+}, [router])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -46,7 +60,12 @@ function AuthContent() {
     if (error || !data) { toast.error(error ?? 'Auth failed'); setLoading(false); return }
     const tok = data.access_token ?? (data as { token?: string }).token ?? ''
     setToken(tok); setUser(data.user)
-    router.replace(mode === 'signup' ? '/dashboard' : next)
+    // router.replace(mode === 'signup' ? '/dashboard' : next)
+    //for signup success:
+    router.replace('/onboarding')
+
+    // For signin success (unchanged):
+    router.replace(next)
     setLoading(false)
   }
 
