@@ -1,10 +1,15 @@
 //seltra-web/backend/src/ai/agents/storefront-codegen.agent.ts
-// v3 — 2025 modern design, fixed hero overflow, fixed cart, toast notifications
+// v4 — brandName display, industry icons, alternating section backgrounds
 
 import { codegenChat } from '../client'
 import type { CanonicalStore } from '../../types'
-import { detectIndustry, resolveComposition, type ThemeKey, type LayoutKey } from './composition-rules'
-
+import {
+  detectIndustry,
+  resolveComposition,
+  resolveIcons,
+  type ThemeKey,
+  type LayoutKey,
+} from './composition-rules'
 
 export interface StorefrontCodegenInput {
   blueprint: CanonicalStore
@@ -39,59 +44,23 @@ interface HeroSection {
   eyebrow?: string
   ctaLabel?: string
 }
-interface AnnouncementBarSection {
-  type: 'announcement-bar'
-  message: string
-}
+interface AnnouncementBarSection { type: 'announcement-bar'; message: string }
 interface FeaturedDropSection {
-  type: 'featured-drop'
-  badge: string
-  headline: string
-  subtext: string
-  showCountdown?: boolean
+  type: 'featured-drop'; badge: string; headline: string; subtext: string; showCountdown?: boolean
 }
 interface ProductGridSection {
-  type: 'product-grid'
-  columns: 2 | 3 | 4
-  style: 'uniform' | 'dense' | 'featured-first' | 'magazine'
-  limit?: number
-  showCategory?: boolean
-  sectionLabel?: string
+  type: 'product-grid'; columns: 2 | 3 | 4; style: 'uniform' | 'dense' | 'featured-first' | 'magazine'
+  limit?: number; showCategory?: boolean; sectionLabel?: string
 }
-interface ProductShelfSection {
-  type: 'product-shelf'
-  headline: string
-  subtext?: string
-  limit?: number
-}
+interface ProductShelfSection { type: 'product-shelf'; headline: string; subtext?: string; limit?: number }
 interface BrandStorySection {
-  type: 'brand-story'
-  headline: string
-  body: string
-  stat?: string
-  statLabel?: string
+  type: 'brand-story'; headline: string; body: string; stat?: string; statLabel?: string
   layout: 'text-left' | 'text-center'
 }
-interface CategoryStripSection {
-  type: 'category-strip'
-  headline?: string
-}
-interface SocialProofSection {
-  type: 'social-proof'
-  style: 'marquee' | 'grid' | 'cards'
-  headline?: string
-  subtext?: string
-}
-interface TrustBarSection {
-  type: 'trust-bar'
-  items: string[]
-}
-interface NewsletterSection {
-  type: 'newsletter'
-  headline: string
-  subtext: string
-  placeholder?: string
-}
+interface CategoryStripSection { type: 'category-strip'; headline?: string }
+interface SocialProofSection { type: 'social-proof'; style: 'marquee' | 'grid' | 'cards'; headline?: string; subtext?: string }
+interface TrustBarSection { type: 'trust-bar'; items: string[] }
+interface NewsletterSection { type: 'newsletter'; headline: string; subtext: string; placeholder?: string }
 
 type Section =
   | HeroSection | AnnouncementBarSection | FeaturedDropSection
@@ -105,54 +74,8 @@ interface StoreManifest {
     muted: string; accent: string; accentText: string; accentSoft: string
   }
   typography: { headingFont: string; bodyFont: string }
-  announcementMessage?: string
+  industry?: string
 }
-
-// ── LLM manifest prompt ───────────────────────────────────────────────────────
-const MANIFEST_SYSTEM_PROMPT = `You are Seltra's Autonomous Storefront Architect.
-Given a store brief, output a JSON section manifest for a MODERN 2025 e-commerce storefront.
-
-Every store must look like a real brand — think Cozy Oven, Glossier, or Cotopaxi.
-Visual hierarchy, brand voice, and section sequencing should all match the business type.
-
-Available section types:
-- hero-centered, hero-split, hero-editorial, hero-fullbleed, hero-minimal (pick ONE)
-- announcement-bar (optional, shown at very top — great for promotions or delivery schedules)
-- featured-drop (highlight one product or promo)
-- product-grid (main catalog — REQUIRED)
-- product-shelf (horizontal scroll row, great for "best sellers" or category highlights)
-- brand-story (why you exist — good for artisan/food/beauty)
-- category-strip (navigation pills for categories)
-- social-proof (testimonials — marquee or grid)
-- trust-bar (shipping/returns/payment signals)
-- newsletter (email capture section)
-
-Rules:
-1. Output ONLY valid JSON. No markdown, no explanation, no code blocks.
-2. Exactly one hero-* section.
-3. Exactly one product-grid section (required).
-4. Choose 5–8 total sections. Order them like a real homepage (hero → trust signals → products → social proof → story → newsletter).
-5. Palette: pick colors that genuinely suit the business. Food = warm creams + browns. Beauty = light neutrals + gold. Streetwear = dark + bold accent.
-6. Font names must be valid Google Fonts. Pair a display/serif heading with a clean body font.
-7. If the store mentions promotions, delivery schedules, or notable features, use announcement-bar.
-8. trust-bar MUST have an "items" array with 3–4 strings.
-9. For newsletter, include a relevant headline and subtext (max 12 words each).
-10. accentSoft is a 10-15% opacity tint of the accent for backgrounds — output as hex.
-11. Hero tagline and subtext must reference the merchant industry and target audience.
-12. FAQ items must be brand-specific: purchase flow, delivery, customisation, refunds.
-13. Product grid headings must use the store section label or a category-derived label.
-14. Never output generic copy ("Shop now", "Our products") without a brand qualifier.
-
-JSON structure:
-{
-  "sections": [{"type": "...", ...sectionFields}],
-  "palette": {
-    "bg": "#hex", "surface": "#hex", "border": "#hex",
-    "text": "#hex", "muted": "#hex",
-    "accent": "#hex", "accentText": "#hex", "accentSoft": "#hex"
-  },
-  "typography": {"headingFont": "...", "bodyFont": "..."}
-}`
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function safeArr<T>(val: T[] | null | undefined, fallback: T[] = []): T[] {
@@ -160,11 +83,11 @@ function safeArr<T>(val: T[] | null | undefined, fallback: T[] = []): T[] {
 }
 function esc(s: string | null | undefined): string {
   if (s == null) return ''
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 function escJs(s: string | null | undefined): string {
   if (s == null) return ''
-  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"').replace(/\n/g,' ').replace(/\r/g,'')
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, ' ').replace(/\r/g, '')
 }
 function heroImg(products: StorefrontCodegenInput['products']): string {
   for (const p of products) {
@@ -174,17 +97,80 @@ function heroImg(products: StorefrontCodegenInput['products']): string {
   return ''
 }
 
-// ── Fallback manifests ────────────────────────────────────────────────────────
+// ── Get display name — brandName takes priority over businessName ──────────────
+function getDisplayName(blueprint: CanonicalStore): string {
+  const bn = (blueprint as unknown as Record<string, unknown>).brandName
+  if (bn && typeof bn === 'string' && bn.trim().length > 0 && bn.split(' ').length <= 4) {
+    return bn.trim()
+  }
+  // Fallback: use first 1-2 words of businessName if it's long
+  const biz = blueprint.businessName ?? 'Store'
+  const words = biz.trim().split(/\s+/)
+  if (words.length > 3) return words.slice(0, 2).join(' ')
+  return biz
+}
+
+// ── Section background zones ──────────────────────────────────────────────────
+// Defines which CSS background class each section type gets by default.
+// This creates the visual rhythm: bg → surface → accentSoft → bg → ...
+// instead of every section being the same flat color.
+type BgZone = 'bg' | 'surface' | 'accent-soft' | 'accent-bold'
+
+const SECTION_BG_MAP: Record<string, BgZone> = {
+  'announcement-bar': 'accent-bold',   // always accent color — already handled inline
+  'hero-centered':    'bg',
+  'hero-split':       'bg',
+  'hero-editorial':   'bg',
+  'hero-fullbleed':   'bg',
+  'hero-minimal':     'bg',
+  'trust-bar':        'surface',
+  'category-strip':   'surface',
+  'product-shelf':    'bg',
+  'featured-drop':    'accent-soft',
+  'product-grid':     'surface',
+  'brand-story':      'bg',
+  'social-proof':     'surface',
+  'newsletter':       'accent-bold',   // full-bleed accent — like v0/Boty's dark green section
+}
+
+function sectionBgClass(type: string): string {
+  const zone = SECTION_BG_MAP[type] ?? 'bg'
+  return `section-zone--${zone}`
+}
+
+// ── Theme / typography maps ───────────────────────────────────────────────────
+const THEME_PALETTES: Record<string, StoreManifest['palette']> = {
+  luxury:          { bg: '#faf9f7', surface: '#ffffff', border: '#e8e4df', text: '#1a1a1a', muted: '#7a7060', accent: '#b8860b', accentText: '#ffffff', accentSoft: '#fdf5e4' },
+  'bold-dark':     { bg: '#0d0d0d', surface: '#141414', border: '#2a2a2a', text: '#f0f0f0', muted: '#888888', accent: '#ff3c00', accentText: '#ffffff', accentSoft: '#1f1008' },
+  'minimal-light': { bg: '#fafafa', surface: '#ffffff', border: '#e5e5e5', text: '#1a1a1a', muted: '#717171', accent: '#2563eb', accentText: '#ffffff', accentSoft: '#eff6ff' },
+  editorial:       { bg: '#f8f6f3', surface: '#ffffff', border: '#e0d8ce', text: '#1c1815', muted: '#8c7b6b', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f9ede8' },
+  'warm-earth':    { bg: '#faf7f2', surface: '#ffffff', border: '#e8dfd0', text: '#2d2419', muted: '#8a7560', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f5ece6' },
+  'cool-modern':   { bg: '#f0f4f8', surface: '#ffffff', border: '#dde3ea', text: '#0f1923', muted: '#627282', accent: '#0070f3', accentText: '#ffffff', accentSoft: '#e8f0fe' },
+  vibrant:         { bg: '#0a0a0a', surface: '#111111', border: '#1f1f1f', text: '#ffffff', muted: '#888888', accent: '#00e676', accentText: '#000000', accentSoft: '#00e67615' },
+}
+
+const THEME_TYPOGRAPHY: Record<string, { headingFont: string; bodyFont: string }> = {
+  luxury:          { headingFont: 'Playfair Display', bodyFont: 'DM Sans' },
+  'bold-dark':     { headingFont: 'Bebas Neue',       bodyFont: 'Inter' },
+  'minimal-light': { headingFont: 'Syne',             bodyFont: 'Inter' },
+  editorial:       { headingFont: 'Fraunces',         bodyFont: 'DM Sans' },
+  'warm-earth':    { headingFont: 'Fraunces',         bodyFont: 'DM Sans' },
+  'cool-modern':   { headingFont: 'Inter',            bodyFont: 'Inter' },
+  vibrant:         { headingFont: 'Syne',             bodyFont: 'Inter' },
+}
+
+// ── Fallback + sanitise (unchanged logic, uses getDisplayName) ────────────────
 function fallbackManifest(input: StorefrontCodegenInput): StoreManifest {
   const corpus = [input.blueprint.businessName, input.blueprint.businessType ?? '', ...(input.blueprint.productCategories ?? [])].join(' ').toLowerCase()
-  const isFood = /food|restaurant|cafe|catering|snack|drink|beverage|grocery|bread|bake|pastry/.test(corpus)
-  const isBeauty = /beauty|skincare|cosmetic|luxury|jewelry|perfume|wellness|candle|artisan|boutique|serum|lotion/.test(corpus)
-  const isBold = /streetwear|sneaker|sport|gym|fitness|gaming|tech|hype|urban|apparel/.test(corpus)
+  const isFood    = /food|restaurant|cafe|catering|snack|drink|beverage|grocery|bread|bake|pastry/.test(corpus)
+  const isBeauty  = /beauty|skincare|cosmetic|luxury|jewelry|perfume|wellness|candle|artisan|boutique|serum|lotion/.test(corpus)
+  const isBold    = /streetwear|sneaker|sport|gym|fitness|gaming|tech|hype|urban|apparel/.test(corpus)
+  const displayName = getDisplayName(input.blueprint)
 
   if (isFood) return {
     sections: [
-      { type: 'announcement-bar', message: `Order from ${input.blueprint.businessName} — fresh and delivered to you.` },
-      { type: 'hero-centered', headline: input.blueprint.businessName, tagline: 'Fresh. Local. Handmade.', subtext: `Made daily for ${input.blueprint.targetAudience ?? 'you'}.`, eyebrow: input.blueprint.businessType ?? '' },
+      { type: 'announcement-bar', message: `Order from ${displayName} — fresh and delivered to you.` },
+      { type: 'hero-centered', headline: displayName, tagline: 'Fresh. Local. Handmade.', subtext: `Made daily for ${input.blueprint.targetAudience ?? 'you'}.`, eyebrow: input.blueprint.businessType ?? '' },
       { type: 'trust-bar', items: ['Same-day delivery', 'Fresh ingredients', 'No preservatives', 'Local sourcing'] },
       { type: 'product-shelf', headline: 'Best Sellers', subtext: 'Our most loved products', limit: 5 },
       { type: 'category-strip', headline: 'Browse by category' },
@@ -192,57 +178,58 @@ function fallbackManifest(input: StorefrontCodegenInput): StoreManifest {
       { type: 'social-proof', style: 'cards', headline: 'What Our Customers Say', subtext: 'Real reviews from real customers' },
       { type: 'newsletter', headline: 'Get recipes and exclusive offers', subtext: 'Join our community of food lovers.', placeholder: 'Your email address' },
     ],
-    palette: { bg: '#faf7f2', surface: '#ffffff', border: '#e8dfd0', text: '#2d2419', muted: '#8a7560', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f5ece6' },
-    typography: { headingFont: 'Fraunces', bodyFont: 'DM Sans' },
+    palette: THEME_PALETTES['warm-earth'],
+    typography: THEME_TYPOGRAPHY['warm-earth'],
   }
 
   if (isBeauty) return {
     sections: [
-      { type: 'hero-editorial', headline: input.blueprint.businessName, tagline: 'Crafted for your skin.', subtext: `For ${input.blueprint.targetAudience ?? 'your customers'}.`, eyebrow: input.blueprint.businessType ?? '' },
+      { type: 'hero-editorial', headline: displayName, tagline: 'Crafted for your skin.', subtext: `For ${input.blueprint.targetAudience ?? 'your customers'}.`, eyebrow: input.blueprint.businessType ?? '' },
       { type: 'trust-bar', items: ['Small batch formulas', 'No harsh chemicals', 'Dermatologist tested', 'Cruelty free'] },
       { type: 'product-grid', columns: 3, style: 'uniform', showCategory: true, sectionLabel: 'Products' },
-      { type: 'brand-story', headline: 'Why we exist', body: `${input.blueprint.businessName} was built for people who care about what they put on their skin. Small batches, real ingredients, honest results.`, layout: 'text-left' },
+      { type: 'brand-story', headline: 'Why we exist', body: `${displayName} was built for people who care about what they put on their skin. Small batches, real ingredients, honest results.`, layout: 'text-left' },
       { type: 'social-proof', style: 'marquee', headline: 'Loved by customers' },
       { type: 'newsletter', headline: 'Skincare tips and new drops', subtext: 'Join thousands of happy customers.', placeholder: 'Enter your email' },
     ],
-    palette: { bg: '#faf9f7', surface: '#ffffff', border: '#e8e4df', text: '#1a1a1a', muted: '#7a7060', accent: '#b8860b', accentText: '#ffffff', accentSoft: '#fdf5e4' },
-    typography: { headingFont: 'Playfair Display', bodyFont: 'DM Sans' },
+    palette: THEME_PALETTES['luxury'],
+    typography: THEME_TYPOGRAPHY['luxury'],
   }
 
   if (isBold) return {
     sections: [
       { type: 'announcement-bar', message: 'New drop just landed — limited stock. Get yours before it sells out.' },
-      { type: 'hero-fullbleed', headline: input.blueprint.businessName, tagline: 'Limited drops. No restocks.', subtext: 'For those who move first.', eyebrow: input.blueprint.businessType ?? '' },
+      { type: 'hero-fullbleed', headline: displayName, tagline: 'Limited drops. No restocks.', subtext: 'For those who move first.', eyebrow: input.blueprint.businessType ?? '' },
       { type: 'featured-drop', badge: 'NEW DROP', headline: 'Latest collection just landed.', subtext: 'Grab yours before it sells out.', showCountdown: true },
       { type: 'category-strip' },
       { type: 'product-grid', columns: 3, style: 'dense', showCategory: false, sectionLabel: 'Shop All' },
       { type: 'trust-bar', items: ['Free shipping over GHS 500', 'Ships in 24h', 'Easy returns', 'Secure checkout'] },
     ],
-    palette: { bg: '#0d0d0d', surface: '#141414', border: '#2a2a2a', text: '#f0f0f0', muted: '#888888', accent: '#ff3c00', accentText: '#ffffff', accentSoft: '#1f1008' },
-    typography: { headingFont: 'Bebas Neue', bodyFont: 'Inter' },
+    palette: THEME_PALETTES['bold-dark'],
+    typography: THEME_TYPOGRAPHY['bold-dark'],
   }
 
   return {
     sections: [
-      { type: 'hero-centered', headline: input.blueprint.businessName, tagline: 'Shop the collection.', subtext: `For ${input.blueprint.targetAudience ?? 'your customers'}.`, eyebrow: input.blueprint.businessType ?? '' },
+      { type: 'hero-centered', headline: displayName, tagline: 'Shop the collection.', subtext: `For ${input.blueprint.targetAudience ?? 'your customers'}.`, eyebrow: input.blueprint.businessType ?? '' },
       { type: 'trust-bar', items: ['Secure checkout', 'Fast delivery', 'Easy returns', 'Local support'] },
       { type: 'category-strip' },
       { type: 'product-grid', columns: 3, style: 'uniform', showCategory: true, sectionLabel: 'Products' },
       { type: 'social-proof', style: 'marquee' },
     ],
-    palette: { bg: '#fafafa', surface: '#ffffff', border: '#e5e5e5', text: '#1a1a1a', muted: '#717171', accent: '#2563eb', accentText: '#ffffff', accentSoft: '#eff6ff' },
-    typography: { headingFont: 'Syne', bodyFont: 'Inter' },
+    palette: THEME_PALETTES['minimal-light'],
+    typography: THEME_TYPOGRAPHY['minimal-light'],
   }
 }
 
 function sanitiseManifest(raw: StoreManifest, input: StorefrontCodegenInput): StoreManifest {
   const DEFAULT_TRUST = ['Secure checkout', 'Fast delivery', 'Easy returns', 'Local support']
+  const displayName = getDisplayName(input.blueprint)
   const sections = safeArr(raw.sections).map(s => {
     switch (s.type) {
       case 'trust-bar': return { ...s, items: safeArr((s as TrustBarSection).items, DEFAULT_TRUST) }
       case 'hero-centered': case 'hero-split': case 'hero-editorial': case 'hero-fullbleed': case 'hero-minimal': {
         const h = s as HeroSection
-        return { ...h, headline: h.headline ?? input.blueprint.businessName, tagline: h.tagline ?? '', subtext: h.subtext ?? '' }
+        return { ...h, headline: h.headline ?? displayName, tagline: h.tagline ?? '', subtext: h.subtext ?? '' }
       }
       case 'featured-drop': { const f = s as FeaturedDropSection; return { ...f, badge: f.badge ?? 'NEW', headline: f.headline ?? 'Just dropped.', subtext: f.subtext ?? '' } }
       case 'product-grid': { const g = s as ProductGridSection; return { ...g, columns: g.columns ?? 3, style: g.style ?? 'uniform' } }
@@ -256,124 +243,36 @@ function sanitiseManifest(raw: StoreManifest, input: StorefrontCodegenInput): St
   return { ...raw, sections, palette: { ...raw.palette, accentSoft: raw.palette?.accentSoft ?? '#f5f5f5' } }
 }
 
-// async function getManifest(input: StorefrontCodegenInput): Promise<StoreManifest> {
-//   const { blueprint, paymentGateways } = input
-//   const brief = `STORE: ${blueprint.businessName}
-// TYPE: ${blueprint.businessType ?? ''}
-// AUDIENCE: ${blueprint.targetAudience ?? ''}
-// PAYMENTS: ${(paymentGateways ?? ['Paystack']).join(', ')}
-// CATEGORIES: ${blueprint.productCategories.slice(0, 5).join(' / ')}
-// FEATURES: ${(blueprint.storeFeatures ?? []).slice(0, 5).join(' · ')}
-// PRODUCTS: ${input.products.slice(0, 4).map(p => `${p.name} (${p.currency} ${p.price})`).join(', ')}`
-
-//   try {
-//     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 14_000))
-//     const result = await Promise.race([
-//       codegenChat([{ role: 'user', content: `${MANIFEST_SYSTEM_PROMPT}\n\n${brief}` }], 800),
-//       timeout,
-//     ])
-//     let raw = result.content.trim()
-//     if (raw.startsWith('```json')) raw = raw.slice(7)
-//     else if (raw.startsWith('```')) raw = raw.slice(3)
-//     if (raw.endsWith('```')) raw = raw.slice(0, -3)
-//     raw = raw.trim()
-//     const parsed = JSON.parse(raw) as StoreManifest
-//     const hasHero = safeArr(parsed.sections).some(s => s.type.startsWith('hero'))
-//     const hasGrid = safeArr(parsed.sections).some(s => s.type === 'product-grid')
-//     if (!hasHero || !hasGrid || parsed.sections.length < 2) {
-//       console.warn('[Manifest] LLM failed validation, using fallback')
-//       return fallbackManifest(input)
-//     }
-//     return sanitiseManifest(parsed, input)
-//   } catch (err) {
-//     console.warn('[Manifest] Failed, using fallback:', err)
-//     return fallbackManifest(input)
-//   }
-// }
-
-// ── Section renderers ─────────────────────────────────────────────────────────
-// REPLACE getManifest() in storefront-codegen.agent.ts with this:
-
-// DESIGN REQUIREMENTS (applied by programmatic path):
-// - Hero must include a tagline and subtext that reference the merchant's industry and audience
-// - FAQ items must be brand-specific: purchase flow, delivery, customisation, refunds
-// - Product grid heading must use the store's sectionLabel or a category-derived label
-// - Never output generic copy ("Shop now", "Our products") without a brand qualifier
-// - All palettes from THEME_PALETTES are pre-validated; use them, do not invent hex values
-
-
-// Theme → palette map (mirrors frontend themes/index.ts)
-const THEME_PALETTES: Record<string, StoreManifest['palette']> = {
-  luxury: { bg: '#faf9f7', surface: '#ffffff', border: '#e8e4df', text: '#1a1a1a', muted: '#7a7060', accent: '#b8860b', accentText: '#ffffff', accentSoft: '#fdf5e4' },
-  'bold-dark': { bg: '#0d0d0d', surface: '#141414', border: '#2a2a2a', text: '#f0f0f0', muted: '#888888', accent: '#ff3c00', accentText: '#ffffff', accentSoft: '#1f1008' },
-  'minimal-light': { bg: '#fafafa', surface: '#ffffff', border: '#e5e5e5', text: '#1a1a1a', muted: '#717171', accent: '#2563eb', accentText: '#ffffff', accentSoft: '#eff6ff' },
-  editorial: { bg: '#f8f6f3', surface: '#ffffff', border: '#e0d8ce', text: '#1c1815', muted: '#8c7b6b', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f9ede8' },
-  'warm-earth': { bg: '#faf7f2', surface: '#ffffff', border: '#e8dfd0', text: '#2d2419', muted: '#8a7560', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f5ece6' },
-  'cool-modern': { bg: '#f0f4f8', surface: '#ffffff', border: '#dde3ea', text: '#0f1923', muted: '#627282', accent: '#0070f3', accentText: '#ffffff', accentSoft: '#e8f0fe' },
-  vibrant: { bg: '#0a0a0a', surface: '#111111', border: '#1f1f1f', text: '#ffffff', muted: '#888888', accent: '#00e676', accentText: '#000000', accentSoft: '#00e67615' },
-}
-
-const THEME_TYPOGRAPHY: Record<string, { headingFont: string; bodyFont: string }> = {
-  luxury: { headingFont: 'Playfair Display', bodyFont: 'DM Sans' },
-  'bold-dark': { headingFont: 'Bebas Neue', bodyFont: 'Inter' },
-  'minimal-light': { headingFont: 'Syne', bodyFont: 'Inter' },
-  editorial: { headingFont: 'Fraunces', bodyFont: 'DM Sans' },
-  'warm-earth': { headingFont: 'Fraunces', bodyFont: 'DM Sans' },
-  'cool-modern': { headingFont: 'Inter', bodyFont: 'Inter' },
-  vibrant: { headingFont: 'Syne', bodyFont: 'Inter' },
-}
-
-// Maps layout keys to section arrays (rule-based, zero LLM)
+// ── Section builder ───────────────────────────────────────────────────────────
 function buildSectionsFromLayout(
   layout: LayoutKey,
   input: StorefrontCodegenInput,
   composition: ReturnType<typeof resolveComposition>,
 ): Section[] {
   const { blueprint, products } = input
+  const displayName = getDisplayName(blueprint)
   const heroVariant = composition.sectionVariantOverrides?.hero ?? 'centered'
   const include = new Set(composition.includeSections ?? [])
   const primaryCategory = blueprint.productCategories?.[0]
+
   const faqItems = (bp: typeof blueprint) => [
-    {
-      question: `How do I order from ${bp.businessName}?`,
-      answer: `Browse our products, add to cart, and complete checkout securely via ${(input.paymentGateways ?? ['Paystack'])[0]}. You will receive a confirmation immediately.`,
-    },
-    {
-      question: 'How long does delivery take?',
-      answer: bp.targetAudience?.includes('digital') || bp.businessType?.toLowerCase().includes('digital')
-        ? 'Your products are delivered instantly after payment. Check your email for download links.'
-        : 'Most orders arrive within 2-5 business days. We will send tracking info once your order is dispatched.',
-    },
-    {
-      question: `Can I customise my ${bp.businessType ?? 'order'}?`,
-      answer: 'Yes. Many products can be personalised. Contact us before ordering and we will guide you through the options.',
-    },
-    {
-      question: 'What is your refund policy?',
-      answer: bp.businessType?.toLowerCase().includes('digital')
-        ? 'Digital products are non-refundable once downloaded. If you have an issue, contact us and we will make it right.'
-        : 'We accept returns within 14 days for unused items in original condition. Contact us to start the process.',
-    },
+    { question: `How do I order from ${displayName}?`, answer: `Browse our products, add to cart, and complete checkout securely via ${(input.paymentGateways ?? ['Paystack'])[0]}. You will receive a confirmation immediately.` },
+    { question: 'How long does delivery take?', answer: bp.targetAudience?.includes('digital') || bp.businessType?.toLowerCase().includes('digital') ? 'Your products are delivered instantly after payment. Check your email for download links.' : 'Most orders arrive within 2-5 business days. We will send tracking info once your order is dispatched.' },
+    { question: `Can I customise my ${bp.businessType ?? 'order'}?`, answer: 'Yes. Many products can be personalised. Contact us before ordering and we will guide you through the options.' },
+    { question: 'What is your refund policy?', answer: bp.businessType?.toLowerCase().includes('digital') ? 'Digital products are non-refundable once downloaded. If you have an issue, contact us and we will make it right.' : 'We accept returns within 14 days for unused items in original condition. Contact us to start the process.' },
   ]
 
   const heroSection: Section = {
-    type: heroVariant === 'editorial' ? 'hero-editorial' :
-          heroVariant === 'fullbleed' ? 'hero-fullbleed' :
-          heroVariant === 'split' ? 'hero-split' :
-          heroVariant === 'minimal' ? 'hero-minimal' : 'hero-centered',
-    headline: blueprint.businessName,
+    type: heroVariant === 'editorial' ? 'hero-editorial' : heroVariant === 'fullbleed' ? 'hero-fullbleed' : heroVariant === 'split' ? 'hero-split' : heroVariant === 'minimal' ? 'hero-minimal' : 'hero-centered',
+    headline: displayName,
     tagline: `${blueprint.businessType ? `The best of ${blueprint.businessType}` : 'Shop the collection'}.`,
-    subtext: blueprint.targetAudience
-      ? `Designed for ${blueprint.targetAudience}. Fast checkout, secure payment.`
-      : 'Discover our full collection. Fast checkout, secure payment.',
+    subtext: blueprint.targetAudience ? `Designed for ${blueprint.targetAudience}. Fast checkout, secure payment.` : 'Discover our full collection. Fast checkout, secure payment.',
     eyebrow: blueprint.businessType ?? '',
   } as Section
 
   const trustBar: Section = {
     type: 'trust-bar',
-    items: (blueprint.storeFeatures ?? []).slice(0, 4).length > 0
-      ? (blueprint.storeFeatures ?? []).slice(0, 4)
-      : ['Secure checkout', 'Fast delivery', 'Easy returns', 'Local support'],
+    items: (blueprint.storeFeatures ?? []).slice(0, 4).length > 0 ? (blueprint.storeFeatures ?? []).slice(0, 4) : ['Secure checkout', 'Fast delivery', 'Easy returns', 'Local support'],
   } as Section
 
   const productGrid: Section = {
@@ -381,98 +280,32 @@ function buildSectionsFromLayout(
     columns: 3,
     style: layout === 'showcase' ? 'dense' : layout === 'editorial' ? 'magazine' : 'uniform',
     showCategory: true,
-    sectionLabel: primaryCategory ? `${primaryCategory} collection` : `${blueprint.businessName} collection`,
+    sectionLabel: primaryCategory ? `${primaryCategory} collection` : `${displayName} collection`,
     limit: 9,
   } as Section
 
-  const newsletter: Section = {
-    type: 'newsletter',
-    headline: 'Stay in the loop',
-    subtext: 'Get updates and exclusive offers.',
-    placeholder: 'Enter your email',
-  } as Section
-
-  const socialProof: Section = {
-    type: 'social-proof',
-    style: layout === 'showcase' ? 'marquee' : layout === 'editorial' ? 'cards' : 'marquee',
-    headline: 'Loved by customers',
-  } as Section
-
-  const brandStory: Section = {
-    type: 'brand-story',
-    headline: 'Why we exist',
-    body: `${blueprint.businessName} was built for ${blueprint.targetAudience ?? 'people who care'}. We believe in quality, craft, and honesty.`,
-    layout: 'text-left',
-  } as Section
-
-  const announcementBar: Section = {
-    type: 'announcement-bar',
-    message: `Shop ${blueprint.businessName} — fast delivery, secure checkout.`,
-  } as Section
-
-  const productShelf: Section = {
-    type: 'product-shelf',
-    headline: 'Best Sellers',
-    subtext: 'Our most loved products',
-    limit: 6,
-  } as Section
-
-  const categoryStrip: Section = {
-    type: 'category-strip',
-    headline: 'Browse by category',
-  } as Section
-
-  const featuredDrop: Section = {
-    type: 'featured-drop',
-    badge: 'NEW DROP',
-    headline: 'Just landed. Limited stock.',
-    subtext: 'Grab yours before it sells out.',
-    showCountdown: true,
-  } as Section
-
-  // ── Industry-specific optional sections ──────────────────────────────────
-  // These are appended to layout-defined core sections when composition rules
-  // declare them in includeSections[]. Only sections the HTML renderer knows
-  // about are emitted (before-after, founder-story, ingredients-list,
-  // lookbook-grid are rendered by the frontend React canvas, not the HTML
-  // codegen — so we skip them here to avoid empty nodes in the static HTML).
-  // The React canvas (StorefrontCanvas) handles them via its own registry.
+  const newsletter: Section = { type: 'newsletter', headline: 'Stay in the loop', subtext: 'Get updates and exclusive offers.', placeholder: 'Enter your email' } as Section
+  const socialProof: Section = { type: 'social-proof', style: layout === 'showcase' ? 'marquee' : layout === 'editorial' ? 'cards' : 'marquee', headline: 'Loved by customers' } as Section
+  const brandStory: Section = { type: 'brand-story', headline: 'Why we exist', body: `${displayName} was built for ${blueprint.targetAudience ?? 'people who care'}. We believe in quality, craft, and honesty.`, layout: 'text-left' } as Section
+  const announcementBar: Section = { type: 'announcement-bar', message: `Shop ${displayName} — fast delivery, secure checkout.` } as Section
+  const productShelf: Section = { type: 'product-shelf', headline: 'Best Sellers', subtext: 'Our most loved products', limit: 6 } as Section
+  const categoryStrip: Section = { type: 'category-strip', headline: 'Browse by category' } as Section
+  const featuredDrop: Section = { type: 'featured-drop', badge: 'NEW DROP', headline: 'Just landed. Limited stock.', subtext: 'Grab yours before it sells out.', showCountdown: true } as Section
 
   const industryExtras: Section[] = []
+  if (include.has('featured-drop') && layout !== 'showcase') industryExtras.push(featuredDrop)
+  if (include.has('faq')) industryExtras.push({ type: 'faq', headline: `Questions about ${displayName}`, items: faqItems(blueprint) } as unknown as Section)
 
-  if (include.has('featured-drop') && layout !== 'showcase') {
-    industryExtras.push(featuredDrop)
-  }
-  if (include.has('faq')) {
-    industryExtras.push({ type: 'faq', headline: `Questions about ${blueprint.businessName}`, items: faqItems(blueprint) } as unknown as Section)
-  }
-  if (include.has('countdown-banner') && layout === 'showcase') {
-    // countdown is already embedded in featured-drop for the HTML renderer
-  }
-
-  // Core layout sections (unchanged from original)
   let core: Section[]
   switch (layout) {
-    case 'editorial':
-      core = [heroSection, trustBar, productShelf, brandStory, categoryStrip, productGrid, socialProof, newsletter]
-      break
-    case 'conversion':
-      core = [announcementBar, heroSection, trustBar, categoryStrip, productGrid, socialProof, newsletter]
-      break
-    case 'storytelling':
-      core = [heroSection, brandStory, productShelf, trustBar, socialProof, productGrid, newsletter]
-      break
-    case 'showcase':
-      core = [announcementBar, heroSection, featuredDrop, categoryStrip, productGrid, trustBar]
-      break
+    case 'editorial':    core = [heroSection, trustBar, productShelf, brandStory, categoryStrip, productGrid, socialProof, newsletter]; break
+    case 'conversion':   core = [announcementBar, heroSection, trustBar, categoryStrip, productGrid, socialProof, newsletter]; break
+    case 'storytelling': core = [heroSection, brandStory, productShelf, trustBar, socialProof, productGrid, newsletter]; break
+    case 'showcase':     core = [announcementBar, heroSection, featuredDrop, categoryStrip, productGrid, trustBar]; break
     case 'catalog':
-    default:
-      core = [heroSection, categoryStrip, trustBar, productGrid, socialProof]
-      break
+    default:             core = [heroSection, categoryStrip, trustBar, productGrid, socialProof]; break
   }
 
-  // Splice extras in before the last section (newsletter or social proof)
-  // so they don't orphan at the bottom
   if (industryExtras.length > 0) {
     const insertAt = Math.max(core.length - 1, 1)
     core.splice(insertAt, 0, ...industryExtras)
@@ -482,61 +315,42 @@ function buildSectionsFromLayout(
 }
 
 async function getManifest(input: StorefrontCodegenInput): Promise<StoreManifest> {
-  const corpus = [
-    input.blueprint.businessName,
-    input.blueprint.businessType ?? '',
-    ...(input.blueprint.productCategories ?? []),
-  ].join(' ')
-
-  // Step 1: Rule-based composition — always works, zero LLM tokens
+  const corpus = [input.blueprint.businessName, input.blueprint.businessType ?? '', ...(input.blueprint.productCategories ?? [])].join(' ')
   const industry = detectIndustry(corpus)
   const composition = resolveComposition(industry)
   const themeKey = composition.theme
-
   const palette = THEME_PALETTES[themeKey] ?? THEME_PALETTES['minimal-light']
   const typography = THEME_TYPOGRAPHY[themeKey] ?? THEME_TYPOGRAPHY['minimal-light']
   const sections = buildSectionsFromLayout(composition.layout, input, composition)
 
-  const baseManifest: StoreManifest = {
-    sections,
-    palette,
-    typography: { headingFont: typography.headingFont, bodyFont: typography.bodyFont },
-  }
+  const baseManifest: StoreManifest = { sections, palette, typography: { headingFont: typography.headingFont, bodyFont: typography.bodyFont }, industry }
 
-  // Step 2: Try LLM ONLY for content enrichment on headline/copy — not structure
-  // Skip entirely on free tier (no tokens wasted on structure)
   if (!process.env.GROQ_API_KEY || process.env.SELTRA_LLM_MANIFEST !== 'true') {
     return sanitiseManifest(baseManifest, input)
   }
 
   try {
+    const displayName = getDisplayName(input.blueprint)
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000))
     const result = await Promise.race([
-      codegenChat([{
-        role: 'user',
-        content: `Given this store, write ONLY improved headline, tagline, and subtext for the hero section. Return JSON with keys: headline, tagline, subtext. Store: ${input.blueprint.businessName}, type: ${input.blueprint.businessType}, audience: ${input.blueprint.targetAudience}.`,
-      }], 200),
+      codegenChat([{ role: 'user', content: `Write improved hero copy for brand "${displayName}" — type: ${input.blueprint.businessType}, audience: ${input.blueprint.targetAudience}. Return JSON: { "headline": string, "tagline": string, "subtext": string }` }], 200),
       timeout,
     ])
-
     const raw = result.content.trim().replace(/```json|```/g, '').trim()
     const enriched = JSON.parse(raw) as { headline?: string; tagline?: string; subtext?: string }
-
-    // Only patch the hero section content — structure is unchanged
     const enrichedSections = sections.map(s => {
       if (s.type.startsWith('hero') && enriched.headline) {
         return { ...s, headline: enriched.headline, tagline: enriched.tagline ?? (s as HeroSection).tagline, subtext: enriched.subtext ?? (s as HeroSection).subtext }
       }
       return s
     })
-
     return sanitiseManifest({ ...baseManifest, sections: enrichedSections }, input)
   } catch {
-    // LLM enrichment failed — rule-based manifest is perfectly fine
     return sanitiseManifest(baseManifest, input)
   }
 }
 
+// ── Section renderers ─────────────────────────────────────────────────────────
 
 function renderAnnouncementBar(s: AnnouncementBarSection): string {
   return `<div class="announcement-bar">
@@ -551,11 +365,9 @@ function renderAnnouncementBar(s: AnnouncementBarSection): string {
 </div>`
 }
 
-// KEY FIX: Hero uses CSS Grid with explicit layers — text is ALWAYS visible above the image
-// Image is absolutely positioned within a fixed-height container, text sits in front via z-index
 function renderHeroCentered(s: HeroSection, features: string[], bgUrl: string): string {
   const hasImg = !!bgUrl
-  return `<section class="hero hero-centered">
+  return `<section class="hero hero-centered ${sectionBgClass('hero-centered')}">
   ${hasImg ? `<div class="hero-bg"><img src="${esc(bgUrl)}" alt="" class="hero-bg-img" aria-hidden="true"><div class="hero-bg-overlay"></div></div>` : `<div class="hero-bg hero-bg--gradient"></div>`}
   <div class="hero-content hero-content--centered">
     ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ''}
@@ -570,7 +382,7 @@ function renderHeroCentered(s: HeroSection, features: string[], bgUrl: string): 
 function renderHeroSplit(s: HeroSection, features: string[], products: StorefrontCodegenInput['products']): string {
   const imgUrl = products[0]?.images?.find(i => i.isPrimary)?.url ?? products[0]?.images?.[0]?.url ?? ''
   const useImg = imgUrl && !imgUrl.startsWith('data:')
-  return `<section class="hero hero-split">
+  return `<section class="hero hero-split ${sectionBgClass('hero-split')}">
   <div class="hero-split-text">
     ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ''}
     <h1 class="hero-title">${esc(s.headline)}</h1>
@@ -584,7 +396,7 @@ function renderHeroSplit(s: HeroSection, features: string[], products: Storefron
 
 function renderHeroEditorial(s: HeroSection, features: string[], bgUrl: string): string {
   const hasImg = !!bgUrl
-  return `<section class="hero hero-editorial">
+  return `<section class="hero hero-editorial ${sectionBgClass('hero-editorial')}">
   ${hasImg ? `<div class="hero-bg hero-bg--editorial"><img src="${esc(bgUrl)}" alt="" class="hero-bg-img" aria-hidden="true"><div class="hero-bg-overlay hero-bg-overlay--editorial"></div></div>` : `<div class="hero-bg hero-bg--gradient-editorial"></div>`}
   <div class="hero-content hero-content--editorial">
     ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ''}
@@ -598,7 +410,7 @@ function renderHeroEditorial(s: HeroSection, features: string[], bgUrl: string):
 
 function renderHeroFullbleed(s: HeroSection, features: string[], bgUrl: string): string {
   const hasImg = !!bgUrl
-  return `<section class="hero hero-fullbleed">
+  return `<section class="hero hero-fullbleed ${sectionBgClass('hero-fullbleed')}">
   ${hasImg ? `<div class="hero-bg"><img src="${esc(bgUrl)}" alt="" class="hero-bg-img" aria-hidden="true"><div class="hero-bg-overlay hero-bg-overlay--dark"></div></div>` : `<div class="hero-bg hero-bg--dark"></div>`}
   <div class="hero-content hero-content--fullbleed">
     ${s.eyebrow ? `<p class="eyebrow eyebrow--light">${esc(s.eyebrow)}</p>` : ''}
@@ -611,7 +423,7 @@ function renderHeroFullbleed(s: HeroSection, features: string[], bgUrl: string):
 }
 
 function renderHeroMinimal(s: HeroSection): string {
-  return `<section class="hero hero-minimal">
+  return `<section class="hero hero-minimal ${sectionBgClass('hero-minimal')}">
   <div class="hero-content hero-content--minimal">
     ${s.eyebrow ? `<p class="eyebrow">${esc(s.eyebrow)}</p>` : ''}
     <h1 class="hero-title hero-title--minimal">${esc(s.headline)}</h1>
@@ -627,7 +439,7 @@ function renderFeaturedDrop(s: FeaturedDropSection, products: StorefrontCodegenI
   const useImg = imgUrl && !imgUrl.startsWith('data:')
   const countdown = s.showCountdown ? `<div class="drop-countdown"><span class="cd-num" id="cd-h">23</span><span class="cd-sep">:</span><span class="cd-num" id="cd-m">59</span><span class="cd-sep">:</span><span class="cd-num" id="cd-s">59</span></div>` : ''
   const price = Number(product.price).toFixed(2)
-  return `<section class="featured-drop">
+  return `<section class="featured-drop ${sectionBgClass('featured-drop')}">
   <div class="drop-body">
     <span class="drop-badge">${esc(s.badge)}</span>
     <h2 class="drop-headline">${esc(s.headline)}</h2>
@@ -646,17 +458,24 @@ function renderProductCard(p: StorefrontCodegenInput['products'][0], showCategor
   const useImg = imgUrl && !imgUrl.startsWith('data:')
   const price = Number(p.price).toFixed(2)
   const isMagazine = style === 'magazine'
+
+  // Use a short product name: if name is very long (>40 chars), try to trim it
+  const displayProductName = p.name.length > 40
+    ? p.name.replace(/^(.{0,35})\s.*$/, '$1…')
+    : p.name
+
   const imgHtml = useImg
     ? `<div class="pcard-img" style="background-image:url('${esc(imgUrl)}')"></div>`
-    : `<div class="pcard-img pcard-img--empty"><span class="pcard-initials">${esc(p.name.slice(0,2).toUpperCase())}</span></div>`
+    : `<div class="pcard-img pcard-img--empty"><span class="pcard-initials">${esc(displayProductName.slice(0, 2).toUpperCase())}</span></div>`
+
   return `<article class="pcard${isMagazine ? ' pcard--magazine' : ''}">
   <div class="pcard-img-wrap">${imgHtml}
     <button class="pcard-quick-add" onclick="addToCart('${escJs(p.id)}','${escJs(p.name)}',${price},'${escJs(p.currency)}','${escJs(imgUrl)}')">Add to cart</button>
   </div>
   <div class="pcard-body">
     ${showCategory && p.category ? `<span class="pcard-cat">${esc(p.category)}</span>` : ''}
-    <h3 class="pcard-name">${esc(p.name)}</h3>
-    ${p.description ? `<p class="pcard-desc">${esc((p.description ?? '').slice(0, 90))}</p>` : ''}
+    <h3 class="pcard-name">${esc(displayProductName)}</h3>
+    ${p.description ? `<p class="pcard-desc">${esc((p.description ?? '').slice(0, 80))}</p>` : ''}
     <div class="pcard-foot">
       <span class="pcard-price">${esc(p.currency)} ${price}</span>
       <button class="btn-add" onclick="addToCart('${escJs(p.id)}','${escJs(p.name)}',${price},'${escJs(p.currency)}','${escJs(imgUrl)}')">+ Add</button>
@@ -668,9 +487,12 @@ function renderProductCard(p: StorefrontCodegenInput['products'][0], showCategor
 function renderProductGrid(s: ProductGridSection, products: StorefrontCodegenInput['products']): string {
   const limited = products.slice(0, s.limit ?? 9)
   const colClass = s.columns === 4 ? 'cols-4' : s.columns === 2 ? 'cols-2' : 'cols-3'
-  return `<section class="section-products">
+  return `<section class="section-products ${sectionBgClass('product-grid')}">
   <div class="section-header">
-    <span class="section-label">${esc(s.sectionLabel ?? 'Products')}</span>
+    <div>
+      <span class="section-eyebrow">${esc(s.sectionLabel ?? 'Products')}</span>
+      <h2 class="section-title">${esc(s.sectionLabel ?? 'Products')}</h2>
+    </div>
     <span class="section-count">${products.length} items</span>
   </div>
   <div class="pgrid ${colClass} pgrid--${s.style ?? 'uniform'}">
@@ -681,7 +503,7 @@ function renderProductGrid(s: ProductGridSection, products: StorefrontCodegenInp
 
 function renderProductShelf(s: ProductShelfSection, products: StorefrontCodegenInput['products']): string {
   const limited = products.slice(0, s.limit ?? 6)
-  return `<section class="section-shelf">
+  return `<section class="section-shelf ${sectionBgClass('product-shelf')}">
   <div class="shelf-header">
     <div>
       <h2 class="shelf-title">${esc(s.headline)}</h2>
@@ -697,7 +519,7 @@ function renderProductShelf(s: ProductShelfSection, products: StorefrontCodegenI
 
 function renderBrandStory(s: BrandStorySection): string {
   const statHtml = s.stat ? `<div class="story-stat"><span class="story-stat-num">${esc(s.stat)}</span><span class="story-stat-label">${esc(s.statLabel ?? '')}</span></div>` : ''
-  return `<section class="section-story story--${s.layout ?? 'text-left'}">
+  return `<section class="section-story story--${s.layout ?? 'text-left'} ${sectionBgClass('brand-story')}">
   <div class="story-inner">
     <h2 class="story-title">${esc(s.headline)}</h2>
     <p class="story-body">${esc(s.body)}</p>
@@ -709,16 +531,29 @@ function renderBrandStory(s: BrandStorySection): string {
 function renderCategoryStrip(s: CategoryStripSection, categories: string[]): string {
   if (!categories.length) return ''
   const pills = categories.map(c => `<button class="cat-pill" onclick="filterCat('${escJs(c)}')">${esc(c)}</button>`).join('')
-  return `<section class="section-cats">
+  return `<section class="section-cats ${sectionBgClass('category-strip')}">
   ${s.headline ? `<span class="section-label">${esc(s.headline)}</span>` : ''}
   <div class="cat-row"><button class="cat-pill cat-pill--active" onclick="filterCat('all')">All</button>${pills}</div>
 </section>`
 }
 
-function renderTrustBar(s: TrustBarSection): string {
+// ── Trust bar with industry icons ─────────────────────────────────────────────
+function renderTrustBar(s: TrustBarSection, industry: string): string {
   const items = safeArr(s.items, ['Secure checkout', 'Fast delivery', 'Easy returns', 'Local support'])
-  return `<section class="section-trust">
-  ${items.map(item => `<div class="trust-item"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8l4 4 8-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>${esc(item)}</div>`).join('')}
+  const icons = resolveIcons(industry)
+
+  return `<section class="section-trust ${sectionBgClass('trust-bar')}">
+  ${items.map((item, i) => {
+    const iconData = icons.items[i] ?? icons.items[0]
+    return `<div class="trust-item">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true" class="trust-icon">
+        <path d="${esc(iconData.path)}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="trust-text">
+        <span class="trust-label">${esc(item)}</span>
+      </div>
+    </div>`
+  }).join('')}
 </section>`
 }
 
@@ -734,7 +569,7 @@ function renderSocialProof(s: SocialProofSection): string {
   const stars = (n: number) => '★'.repeat(n)
 
   if (s.style === 'cards') {
-    return `<section class="section-proof">
+    return `<section class="section-proof ${sectionBgClass('social-proof')}">
   ${s.headline ? `<div class="proof-head"><h2 class="proof-title">${esc(s.headline)}</h2>${s.subtext ? `<p class="proof-sub">${esc(s.subtext)}</p>` : ''}</div>` : ''}
   <div class="proof-cards-track">
     ${reviews.map(r => `<div class="proof-card"><p class="proof-stars">${stars(r.stars)}</p><p class="proof-text">${esc(r.text)}</p></div>`).join('')}
@@ -743,17 +578,16 @@ function renderSocialProof(s: SocialProofSection): string {
   }
 
   if (s.style === 'grid') {
-    return `<section class="section-proof">
+    return `<section class="section-proof ${sectionBgClass('social-proof')}">
   ${s.headline ? `<h2 class="proof-title">${esc(s.headline)}</h2>` : ''}
   <div class="proof-grid">
-    ${reviews.slice(0,3).map(r => `<div class="proof-card"><p class="proof-stars">${stars(r.stars)}</p><p class="proof-text">${esc(r.text)}</p></div>`).join('')}
+    ${reviews.slice(0, 3).map(r => `<div class="proof-card"><p class="proof-stars">${stars(r.stars)}</p><p class="proof-text">${esc(r.text)}</p></div>`).join('')}
   </div>
 </section>`
   }
 
-  // marquee
   const all = [...reviews, ...reviews]
-  return `<section class="section-proof section-proof--marquee">
+  return `<section class="section-proof section-proof--marquee ${sectionBgClass('social-proof')}">
   ${s.headline ? `<p class="proof-marquee-label">${esc(s.headline)}</p>` : ''}
   <div class="marquee-wrap"><div class="marquee-inner">
     ${all.map(r => `<span class="marquee-chip">${esc(r.text)} ${stars(r.stars)}</span>`).join('')}
@@ -762,19 +596,20 @@ function renderSocialProof(s: SocialProofSection): string {
 }
 
 function renderNewsletter(s: NewsletterSection): string {
-  return `<section class="section-newsletter">
+  return `<section class="section-newsletter ${sectionBgClass('newsletter')}">
   <div class="nl-inner">
     <h2 class="nl-title">${esc(s.headline)}</h2>
     ${s.subtext ? `<p class="nl-sub">${esc(s.subtext)}</p>` : ''}
     <div class="nl-form">
       <input type="email" class="nl-input" placeholder="${esc(s.placeholder ?? 'Enter your email')}" aria-label="Email address">
-      <button class="btn-primary nl-btn" onclick="nlSubmit(this)">Subscribe</button>
+      <button class="btn-primary nl-btn" onclick="nlSubmit(this)">Subscribe →</button>
     </div>
+    <p class="nl-reassurance">No spam. Unsubscribe anytime.</p>
   </div>
 </section>`
 }
 
-function renderSection(section: Section, input: StorefrontCodegenInput, features: string[], categories: string[]): string {
+function renderSection(section: Section, input: StorefrontCodegenInput, features: string[], categories: string[], industry: string): string {
   const bg = heroImg(input.products)
   switch (section.type) {
     case 'announcement-bar':  return renderAnnouncementBar(section)
@@ -788,7 +623,7 @@ function renderSection(section: Section, input: StorefrontCodegenInput, features
     case 'product-shelf':     return renderProductShelf(section, input.products)
     case 'brand-story':       return renderBrandStory(section)
     case 'category-strip':    return renderCategoryStrip(section, categories)
-    case 'trust-bar':         return renderTrustBar(section)
+    case 'trust-bar':         return renderTrustBar(section, industry)
     case 'social-proof':      return renderSocialProof(section)
     case 'newsletter':        return renderNewsletter(section)
     default: return ''
@@ -800,6 +635,16 @@ function buildCSS(manifest: StoreManifest): string {
   const p = manifest.palette
   const hf = manifest.typography.headingFont
   const bf = manifest.typography.bodyFont
+
+  // Derive newsletter background: for light themes use accent, for dark themes
+  // use a slightly lighter surface. This avoids the gold-on-gold problem.
+  const isDark = p.bg.startsWith('#0') || p.bg.startsWith('#1')
+  const nlBg = isDark ? p.surface : p.accent
+  const nlText = isDark ? p.text : p.accentText
+  const nlSubText = isDark ? `${p.text}99` : `${p.accentText}cc`
+  const nlInputBorder = isDark ? p.border : `${p.accentText}40`
+  const nlInputBg = isDark ? p.bg : `${p.accentText}15`
+
   return `*{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:${p.bg};--surface:${p.surface};--border:${p.border};
@@ -807,12 +652,23 @@ function buildCSS(manifest: StoreManifest): string {
   --accent:${p.accent};--ax:${p.accentText};--as:${p.accentSoft};
   --hf:'${hf}',Georgia,serif;--bf:'${bf}',system-ui,sans-serif;
   --r:.5rem;--r2:.75rem;--nav:56px;
+  --nl-bg:${nlBg};--nl-text:${nlText};--nl-sub:${nlSubText};
+  --nl-input-border:${nlInputBorder};--nl-input-bg:${nlInputBg};
 }
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:var(--bf);line-height:1.6;-webkit-font-smoothing:antialiased}
 body.no-scroll{overflow:hidden}
 img{max-width:100%;display:block}
 button{font-family:var(--bf)}
+
+/* ── SECTION BACKGROUND ZONES ──────────────────────────────────────────────
+   Every section gets one of four background zones. This creates rhythm and
+   prevents the "all one flat color" problem.
+────────────────────────────────────────────────────────────────────────── */
+.section-zone--bg          { background:var(--bg) }
+.section-zone--surface     { background:var(--surface) }
+.section-zone--accent-soft { background:var(--as) }
+.section-zone--accent-bold { background:var(--nl-bg);color:var(--nl-text) }
 
 /* ANNOUNCEMENT BAR */
 .announcement-bar{background:var(--accent);color:var(--ax);overflow:hidden;padding:.5rem 0;font-size:.72rem;font-weight:600;letter-spacing:.04em;white-space:nowrap}
@@ -822,17 +678,15 @@ button{font-family:var(--bf)}
 
 /* NAV */
 .nav{position:sticky;top:0;z-index:40;height:var(--nav);background:${p.bg}f0;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem}
-.nav-brand{font-family:var(--hf);font-size:1.05rem;font-weight:700;line-height:1}
-.nav-sub{font-size:.6rem;opacity:.4;letter-spacing:.06em;margin-top:.1rem;font-family:monospace}
+.nav-brand{font-family:var(--hf);font-size:1.1rem;font-weight:700;line-height:1;letter-spacing:-.01em}
+.nav-sub{font-size:.6rem;opacity:.4;letter-spacing:.06em;margin-top:.1rem;font-family:monospace;text-transform:uppercase}
 .nav-right{display:flex;align-items:center;gap:.75rem}
 .nav-cart{display:flex;align-items:center;gap:.4rem;font-size:.78rem;padding:.4rem .9rem;border-radius:999px;border:1.5px solid var(--border);background:transparent;cursor:pointer;color:var(--text);transition:border-color .18s}
 .nav-cart:hover{border-color:var(--accent)}
 .cart-badge{font-weight:800;color:var(--accent);min-width:1ch;text-align:center;transition:transform .15s}
 .cart-badge.bump{transform:scale(1.4)}
 
-/* ── HERO: layered approach — image behind, text in front ── */
-/* The hero is position:relative; the bg div is position:absolute inset-0; */
-/* text content is relative z-index:1 — ALWAYS on top of the image */
+/* ── HERO ────────────────────────────────────────────────────────────────── */
 .hero{position:relative;overflow:hidden}
 .hero-bg{position:absolute;inset:0;z-index:0}
 .hero-bg-img{width:100%;height:100%;object-fit:cover;object-position:center}
@@ -844,11 +698,7 @@ button{font-family:var(--bf)}
 .hero-bg-overlay{background:linear-gradient(to bottom,${p.bg}70 0%,${p.bg}a0 50%,${p.bg}e0 100%)}
 .hero-bg-overlay--editorial{background:linear-gradient(to right,${p.bg}f0 0%,${p.bg}c0 40%,${p.bg}50 100%)}
 .hero-bg-overlay--dark{background:linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.5) 50%,rgba(0,0,0,.25) 100%)}
-
-/* Hero content zones — z-index:1 sits above the bg */
 .hero-content{position:relative;z-index:1;display:flex;flex-direction:column;gap:.75rem}
-
-/* Hero heights — defined on the section itself (not the bg) */
 .hero-centered{min-height:clamp(65vh,80vh,95vh);display:flex;align-items:center;justify-content:center;text-align:center}
 .hero-content--centered{align-items:center;text-align:center;padding:clamp(3rem,8vh,6rem) 1.5rem;max-width:780px;width:100%}
 .hero-editorial{min-height:clamp(60vh,75vh,90vh);display:flex;align-items:center}
@@ -857,14 +707,11 @@ button{font-family:var(--bf)}
 .hero-content--fullbleed{padding:clamp(2rem,5vh,3rem) 1.5rem clamp(3rem,8vh,5rem);width:100%;max-width:900px;align-items:center;text-align:center}
 .hero-minimal{min-height:clamp(40vh,55vh,70vh);display:flex;align-items:center;border-bottom:1px solid var(--border)}
 .hero-content--minimal{padding:clamp(3rem,8vh,6rem) 1.5rem;max-width:600px}
-
 .hero-split{display:grid;grid-template-columns:1fr 1fr;min-height:clamp(55vh,70vh,85vh)}
 .hero-split-text{padding:clamp(3rem,7vh,5rem) 1.5rem clamp(3rem,7vh,5rem) clamp(1.5rem,4vw,3rem);display:flex;flex-direction:column;justify-content:center;gap:.75rem}
 .hero-split-img{background-size:cover;background-position:center;min-height:300px}
 .hero-split-img--fallback{background:linear-gradient(135deg,var(--as),var(--surface))}
 @media(max-width:768px){.hero-split{grid-template-columns:1fr}.hero-split-img{aspect-ratio:16/9}}
-
-/* Hero typography */
 .eyebrow{font-family:monospace;font-size:.68rem;opacity:.5;text-transform:uppercase;letter-spacing:.1em}
 .eyebrow--light{color:rgba(255,255,255,.6)}
 .hero-title{font-family:var(--hf);font-size:clamp(2.75rem,8vw,6rem);font-weight:700;line-height:.93;letter-spacing:-.02em}
@@ -882,7 +729,7 @@ button{font-family:var(--bf)}
 .btn-primary:active{transform:scale(.97)}
 
 /* FEATURED DROP */
-.featured-drop{display:flex;align-items:center;gap:2rem;padding:2.5rem 1.5rem;background:var(--as);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.featured-drop{display:flex;align-items:center;gap:2rem;padding:2.5rem 1.5rem;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 .drop-body{flex:1;display:flex;flex-direction:column;gap:.75rem;min-width:0}
 .drop-badge{display:inline-block;font-family:monospace;font-size:.6rem;font-weight:700;letter-spacing:.12em;padding:.25rem .75rem;border-radius:999px;background:var(--accent);color:var(--ax);text-transform:uppercase;width:fit-content}
 .drop-headline{font-family:var(--hf);font-size:clamp(1.4rem,3vw,2.25rem);font-weight:700;line-height:1.1}
@@ -894,30 +741,40 @@ button{font-family:var(--bf)}
 .drop-img{width:min(200px,38vw);height:min(200px,38vw);border-radius:var(--r2);background-size:cover;background-position:center;flex-shrink:0}
 @media(max-width:600px){.featured-drop{flex-direction:column}.drop-img{width:100%;height:200px}}
 
-/* TRUST BAR */
-.section-trust{display:flex;flex-wrap:wrap;gap:.75rem 2.5rem;padding:1rem 1.5rem;border-top:1px solid var(--border);border-bottom:1px solid var(--border);justify-content:center}
-.trust-item{display:flex;align-items:center;gap:.4rem;font-size:.73rem;opacity:.65;color:var(--text)}
-.trust-item svg{color:var(--accent);flex-shrink:0}
+/* ── TRUST BAR — with industry icons ──────────────────────────────────────
+   4 items laid out in a row. Each has a unique SVG icon + label.
+   On surface background with top/bottom border for section separation.
+────────────────────────────────────────────────────────────────────────── */
+.section-trust{display:flex;flex-wrap:wrap;gap:1rem 2rem;padding:1.5rem clamp(1rem,4vw,2.5rem);border-top:1px solid var(--border);border-bottom:1px solid var(--border);justify-content:center;align-items:center}
+.trust-item{display:flex;align-items:center;gap:.625rem}
+.trust-icon{color:var(--accent);flex-shrink:0;opacity:.9}
+.trust-text{display:flex;flex-direction:column}
+.trust-label{font-size:.78rem;font-weight:600;color:var(--text)}
 
 /* CATEGORIES */
 .section-cats{padding:.875rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.875rem;overflow-x:auto;scrollbar-width:none}
 .section-cats::-webkit-scrollbar{display:none}
 .cat-row{display:flex;gap:.4rem;flex-wrap:nowrap}
-.cat-pill{font-size:.72rem;padding:.3rem .85rem;border-radius:999px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--muted);transition:all .18s;white-space:nowrap}
-.cat-pill:hover,.cat-pill--active{border-color:var(--accent);color:var(--accent);background:var(--as)}
+.cat-pill{font-size:.72rem;padding:.35rem .9rem;border-radius:999px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--muted);transition:all .18s;white-space:nowrap;font-weight:500}
+.cat-pill:hover,.cat-pill--active{border-color:var(--accent);color:var(--accent);background:var(--as);font-weight:600}
 
-/* PRODUCTS GRID */
-.section-products{padding:clamp(2rem,4vh,3rem) 1.5rem clamp(3rem,6vh,5rem)}
-.section-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:1.5rem}
+/* ── PRODUCT GRID SECTION HEADER ──────────────────────────────────────────
+   Gives the grid section a real editorial moment above the cards —
+   a large heading rather than just a tiny monospace label.
+────────────────────────────────────────────────────────────────────────── */
+.section-products{padding:clamp(2.5rem,5vh,4rem) clamp(1rem,4vw,2.5rem) clamp(3rem,6vh,5rem)}
+.section-header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:2rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
+.section-eyebrow{font-family:monospace;font-size:.62rem;opacity:.4;text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:.4rem}
+.section-title{font-family:var(--hf);font-size:clamp(1.6rem,3.5vw,2.5rem);font-weight:700;line-height:1.05;letter-spacing:-.015em}
 .section-label{font-family:monospace;font-size:.65rem;opacity:.4;text-transform:uppercase;letter-spacing:.08em}
-.section-count{font-size:.75rem;opacity:.4}
+.section-count{font-size:.75rem;opacity:.35;font-family:monospace;padding-bottom:.25rem}
 .pgrid{display:grid;gap:1rem}
 .pgrid.cols-2{grid-template-columns:repeat(2,1fr)}
 .pgrid.cols-3{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
 .pgrid.cols-4{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
 
-/* PRODUCT CARD — modern 2025 style */
-.pcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;display:flex;flex-direction:column;transition:transform .22s,box-shadow .22s;position:relative}
+/* PRODUCT CARD */
+.pcard{background:var(--bg);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;display:flex;flex-direction:column;transition:transform .22s,box-shadow .22s;position:relative}
 .pcard:hover{transform:translateY(-3px);box-shadow:0 8px 28px rgba(0,0,0,.09)}
 .pcard-img-wrap{position:relative;aspect-ratio:1;overflow:hidden;background:var(--as)}
 .pcard-img{position:absolute;inset:0;background-size:cover;background-position:center;transition:transform .4s ease}
@@ -928,10 +785,10 @@ button{font-family:var(--bf)}
 .pcard:hover .pcard-quick-add{opacity:1;transform:translateX(-50%) translateY(0)}
 .pcard-body{padding:.875rem;display:flex;flex-direction:column;gap:.25rem;flex:1}
 .pcard-cat{font-size:.6rem;font-family:monospace;opacity:.4;text-transform:uppercase;letter-spacing:.06em}
-.pcard-name{font-weight:700;font-size:.85rem;line-height:1.35}
+.pcard-name{font-weight:700;font-size:.875rem;line-height:1.35}
 .pcard-desc{font-size:.73rem;opacity:.55;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pcard-foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:.625rem}
-.pcard-price{font-weight:800;font-size:.875rem;color:var(--accent)}
+.pcard-price{font-weight:800;font-size:.9rem;color:var(--accent)}
 .btn-add{padding:.35rem .8rem;border-radius:.375rem;font-weight:700;font-size:.7rem;cursor:pointer;border:none;background:var(--accent);color:var(--ax);transition:opacity .15s,transform .1s}
 .btn-add:hover{opacity:.88}
 .btn-add:active{transform:scale(.94)}
@@ -950,13 +807,12 @@ button{font-family:var(--bf)}
 .shelf-track .pcard-desc{display:none}
 
 /* BRAND STORY */
-.section-story{padding:clamp(3rem,7vh,5rem) 1.5rem;border-top:1px solid var(--border)}
+.section-story{padding:clamp(3rem,7vh,5rem) clamp(1rem,4vw,2.5rem);border-top:1px solid var(--border)}
 .story--text-center .story-inner{max-width:620px;margin:0 auto;text-align:center}
 .story--text-left .story-inner{max-width:620px}
-.story-title{font-family:var(--hf);font-size:clamp(1.6rem,3vw,2.25rem);font-weight:700;margin-bottom:.875rem}
-.story-body{font-size:.9375rem;opacity:.7;line-height:1.85;max-width:52ch}
+.story-title{font-family:var(--hf);font-size:clamp(1.8rem,3.5vw,2.75rem);font-weight:700;margin-bottom:1rem;line-height:1.1}
+.story-body{font-size:1rem;opacity:.7;line-height:1.9;max-width:52ch}
 .story--text-center .story-body{margin:0 auto}
-.story-quote{margin-top:1.5rem;padding-left:1rem;border-left:3px solid var(--accent);font-style:italic;font-size:1rem;opacity:.75;line-height:1.7}
 .story-stat{margin-top:2rem;display:flex;flex-direction:column;gap:.25rem}
 .story-stat-num{font-family:var(--hf);font-size:3rem;font-weight:700;color:var(--accent);line-height:1}
 .story-stat-label{font-size:.8rem;opacity:.5;text-transform:uppercase;letter-spacing:.08em;font-family:monospace}
@@ -969,7 +825,7 @@ button{font-family:var(--bf)}
 .proof-marquee-label{font-family:monospace;font-size:.65rem;opacity:.35;text-transform:uppercase;letter-spacing:.08em;text-align:center;margin-bottom:.875rem}
 .proof-cards-track{display:flex;gap:.875rem;overflow-x:auto;padding-bottom:.75rem;scrollbar-width:none}
 .proof-cards-track::-webkit-scrollbar{display:none}
-.proof-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:1.25rem;min-width:220px;flex-shrink:0}
+.proof-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r2);padding:1.25rem;min-width:220px;flex-shrink:0}
 .proof-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.875rem}
 .proof-stars{color:var(--accent);font-size:.9rem;margin-bottom:.5rem}
 .proof-text{font-size:.8rem;opacity:.7;line-height:1.6}
@@ -979,34 +835,33 @@ button{font-family:var(--bf)}
 .marquee-chip{font-size:.8rem;opacity:.6;white-space:nowrap;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.4rem 1rem}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
-/* NEWSLETTER */
-.section-newsletter{padding:clamp(3rem,6vh,5rem) 1.5rem;background:var(--as);border-top:1px solid var(--border)}
-.nl-inner{max-width:520px;margin:0 auto;text-align:center}
-.nl-title{font-family:var(--hf);font-size:clamp(1.5rem,3vw,2rem);font-weight:700;margin-bottom:.5rem}
-.nl-sub{font-size:.9rem;opacity:.6;margin-bottom:1.5rem}
-.nl-form{display:flex;gap:.5rem;max-width:400px;margin:0 auto}
-.nl-input{flex:1;padding:.7rem 1rem;border:1.5px solid var(--border);border-radius:var(--r);font-size:.875rem;background:var(--surface);color:var(--text);outline:none;font-family:var(--bf)}
-.nl-input:focus{border-color:var(--accent)}
-.nl-btn{flex-shrink:0}
-@media(max-width:480px){.nl-form{flex-direction:column}}
+/* ── NEWSLETTER — full-bleed accent zone ───────────────────────────────────
+   Uses --nl-bg / --nl-text variables so it works on both light and dark themes.
+   Light themes: accent color background (warm/dark)
+   Dark themes:  slightly elevated surface (avoids pure black)
+────────────────────────────────────────────────────────────────────────── */
+.section-newsletter{padding:clamp(4rem,8vh,6rem) 1.5rem;background:var(--nl-bg) !important;border-top:1px solid var(--border)}
+.nl-inner{max-width:560px;margin:0 auto;text-align:center}
+.nl-title{font-family:var(--hf);font-size:clamp(1.75rem,4vw,2.75rem);font-weight:700;margin-bottom:.625rem;color:var(--nl-text);line-height:1.1}
+.nl-sub{font-size:1rem;margin-bottom:1.75rem;color:var(--nl-sub)}
+.nl-form{display:flex;gap:.5rem;max-width:420px;margin:0 auto}
+.nl-input{flex:1;padding:.75rem 1.1rem;border:1.5px solid var(--nl-input-border);border-radius:999px;font-size:.875rem;background:var(--nl-input-bg);color:var(--nl-text);outline:none;font-family:var(--bf)}
+.nl-input::placeholder{color:var(--nl-sub)}
+.nl-input:focus{border-color:var(--nl-text)}
+.nl-btn{flex-shrink:0;border-radius:999px;background:var(--nl-text);color:var(--nl-bg);font-weight:700;font-size:.875rem;padding:.75rem 1.5rem;border:none;cursor:pointer;transition:opacity .15s}
+.nl-btn:hover{opacity:.85}
+.nl-reassurance{font-size:.72rem;margin-top:1rem;opacity:.5;color:var(--nl-text)}
+@media(max-width:480px){.nl-form{flex-direction:column;align-items:stretch}.nl-btn{border-radius:var(--r)}}
 
 /* FOOTER */
-.footer{border-top:1px solid var(--border);padding:1.5rem;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.875rem;font-size:.73rem;opacity:.45}
-.footer-brand{font-family:var(--hf);font-weight:700;font-size:.875rem}
+.footer{border-top:1px solid var(--border);padding:2rem clamp(1rem,4vw,2.5rem);display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:1.5rem;font-size:.73rem;opacity:.55}
+.footer-brand{font-family:var(--hf);font-weight:700;font-size:.9rem;margin-bottom:.25rem}
+.footer-tagline{opacity:.7;font-size:.7rem;max-width:22ch;line-height:1.5}
 
-/* ── CART DRAWER ──────────────────────────────────────────────────────────────
-   Fixed to viewport. IIFE removed — all cart functions are plain globals.
-   body.no-scroll locks the page from scrolling underneath.
-───────────────────────────────────────────────────────────────────────────── */
+/* CART DRAWER */
 .cart-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:49;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 .cart-overlay.on{display:block}
-.cart-drawer{
-  position:fixed;top:0;right:0;
-  width:min(380px,95vw);height:100dvh;
-  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
-  background:var(--surface);border-left:1px solid var(--border);
-  z-index:50;display:flex;flex-direction:column;overflow:hidden;
-}
+.cart-drawer{position:fixed;top:0;right:0;width:min(380px,95vw);height:100dvh;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);background:var(--surface);border-left:1px solid var(--border);z-index:50;display:flex;flex-direction:column;overflow:hidden}
 .cart-drawer.on{transform:translateX(0)}
 .cart-head{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border);flex-shrink:0}
 .cart-head-title{font-weight:800;font-size:.9375rem}
@@ -1031,7 +886,7 @@ button{font-family:var(--bf)}
 .checkout-btn:hover{opacity:.88}
 .checkout-btn:disabled{opacity:.3;cursor:not-allowed}
 
-/* TOAST NOTIFICATION */
+/* TOAST */
 .toast{position:fixed;bottom:1.5rem;left:1.5rem;z-index:60;display:flex;align-items:center;gap:.75rem;background:var(--text);color:var(--bg);padding:.75rem 1rem;border-radius:var(--r2);font-size:.8rem;font-weight:500;max-width:280px;box-shadow:0 4px 24px rgba(0,0,0,.2);transform:translateY(20px);opacity:0;transition:all .28s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
 .toast.show{transform:translateY(0);opacity:1;pointer-events:auto}
 .toast-img{width:2.5rem;height:2.5rem;border-radius:.25rem;object-fit:cover;flex-shrink:0;background:var(--surface)}
@@ -1046,16 +901,16 @@ button{font-family:var(--bf)}
   .hero-title--editorial{font-size:clamp(2.25rem,10vw,3.5rem)}
   .hero-centered .hero-title{font-size:clamp(2.25rem,10vw,4rem)}
   .shelf-track .pcard{width:clamp(140px,44vw,175px)}
+  .section-trust{gap:.75rem 1.25rem}
 }`
 }
 
-// ── JS (all plain globals — no IIFE, no wrapper) ──────────────────────────────
+// ── JS (unchanged) ────────────────────────────────────────────────────────────
 function buildJS(currency: string): string {
   return `<script>
 var cart = [];
 var cartOpen = false;
 
-// ── Cart open/close ────────────────────────────────────────────────────────
 function openCart() {
   cartOpen = true;
   document.getElementById('cart-drawer').classList.add('on');
@@ -1072,19 +927,16 @@ function toggleCart() {
   if (cartOpen) { closeCart(); } else { openCart(); }
 }
 
-// ── Add to cart — GLOBAL, called from onclick attributes ───────────────────
 function addToCart(id, name, price, cur, image) {
   price = parseFloat(price);
   var ex = cart.find(function(i) { return i.id === id; });
   if (ex) { ex.qty++; } else { cart.push({ id: id, name: name, price: price, currency: cur, image: image, qty: 1 }); }
   renderCart();
   showToast(name, price, cur, image);
-  // bump badge
   var badge = document.getElementById('cart-badge');
   if (badge) { badge.classList.add('bump'); setTimeout(function(){ badge.classList.remove('bump'); }, 300); }
 }
 
-// ── Update qty ─────────────────────────────────────────────────────────────
 function updateQty(id, delta) {
   var item = cart.find(function(i) { return i.id === id; });
   if (!item) return;
@@ -1093,7 +945,6 @@ function updateQty(id, delta) {
   renderCart();
 }
 
-// ── Render cart ────────────────────────────────────────────────────────────
 function renderCart() {
   var count = cart.reduce(function(s, i) { return s + i.qty; }, 0);
   var total = cart.reduce(function(s, i) { return s + i.price * i.qty; }, 0);
@@ -1114,30 +965,19 @@ function renderCart() {
     var imgHtml = item.image
       ? '<img class="cart-item-img" src="' + item.image + '" onerror="this.style.background=\'var(--border)\';this.src=\'\'" alt="">'
       : '<div class="cart-item-img"></div>';
-    return '<div class="cart-item">' +
-      imgHtml +
-      '<div class="cart-item-info">' +
-        '<div class="cart-item-name">' + item.name + '</div>' +
-        '<div class="cart-item-price">' + item.currency + ' ' + item.price.toFixed(2) + '</div>' +
-      '</div>' +
-      '<div class="cart-item-qty">' +
-        '<button class="qty-btn" onclick="updateQty(\'' + item.id + '\',-1)">−</button>' +
-        '<span>' + item.qty + '</span>' +
-        '<button class="qty-btn" onclick="updateQty(\'' + item.id + '\',1)">+</button>' +
-      '</div>' +
+    return '<div class="cart-item">' + imgHtml +
+      '<div class="cart-item-info"><div class="cart-item-name">' + item.name + '</div><div class="cart-item-price">' + item.currency + ' ' + item.price.toFixed(2) + '</div></div>' +
+      '<div class="cart-item-qty"><button class="qty-btn" onclick="updateQty(\'' + item.id + '\',-1)">−</button><span>' + item.qty + '</span><button class="qty-btn" onclick="updateQty(\'' + item.id + '\',1)">+</button></div>' +
     '</div>';
   }).join('');
-  // Open the drawer whenever items change
   openCart();
 }
 
-// ── Checkout ───────────────────────────────────────────────────────────────
 function checkout() {
   if (cart.length === 0) return;
   window.parent.postMessage({ type: 'SELTRA_CHECKOUT', cart: cart }, '*');
 }
 
-// ── Category filter ────────────────────────────────────────────────────────
 function filterCat(cat) {
   document.querySelectorAll('.cat-pill').forEach(function(el) { el.classList.remove('cat-pill--active'); });
   if (event && event.target) event.target.classList.add('cat-pill--active');
@@ -1148,7 +988,6 @@ function filterCat(cat) {
   });
 }
 
-// ── Toast notification ─────────────────────────────────────────────────────
 var toastTimer = null;
 function showToast(name, price, cur, image) {
   var toast = document.getElementById('toast');
@@ -1162,7 +1001,6 @@ function showToast(name, price, cur, image) {
   toastTimer = setTimeout(function() { toast.classList.remove('show'); }, 3000);
 }
 
-// ── Countdown ─────────────────────────────────────────────────────────────
 (function() {
   var hEl = document.getElementById('cd-h');
   var mEl = document.getElementById('cd-m');
@@ -1178,7 +1016,6 @@ function showToast(name, price, cur, image) {
   }, 1000);
 })();
 
-// ── Newsletter ─────────────────────────────────────────────────────────────
 function nlSubmit(btn) {
   var input = btn.previousElementSibling;
   if (!input || !input.value || !input.value.includes('@')) { input && input.focus(); return; }
@@ -1187,7 +1024,6 @@ function nlSubmit(btn) {
   input.disabled = true;
 }
 
-// ── Height reporting ───────────────────────────────────────────────────────
 function reportHeight() {
   var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
   window.parent.postMessage({ type: 'SELTRA_HEIGHT', height: h }, '*');
@@ -1199,16 +1035,18 @@ window.addEventListener('load', function() { reportHeight(); setTimeout(reportHe
 // ── Assemble HTML ─────────────────────────────────────────────────────────────
 function buildStorefront(input: StorefrontCodegenInput, manifest: StoreManifest): string {
   const { blueprint } = input
+  const displayName = getDisplayName(blueprint)
   const payments = (input.paymentGateways ?? ['Paystack']).join(' · ')
   const currency = input.products[0]?.currency ?? 'GHS'
   const features = safeArr(blueprint.storeFeatures).slice(0, 5)
   const categories = safeArr(blueprint.productCategories)
+  const industry = manifest.industry ?? detectIndustry([blueprint.businessName, blueprint.businessType ?? ''].join(' '))
 
   const fonts = [...new Set([manifest.typography.headingFont, manifest.typography.bodyFont])]
   const fontParam = fonts.map(f => `family=${f.replace(/ /g, '+')}:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700`).join('&')
 
   const sectionsHtml = manifest.sections
-    .map(s => renderSection(s, input, features, categories))
+    .map(s => renderSection(s, input, features, categories, industry))
     .filter(Boolean)
     .join('\n')
 
@@ -1218,7 +1056,7 @@ function buildStorefront(input: StorefrontCodegenInput, manifest: StoreManifest)
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(blueprint.businessName)}</title>
+<title>${esc(displayName)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?${fontParam}&display=swap" rel="stylesheet">
@@ -1230,7 +1068,7 @@ ${buildCSS(manifest)}
 
 <nav class="nav">
   <div>
-    <div class="nav-brand">${esc(blueprint.businessName)}</div>
+    <div class="nav-brand">${esc(displayName)}</div>
     <div class="nav-sub">${esc(blueprint.businessType ?? '')}</div>
   </div>
   <div class="nav-right">
@@ -1244,8 +1082,9 @@ ${sectionsHtml}
 
 <footer class="footer">
   <div>
-    <div class="footer-brand">${esc(blueprint.businessName)}</div>
-    <div>Powered by <strong>Seltra</strong></div>
+    <div class="footer-brand">${esc(displayName)}</div>
+    <div class="footer-tagline">${esc(blueprint.targetAudience ?? '')}</div>
+    <div style="margin-top:.5rem;font-size:.68rem;opacity:.5">Powered by <strong>Seltra</strong></div>
   </div>
   <div>${esc(payments)}</div>
 </footer>
@@ -1288,6 +1127,6 @@ export async function generateStorefrontCode(input: StorefrontCodegenInput): Pro
   const manifest = await getManifest(input)
   const html = buildStorefront(input, manifest)
   const sections = manifest.sections.map(s => s.type).join(', ')
-  console.log(`[Codegen] Built storefront — ${html.length} chars | sections: ${sections}`)
-  return { success: true, html, provider: 'manifest+programmatic-v3', error: null }
+  console.log(`[Codegen] Built storefront — ${html.length} chars | sections: ${sections} | industry: ${manifest.industry}`)
+  return { success: true, html, provider: 'manifest+programmatic-v4', error: null }
 }

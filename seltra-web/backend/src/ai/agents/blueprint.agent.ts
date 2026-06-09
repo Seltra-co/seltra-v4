@@ -2,15 +2,6 @@
 import { chat } from '../client'
 import type { CanonicalStore } from '../../types'
 
-// Core agent workflow (seltra blueprint agent):
-// 1. User provides a prompt describing their business idea.
-// 2. The agent uses a carefully crafted system prompt to instruct the AI to generate a
-//    detailed store blueprint in JSON format.
-// 3. The agent parses the AI's response, attempting JSON repair on truncated output,
-//    enforcing non-negotiable requirements, and falling back to deterministic defaults
-//    rather than ever returning success: false to the caller.
-// 4. The final blueprint is returned to the user, ready to be used for store creation.
-
 const SYSTEM_PROMPT = `You are Seltra's Store Builder AI.
 Given a user description of a business, design a comprehensive store blueprint.
 
@@ -20,10 +11,15 @@ Rules:
 3. Use Paystack as the default payment gateway for African stores.
 4. Fill missing information with smart context-aware defaults.
 5. Keep all string values short. productCategories: max 4 items. storeFeatures: max 4 items. recommendations: max 4 items.
-6. The JSON must follow this exact structure:
+6. brandName: a SHORT 1–3 word display name for the storefront (e.g. "Glow & Co", "Aura", "Velvet Skin", "Mama's Kitchen"). 
+   This is NOT the same as businessName. It should feel like a real brand, not a description.
+   If the user's prompt already contains a clear short brand name, use it exactly. Otherwise invent one that fits.
+7. businessName: the full descriptive name from the prompt (used for SEO/meta only).
+8. The JSON must follow this exact structure:
 
 {
   "platform": "Seltra",
+  "brandName": "string (1-3 words, display name)",
   "businessName": "string",
   "businessType": "string",
   "targetAudience": "string",
@@ -42,8 +38,6 @@ Rules:
   "estimatedLaunchTime": "15 minutes"
 }`
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function cleanJSON(raw: string): string {
   let cleaned = raw.trim()
   if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7)
@@ -59,24 +53,9 @@ function generateSlug(name: string): string {
     .replace(/^-|-$/g, '')
 }
 
-/**
- * Attempts to close truncated JSON by:
- * 1. Stripping a trailing comma
- * 2. Closing any open string that looks like a mid-value cut
- * 3. Closing unclosed arrays then unclosed objects
- *
- * This handles the common case where llama-3.1-8b-instant hits the 500-token
- * output cap mid-string inside an array.
- */
 function repairTruncatedJSON(raw: string): string {
   let s = raw.trim()
-
-  // Remove trailing comma (e.g. last array item followed by nothing)
   s = s.replace(/,\s*$/, '')
-
-  // If the string ends inside an open quoted value, close the string.
-  // We detect this by checking whether the last quote character is unpaired:
-  // count all unescaped quotes — if odd, there's an open string.
   const quotePositions: number[] = []
   for (let i = 0; i < s.length; i++) {
     if (s[i] === '"' && (i === 0 || s[i - 1] !== '\\')) {
@@ -84,26 +63,51 @@ function repairTruncatedJSON(raw: string): string {
     }
   }
   if (quotePositions.length % 2 !== 0) {
-    // Odd number of quotes → currently inside an open string. Close it.
     s = s + '"'
   }
-
-  // Remove trailing comma again in case it was just before the cut string
   s = s.replace(/,\s*"?\s*$/, '')
-
-  // Count unclosed brackets and braces
   const unclosedArrays =
     (s.match(/\[/g) ?? []).length - (s.match(/\]/g) ?? []).length
   const unclosedObjects =
     (s.match(/\{/g) ?? []).length - (s.match(/\}/g) ?? []).length
-
   s += ']'.repeat(Math.max(0, unclosedArrays))
   s += '}'.repeat(Math.max(0, unclosedObjects))
-
   return s
 }
 
-// ── Fallback ──────────────────────────────────────────────────────────────────
+// ── Brand name inference — rule-based fallback when LLM doesn't return one ────
+// Tries to extract a short brand name from the prompt before falling back to
+// a generic. Handles patterns like "I want to build [BrandName]", "[Name]'s Kitchen",
+// or a capitalized word at the start of the prompt.
+function inferBrandName(prompt: string): string {
+  const trim = prompt.trim()
+
+  // Pattern 1: explicit brand name in quotes  e.g. "Build me 'Glow Lab'"
+  const quoted = trim.match(/['"]([A-Z][^'"]{1,24})['"]/)
+  if (quoted) return quoted[1].trim()
+
+  // Pattern 2: possessive  e.g. "Mama's Kitchen", "John's Bakery"
+  const possessive = trim.match(/\b([A-Z][a-z]{1,14})'s\s+[A-Z][a-z]+/)
+  if (possessive) return `${possessive[1]}'s`
+
+  // Pattern 3: two capitalised words at start  e.g. "Velvet Skin store..."
+  const titleCase = trim.match(/^([A-Z][a-z]{1,12}\s[A-Z][a-z]{1,12})/)
+  if (titleCase) return titleCase[1].trim()
+
+  // Pattern 4: single capitalised word at start that isn't a common starter
+  const starters = /^(I|A|An|The|Build|Create|Launch|Start|Open|Help|Make|My|Our|We)/
+  const singleWord = trim.match(/^([A-Z][a-z]{2,14})/)
+  if (singleWord && !starters.test(trim)) return singleWord[1]
+
+  // Fallback: derive something short from businessName
+  const words = trim
+    .replace(/[^a-zA-Z ]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !/^(and|for|the|with|that|this|from|into|shop|store|brand|about)$/i.test(w))
+  if (words.length >= 2) return `${words[0]} ${words[1]}`
+  if (words.length === 1) return words[0]
+  return 'My Store'
+}
 
 function fallbackBlueprint(userPrompt: string): CanonicalStore {
   const firstLine =
@@ -119,12 +123,14 @@ function fallbackBlueprint(userPrompt: string): CanonicalStore {
       .slice(0, 56)
       .trim() || 'My Seltra Store'
 
+  const brandName = inferBrandName(userPrompt)
   const storeSlug = generateSlug(businessName) || `seltra-store-${Date.now()}`
 
   return {
     storeId: `store-${storeSlug}`,
     prompt: userPrompt,
     platform: 'Seltra',
+    brandName,
     businessName,
     businessType: 'Online retail',
     targetAudience: 'customers looking for a focused, polished shopping experience',
@@ -149,10 +155,15 @@ function fallbackBlueprint(userPrompt: string): CanonicalStore {
   }
 }
 
-// ── Enforce non-negotiables on any parsed object ──────────────────────────────
-
 function enforceDefaults(parsed: Record<string, unknown>, userPrompt: string): CanonicalStore {
   parsed.platform = 'Seltra'
+
+  // Ensure brandName is always present and short
+  if (!parsed.brandName || String(parsed.brandName).split(' ').length > 4) {
+    parsed.brandName = inferBrandName(
+      (parsed.businessName as string | undefined) ?? userPrompt,
+    )
+  }
 
   const stack = (parsed.recommendedTechStack ?? {}) as Record<string, unknown>
   stack.frontend = 'Next.js with TailwindCSS'
@@ -166,8 +177,6 @@ function enforceDefaults(parsed: Record<string, unknown>, userPrompt: string): C
     parsed.storeSlug = generateSlug(parsed.businessName as string)
   }
 
-  // Normalise flat recommendations array → additionalRecommendations shape
-  // so the rest of the codebase (which reads additionalRecommendations) still works.
   if (Array.isArray(parsed.recommendations) && !parsed.additionalRecommendations) {
     const recs = parsed.recommendations as string[]
     parsed.additionalRecommendations = {
@@ -178,7 +187,6 @@ function enforceDefaults(parsed: Record<string, unknown>, userPrompt: string): C
     }
   }
 
-  // Ensure required arrays are always present
   if (!Array.isArray(parsed.productCategories) || parsed.productCategories.length === 0) {
     parsed.productCategories = ['Featured', 'Essentials', 'Bundles']
   }
@@ -194,8 +202,6 @@ function enforceDefaults(parsed: Record<string, unknown>, userPrompt: string): C
 
   return parsed as unknown as CanonicalStore
 }
-
-// ── Main export ────────────────────────────────────────────────────────────────
 
 export async function generateBlueprint(userPrompt: string): Promise<{
   success: boolean
@@ -216,7 +222,6 @@ export async function generateBlueprint(userPrompt: string): Promise<{
       { maxTokens: 500 },
     )
   } catch (error) {
-    // Network / provider error — use fallback, still succeed
     console.warn('[Blueprint] Chat call failed, using fallback:', error)
     return {
       success: true,
@@ -229,7 +234,6 @@ export async function generateBlueprint(userPrompt: string): Promise<{
 
   const cleaned = cleanJSON(result.content)
 
-  // ── Attempt 1: parse as-is ────────────────────────────────────────────────
   try {
     const parsed = JSON.parse(cleaned)
     return {
@@ -240,10 +244,9 @@ export async function generateBlueprint(userPrompt: string): Promise<{
       error: null,
     }
   } catch {
-    // Fall through to repair attempt
+    // fall through
   }
 
-  // ── Attempt 2: repair truncated JSON ──────────────────────────────────────
   try {
     const repaired = repairTruncatedJSON(cleaned)
     const parsed = JSON.parse(repaired)
@@ -256,10 +259,9 @@ export async function generateBlueprint(userPrompt: string): Promise<{
       error: null,
     }
   } catch {
-    // Fall through to deterministic fallback
+    // fall through
   }
 
-  // ── Attempt 3: deterministic fallback — never let this kill store creation ─
   console.warn(
     '[Blueprint] JSON unrecoverable after repair attempt, using deterministic fallback. Raw snippet:',
     cleaned.slice(0, 120),
