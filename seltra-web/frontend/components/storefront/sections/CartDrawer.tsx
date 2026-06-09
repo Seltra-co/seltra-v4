@@ -27,6 +27,10 @@ export function CartDrawer({ open, items, currency, storeSlug, storeId, onClose,
 
   const checkout = async () => {
     if (!storeId || !name || !email || !phone || loading) return
+    if (!storeId || storeId.startsWith('fallback-')) {
+      toast.error('Store is still loading. Please refresh and try again.')
+      return
+    }
     setLoading(true)
     try {
       const tok = typeof window !== 'undefined' ? localStorage.getItem('seltra:token') : null

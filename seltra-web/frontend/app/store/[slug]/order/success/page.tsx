@@ -1,3 +1,4 @@
+//frontend/app/store/[slug]/order/success/page.tsx
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -63,11 +64,11 @@ export default function OrderSuccessPage() {
               <ShoppingBag className="h-4 w-4" /> Continue shopping
             </Link>
           </Button>
-          <Button variant="outline" asChild className="w-full gap-2">
+          {/* <Button variant="outline" asChild className="w-full gap-2">
             <Link href="/dashboard">
               <ArrowLeft className="h-4 w-4" /> Back to dashboard
             </Link>
-          </Button>
+          </Button> */}
         </div>
       </motion.div>
     </div>

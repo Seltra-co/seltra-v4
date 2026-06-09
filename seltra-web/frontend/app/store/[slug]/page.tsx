@@ -1,3 +1,4 @@
+//frontend/app/store/[slug]/page.tsx
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { StorefrontCanvas } from '@/components/storefront/StorefrontCanvas'
