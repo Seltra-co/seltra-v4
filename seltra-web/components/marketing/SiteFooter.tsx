@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { Github, Twitter } from 'lucide-react'
 
 export function SiteFooter() {
@@ -8,7 +9,7 @@ export function SiteFooter() {
         <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div>
             <Link href="/" className="mb-2 flex items-center gap-2">
-              <img src="/seltra/seltra-icon.png" alt="Seltra" className="h-6 w-6 rounded-md" />
+              <Image src="/seltra/seltra-icon.png" alt="Seltra" width={24} height={24} className="rounded-md" />
               <span className="font-mono font-semibold">seltra</span>
             </Link>
             <p className="max-w-md text-sm text-muted-foreground">Commerce that runs itself.</p>

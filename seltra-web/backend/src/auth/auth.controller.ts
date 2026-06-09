@@ -1,16 +1,21 @@
-import { Body, Controller, Delete, Get, Headers, Post, UnauthorizedException } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Headers, Post, Req, UnauthorizedException } from '@nestjs/common'
+import type { Request } from 'express'
 import { AuthService } from './auth.service'
 
 class SignupDto {
   email!: string
-  password!: string
   name?: string
   full_name?: string
 }
 
 class SigninDto {
   email!: string
-  password!: string
+  merchantId!: string
+}
+
+class OtpVerifyDto {
+  merchantId!: string
+  code!: string
 }
 
 @Controller('auth')
@@ -18,22 +23,23 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
-  signup(@Body() body: SignupDto) {
-    return this.authService.signup({
-      email: body.email,
-      password: body.password,
-      name: body.name || body.full_name,
-    })
+  signup(@Body() _body: SignupDto) {
+    return this.authService.signup()
   }
 
   @Post('signin')
-  signin(@Body() body: SigninDto) {
-    return this.authService.signin(body.email, body.password)
+  signin(@Body() body: SigninDto, @Req() req: Request) {
+    return this.authService.signin(body, this.requestIp(req))
   }
 
   @Post('login')
-  login(@Body() body: SigninDto) {
-    return this.authService.signin(body.email, body.password)
+  login(@Body() body: SigninDto, @Req() req: Request) {
+    return this.authService.signin(body, this.requestIp(req))
+  }
+
+  @Post('otp/verify')
+  verifyOtp(@Body() body: OtpVerifyDto) {
+    return this.authService.verifyOtp(body.merchantId, body.code)
   }
 
   @Get('me')
@@ -51,5 +57,11 @@ export class AuthController {
   @Post('logout')
   logoutPost() {
     return { success: true }
+  }
+
+  private requestIp(req: Request) {
+    const forwarded = req.headers['x-forwarded-for']
+    if (typeof forwarded === 'string') return forwarded.split(',')[0]?.trim() || req.ip
+    return req.ip
   }
 }

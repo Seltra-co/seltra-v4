@@ -236,11 +236,18 @@ model PaystackEvent {
   createdAt     DateTime @default(now())
 }
 
+enum MerchantStatus {
+  pending
+  approved
+  rejected
+  suspended
+}
+
 model MerchantApplication {
   id             String   @id @default(uuid())
   fullName       String
   phone          String
-  email          String?
+  email          String?  @unique
   businessName   String
   businessType   String
   storeName      String
@@ -253,14 +260,28 @@ model MerchantApplication {
   aiToolsUsed    String?
   aiFeelings     String?
   allowAiHelp    String?
-  status         String   @default("applied")
+  status         MerchantStatus @default(pending)
   merchantId     String?  @unique
+  createdBy      String?
   notionPageId   String?
   reviewNotes    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([status])
-  @@index([email])
   @@index([merchantId])
+}
+
+model OtpCode {
+  id         String   @id @default(uuid())
+  merchantId String
+  hashedCode String
+  expiresAt  DateTime
+  used       Boolean  @default(false)
+  attempts   Int      @default(0)
+  lockedUntil DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([merchantId])
+  @@index([expiresAt])
 }

@@ -2,7 +2,7 @@
 
 Unified Vite + React + TypeScript app for Seltra's:
 - **Landing page** (`/`)
-- **Auth** (`/auth`) — email/password + OAuth
+- **Auth** (`/auth`) — ops-issued merchant email + Merchant ID
 - **Onboarding** (`/onboarding`) — 7-step wizard
 - **Dashboard** (`/dashboard`) — agent chat + storefront preview
 
@@ -28,8 +28,12 @@ App runs at `http://localhost:8080`.
 
 | Variable | Description |
 |---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | Next.js frontend API base URL (default: `http://localhost:3001`) |
 | `VITE_API_BASE_URL` | Your NestJS/Express backend (default: `http://localhost:3001`) |
 | `VITE_STOREFRONT_URL` | Storefront Next.js app URL (default: `http://localhost:3002`) |
+| `OTP_TTL_MINUTES` | OTP expiry window for future enforced merchant login verification (default: `10`) |
+| `OTP_MAX_ATTEMPTS` | Failed OTP attempts before lockout (default: `3`) |
+| `OTP_LOCKOUT_MINUTES` | OTP lockout duration after max failed attempts (default: `15`) |
 
 ## API Client
 
@@ -41,8 +45,9 @@ component code required minimal changes.
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/auth/signup` | Body: `{ email, password, full_name? }` → `{ access_token, user }` |
-| `POST` | `/auth/login` | Body: `{ email, password }` → `{ access_token, user }` |
+| `POST` | `/auth/signup` | Disabled. Merchant accounts are created by Seltra Ops. |
+| `POST` | `/auth/login` | Body: `{ email, merchantId }` → `{ access_token, user }` for approved merchants only |
+| `POST` | `/auth/otp/verify` | Future OTP enforcement endpoint. Body: `{ merchantId, code }` |
 | `DELETE` | `/auth/logout` | Requires `Authorization: Bearer <token>` |
 | `GET` | `/auth/oauth/google` | Query: `?redirect_uri=` — redirects to Google |
 

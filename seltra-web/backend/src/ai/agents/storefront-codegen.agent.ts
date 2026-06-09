@@ -138,6 +138,10 @@ Rules:
 8. trust-bar MUST have an "items" array with 3–4 strings.
 9. For newsletter, include a relevant headline and subtext (max 12 words each).
 10. accentSoft is a 10-15% opacity tint of the accent for backgrounds — output as hex.
+11. Hero tagline and subtext must reference the merchant industry and target audience.
+12. FAQ items must be brand-specific: purchase flow, delivery, customisation, refunds.
+13. Product grid headings must use the store section label or a category-derived label.
+14. Never output generic copy ("Shop now", "Our products") without a brand qualifier.
 
 JSON structure:
 {
@@ -290,6 +294,13 @@ function sanitiseManifest(raw: StoreManifest, input: StorefrontCodegenInput): St
 // ── Section renderers ─────────────────────────────────────────────────────────
 // REPLACE getManifest() in storefront-codegen.agent.ts with this:
 
+// DESIGN REQUIREMENTS (applied by programmatic path):
+// - Hero must include a tagline and subtext that reference the merchant's industry and audience
+// - FAQ items must be brand-specific: purchase flow, delivery, customisation, refunds
+// - Product grid heading must use the store's sectionLabel or a category-derived label
+// - Never output generic copy ("Shop now", "Our products") without a brand qualifier
+// - All palettes from THEME_PALETTES are pre-validated; use them, do not invent hex values
+
 
 // Theme → palette map (mirrors frontend themes/index.ts)
 const THEME_PALETTES: Record<string, StoreManifest['palette']> = {
@@ -321,6 +332,29 @@ function buildSectionsFromLayout(
   const { blueprint, products } = input
   const heroVariant = composition.sectionVariantOverrides?.hero ?? 'centered'
   const include = new Set(composition.includeSections ?? [])
+  const primaryCategory = blueprint.productCategories?.[0]
+  const faqItems = (bp: typeof blueprint) => [
+    {
+      question: `How do I order from ${bp.businessName}?`,
+      answer: `Browse our products, add to cart, and complete checkout securely via ${(input.paymentGateways ?? ['Paystack'])[0]}. You will receive a confirmation immediately.`,
+    },
+    {
+      question: 'How long does delivery take?',
+      answer: bp.targetAudience?.includes('digital') || bp.businessType?.toLowerCase().includes('digital')
+        ? 'Your products are delivered instantly after payment. Check your email for download links.'
+        : 'Most orders arrive within 2-5 business days. We will send tracking info once your order is dispatched.',
+    },
+    {
+      question: `Can I customise my ${bp.businessType ?? 'order'}?`,
+      answer: 'Yes. Many products can be personalised. Contact us before ordering and we will guide you through the options.',
+    },
+    {
+      question: 'What is your refund policy?',
+      answer: bp.businessType?.toLowerCase().includes('digital')
+        ? 'Digital products are non-refundable once downloaded. If you have an issue, contact us and we will make it right.'
+        : 'We accept returns within 14 days for unused items in original condition. Contact us to start the process.',
+    },
+  ]
 
   const heroSection: Section = {
     type: heroVariant === 'editorial' ? 'hero-editorial' :
@@ -328,8 +362,10 @@ function buildSectionsFromLayout(
           heroVariant === 'split' ? 'hero-split' :
           heroVariant === 'minimal' ? 'hero-minimal' : 'hero-centered',
     headline: blueprint.businessName,
-    tagline: `For ${blueprint.targetAudience ?? 'modern shoppers'}.`,
-    subtext: blueprint.businessType ?? '',
+    tagline: `${blueprint.businessType ? `The best of ${blueprint.businessType}` : 'Shop the collection'}.`,
+    subtext: blueprint.targetAudience
+      ? `Designed for ${blueprint.targetAudience}. Fast checkout, secure payment.`
+      : 'Discover our full collection. Fast checkout, secure payment.',
     eyebrow: blueprint.businessType ?? '',
   } as Section
 
@@ -345,7 +381,7 @@ function buildSectionsFromLayout(
     columns: 3,
     style: layout === 'showcase' ? 'dense' : layout === 'editorial' ? 'magazine' : 'uniform',
     showCategory: true,
-    sectionLabel: 'Products',
+    sectionLabel: primaryCategory ? `${primaryCategory} collection` : `${blueprint.businessName} collection`,
     limit: 9,
   } as Section
 
@@ -408,7 +444,7 @@ function buildSectionsFromLayout(
     industryExtras.push(featuredDrop)
   }
   if (include.has('faq')) {
-    industryExtras.push({ type: 'faq', headline: 'Common questions', items: [] } as unknown as Section)
+    industryExtras.push({ type: 'faq', headline: `Questions about ${blueprint.businessName}`, items: faqItems(blueprint) } as unknown as Section)
   }
   if (include.has('countdown-banner') && layout === 'showcase') {
     // countdown is already embedded in featured-drop for the HTML renderer

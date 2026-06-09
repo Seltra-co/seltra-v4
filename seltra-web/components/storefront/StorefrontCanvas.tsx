@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { ShoppingBag } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -20,6 +20,7 @@ import { FounderStory }      from './sections/FounderStory'
 import { IngredientsList }   from './sections/IngredientsList'
 import { LookbookGrid }      from './sections/LookbookGrid'
 import { CartDrawer }        from './sections/CartDrawer'
+import { ProductDetailModal } from './sections/ProductDetailModal'
 import type { StoreProduct, StoreManifest, ManifestSection, StorePalette, StoreTypography } from './sections/types'
 
 export interface CartItem { product: StoreProduct; quantity: number }
@@ -78,9 +79,9 @@ const SectionFade = ({ children }: { children: React.ReactNode }) => (
   </motion.div>
 )
 
-function renderSection(section: ManifestSection, i: number, props: { products: StoreProduct[]; features: string[]; categories: string[]; onAddToCart: (p: StoreProduct) => void; storeName: string }) {
+function renderSection(section: ManifestSection, i: number, props: { products: StoreProduct[]; features: string[]; categories: string[]; onAddToCart: (p: StoreProduct) => void; storeName: string; onViewDetail?: (p: StoreProduct) => void }) {
   const W = ({ children }: { children: React.ReactNode }) => <SectionFade>{children}</SectionFade>
-  const { products, features, categories, onAddToCart, storeName } = props
+  const { products, features, categories, onAddToCart, storeName, onViewDetail } = props
 
   switch (section.type) {
     case 'announcement-bar':  return <AnnouncementBar key={i} message={section.message} />
@@ -89,9 +90,9 @@ function renderSection(section: ManifestSection, i: number, props: { products: S
       return <HeroSection key={i} section={section} products={products} features={features} storeName={storeName} />
     case 'trust-bar':         return <W key={i}><TrustBar items={section.items} /></W>
     case 'category-strip':    return <W key={i}><CategoryStrip categories={categories} headline={section.headline} /></W>
-    case 'featured-drop':     return <W key={i}><FeaturedDrop section={section} products={products} onAddToCart={onAddToCart} /></W>
-    case 'product-grid':      return <W key={i}><ProductGrid section={section} products={products} onAddToCart={onAddToCart} /></W>
-    case 'product-shelf':     return <W key={i}><ProductShelf section={section} products={products} onAddToCart={onAddToCart} storeName={storeName} /></W>
+    case 'featured-drop':     return <W key={i}><FeaturedDrop section={section} products={products} onAddToCart={onAddToCart} onViewDetail={onViewDetail} /></W>
+    case 'product-grid':      return <W key={i}><ProductGrid section={section} products={products} onAddToCart={onAddToCart} onViewDetail={onViewDetail} /></W>
+    case 'product-shelf':     return <W key={i}><ProductShelf section={section} products={products} onAddToCart={onAddToCart} storeName={storeName} onViewDetail={onViewDetail} /></W>
     case 'brand-story':       return <W key={i}><BrandStory {...section} /></W>
     case 'social-proof':      return <W key={i}><SocialProof style={section.style} headline={section.headline} subtext={section.subtext} /></W>
     case 'newsletter':        return <W key={i}><Newsletter headline={section.headline} subtext={section.subtext} placeholder={section.placeholder} /></W>
@@ -113,10 +114,23 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
   const features   = store.canonical?.storeFeatures ?? []
   const categories = store.canonical?.productCategories ?? []
   const currency   = products[0]?.currency ?? 'GHS'
-  const payments   = store.canonical?.recommendedTechStack?.paymentGateways ?? ['Paystack']
+  const CART_KEY = `seltra:cart:${storeSlug}`
 
-  const [cart, setCart]         = useState<CartItem[]>([])
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const stored = window.localStorage.getItem(CART_KEY)
+      return stored ? (JSON.parse(stored) as CartItem[]) : []
+    } catch { return [] }
+  })
   const [cartOpen, setCartOpen] = useState(false)
+  const [detailProduct, setDetailProduct] = useState<StoreProduct | null>(null)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CART_KEY, JSON.stringify(cart))
+    } catch {}
+  }, [cart, CART_KEY])
 
   const addToCart = useCallback((product: StoreProduct) => {
     setCart((prev) => { const ex = prev.find((i) => i.product.id === product.id); if (ex) return prev.map((i) => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i); return [...prev, { product, quantity: 1 }] })
@@ -131,37 +145,156 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
   const cartCount  = cart.reduce((s, i) => s + i.quantity, 0)
   const fonts      = [...new Set([typography.headingFont, typography.bodyFont])]
   const fontParam  = fonts.map((f) => `family=${f.replace(/ /g,'+')}:wght@300;400;500;600;700;800;900`).join('&')
-  const sectionProps = { products, features, categories, onAddToCart: addToCart, storeName: store.name }
+  const sectionProps = { products, features, categories, onAddToCart: addToCart, storeName: store.name, onViewDetail: (p: StoreProduct) => setDetailProduct(p) }
 
   return (
     <div className={`seltra-storefront relative w-full overflow-x-hidden ${minHeightClass}`}>
       <style>{`.seltra-storefront{${buildThemeVars(palette, typography, themeKey)}}@import url('https://fonts.googleapis.com/css2?${fontParam}&display=swap');`}</style>
 
       {/* Sticky nav */}
-      <nav className="sticky top-0 z-30 flex items-center justify-between border-b px-5 py-3 backdrop-blur-xl" style={{ background:`color-mix(in srgb, var(--store-bg) 92%, transparent)`, borderColor:'var(--store-border)' }}>
-        <div>
-          <div className="store-heading text-base font-bold leading-none" style={{ fontFamily:`'${typography.headingFont}', serif` }}>{store.name}</div>
-          {store.businessType && <div className="store-eyebrow mt-0.5">{store.businessType}</div>}
+      <nav
+        className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b px-5 py-3 backdrop-blur-xl"
+        style={{ background:`color-mix(in srgb, var(--store-bg) 92%, transparent)`, borderColor:'var(--store-border)' }}
+      >
+        {/* Brand */}
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+            style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', fontFamily:`'${typography.headingFont}', serif` }}
+          >
+            {store.name.charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div
+              className="store-heading truncate text-base font-bold leading-none"
+              style={{ fontFamily:`'${typography.headingFont}', serif` }}
+            >
+              {store.name}
+            </div>
+            {store.businessType && <div className="store-eyebrow mt-0.5 truncate">{store.businessType}</div>}
+          </div>
         </div>
-        <button onClick={() => setCartOpen(true)} className="store-btn-outline flex items-center gap-2 px-3 py-1.5 text-xs">
+
+        {/* Category nav - hidden on mobile */}
+        {categories.length > 0 && (
+          <div className="hidden items-center gap-5 md:flex">
+            {categories.slice(0, 4).map((cat) => (
+              <button
+                key={cat}
+                className="text-xs font-medium transition-colors"
+                style={{ color:'var(--store-muted)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--store-text)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--store-muted)')}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Cart button */}
+        <button
+          onClick={() => setCartOpen(true)}
+          className="store-btn-outline relative flex shrink-0 items-center gap-2 px-3 py-1.5 text-xs"
+          style={{ borderRadius:'var(--store-radius-full)' }}
+        >
           <ShoppingBag className="h-3.5 w-3.5" style={{ color:'var(--store-accent)' }} />
           Cart
           <AnimatePresence mode="wait">
-            {cartCount > 0 && <motion.span key={cartCount} initial={{ scale:0.5, opacity:0 }} animate={{ scale:1, opacity:1 }} exit={{ scale:0.5, opacity:0 }} className="font-extrabold" style={{ color:'var(--store-accent)' }}>({cartCount})</motion.span>}
+            {cartCount > 0 && (
+              <motion.span
+                key={cartCount}
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.5, opacity: 0 }}
+                className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
+                style={{ background:'var(--store-accent)', color:'var(--store-accent-text)' }}
+              >
+                {cartCount}
+              </motion.span>
+            )}
           </AnimatePresence>
         </button>
       </nav>
 
       {manifest.sections.map((section, i) => renderSection(section, i, sectionProps))}
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-5 text-xs opacity-40" style={{ borderColor:'var(--store-border)', color:'var(--store-muted)' }}>
-        <div>
-          <div className="font-bold" style={{ fontFamily:`'${typography.headingFont}', serif`, color:'var(--store-text)' }}>{store.name}</div>
-          <div>Powered by <strong>Seltra</strong></div>
+      <footer className="border-t" style={{ borderColor:'var(--store-border)', background:'var(--store-bg)' }}>
+        <div className="mx-auto grid max-w-7xl gap-10 px-8 py-12 md:grid-cols-[1fr_auto]">
+          {/* Brand block */}
+          <div className="max-w-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <span
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-sm font-bold"
+                style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', fontFamily:`'${typography.headingFont}', serif` }}
+              >
+                {store.name.charAt(0).toUpperCase()}
+              </span>
+              <span
+                className="store-heading text-xl font-bold"
+                style={{ fontFamily:`'${typography.headingFont}', serif` }}
+              >
+                {store.name}
+              </span>
+            </div>
+            {store.targetAudience && (
+              <p className="text-xs leading-relaxed" style={{ color:'var(--store-muted)' }}>
+                For {store.targetAudience}.
+              </p>
+            )}
+            <p className="mt-3 text-xs" style={{ color:'var(--store-muted)' }}>
+              Powered by <strong style={{ color:'var(--store-text)' }}>Seltra</strong>
+            </p>
+          </div>
+
+          {/* 3-column link grid */}
+          <div className="grid grid-cols-3 gap-8 text-xs sm:gap-12">
+            <div className="flex flex-col gap-3">
+              <span className="store-eyebrow font-semibold" style={{ color:'var(--store-text)' }}>Shop</span>
+              {(store.canonical?.productCategories ?? ['All products']).slice(0, 4).map((cat) => (
+                <button
+                  key={cat}
+                  className="text-left transition-colors"
+                  style={{ color:'var(--store-muted)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--store-text)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--store-muted)')}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col gap-3">
+              <span className="store-eyebrow font-semibold" style={{ color:'var(--store-text)' }}>Support</span>
+              {['FAQ', 'Track order', 'Returns', 'Contact'].map((l) => (
+                <span key={l} className="cursor-default" style={{ color:'var(--store-muted)' }}>{l}</span>
+              ))}
+            </div>
+            <div className="flex flex-col gap-3">
+              <span className="store-eyebrow font-semibold" style={{ color:'var(--store-text)' }}>Legal</span>
+              {['Privacy policy', 'Terms', 'Refunds'].map((l) => (
+                <span key={l} className="cursor-default" style={{ color:'var(--store-muted)' }}>{l}</span>
+              ))}
+            </div>
+          </div>
         </div>
-        <div>{payments.join(' · ')}</div>
+
+        {/* Bottom row */}
+        <div
+          className="flex items-center justify-center border-t px-8 py-4"
+          style={{ borderColor:'var(--store-border)' }}
+        >
+          <p className="text-center text-[0.68rem]" style={{ color:'var(--store-muted)' }}>
+            &copy; {new Date().getFullYear()} {store.name}. All rights reserved.
+          </p>
+        </div>
       </footer>
 
+      <ProductDetailModal
+        product={detailProduct}
+        onClose={() => setDetailProduct(null)}
+        onAddToCart={addToCart}
+        inCart={cart.some((i) => i.product.id === detailProduct?.id)}
+      />
       <CartDrawer open={cartOpen} items={cart} currency={currency} storeSlug={storeSlug} storeId={store.id} onClose={() => setCartOpen(false)} onUpdateQty={updateQty} />
     </div>
   )

@@ -119,7 +119,7 @@ export class OrdersService {
           customerName: payload.customerName || '',
           totalAmount: payload.totalAmount,
           currency: payload.currency,
-          status: 'paid',
+          status: 'pending',
           paystackRef: payload.reference,
           items: payload.cart.map((item) => ({
             productId: item.product.id,

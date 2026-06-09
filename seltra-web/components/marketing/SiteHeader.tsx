@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -21,7 +22,7 @@ export function SiteHeader() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex min-w-0 items-center gap-6 lg:gap-10">
             <Link href="/" className="flex min-w-0 items-center gap-2">
-              <img src="/seltra/seltra-icon.png" alt="Seltra" className="h-7 w-7 shrink-0 rounded-md" />
+              <Image src="/seltra/seltra-icon.png" alt="Seltra" width={28} height={28} className="shrink-0 rounded-md" />
               <span className="font-mono font-semibold tracking-tight text-foreground">seltra</span>
               <span className="hidden rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">beta</span>
             </Link>

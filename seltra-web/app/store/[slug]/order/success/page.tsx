@@ -1,12 +1,39 @@
 'use client'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { CheckCircle, ShoppingBag, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { motion } from 'framer-motion'
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
+
 export default function OrderSuccessPage() {
   const params = useParams<{ slug: string }>()
+  const [status, setStatus] = useState('Confirming your payment...')
+
+  useEffect(() => {
+    const search = new URLSearchParams(window.location.search)
+    const reference = search.get('reference') || search.get('trxref')
+    if (!reference) {
+      setStatus('Your order is confirmed. Receipt details will follow by email.')
+      return
+    }
+
+    let cancelled = false
+    const verify = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/payment/verify?reference=${encodeURIComponent(reference)}`)
+        const data = await res.json().catch(() => ({}))
+        if (cancelled) return
+        setStatus(data?.success ? 'Payment received. Your order is pending fulfillment.' : 'Payment is being confirmed. Receipt details will follow by email.')
+      } catch {
+        if (!cancelled) setStatus('Payment is being confirmed. Receipt details will follow by email.')
+      }
+    }
+    void verify()
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -28,7 +55,7 @@ export default function OrderSuccessPage() {
         </motion.div>
         <h1 className="text-2xl font-bold tracking-tight mb-2">Order confirmed!</h1>
         <p className="text-muted-foreground mb-8">
-          Thank you for your purchase. You will receive a receipt by email shortly.
+          {status}
         </p>
         <div className="flex flex-col gap-3">
           <Button asChild className="w-full gap-2">

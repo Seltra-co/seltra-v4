@@ -4,9 +4,14 @@ import Image from 'next/image'
 import { Badge } from '@/components/ui/badge'
 import type { StoreProduct } from './types'
 
-interface Props { section: { badge: string; headline: string; subtext: string; showCountdown?: boolean }; products: StoreProduct[]; onAddToCart: (p: StoreProduct) => void }
+interface Props {
+  section: { badge: string; headline: string; subtext: string; showCountdown?: boolean }
+  products: StoreProduct[]
+  onAddToCart: (p: StoreProduct) => void
+  onViewDetail?: (p: StoreProduct) => void
+}
 
-export function FeaturedDrop({ section, products, onAddToCart }: Props) {
+export function FeaturedDrop({ section, products, onAddToCart, onViewDetail }: Props) {
   const product = products[0]
   const endRef  = useRef(Date.now() + 23*3600000 + 59*60000 + 59000)
   const [time, setTime] = useState({ h:'23', m:'59', s:'59' })
@@ -25,7 +30,15 @@ export function FeaturedDrop({ section, products, onAddToCart }: Props) {
   const hasImg  = imgUrl && !imgUrl.startsWith('data:')
 
   return (
-    <section className="flex flex-col gap-6 border-y p-[clamp(1.5rem,4vw,3rem)] sm:flex-row sm:items-center" style={{ background:'var(--store-accent-soft)', borderColor:'var(--store-border)' }}>
+    <section
+      className="flex flex-col gap-6 border-y p-[clamp(1.5rem,4vw,3rem)] sm:flex-row sm:items-center"
+      style={{ background:'var(--store-accent-soft)', borderColor:'var(--store-border)', cursor:onViewDetail ? 'pointer' : 'default' }}
+      onClick={(e) => {
+        const target = e.target as HTMLElement
+        if (target.closest('button')) return
+        onViewDetail?.(product)
+      }}
+    >
       <div className="flex flex-1 flex-col gap-4">
         <Badge style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', width:'fit-content' }}>{section.badge}</Badge>
         <h2 className="store-heading text-[clamp(1.5rem,3vw,2.25rem)] font-bold">{section.headline}</h2>
@@ -35,7 +48,7 @@ export function FeaturedDrop({ section, products, onAddToCart }: Props) {
             {[time.h,time.m,time.s].map((t, i) => <span key={i} className="flex items-center gap-1"><span className="rounded border px-2 py-0.5 tabular-nums" style={{ borderColor:'var(--store-border)', background:'var(--store-surface)' }}>{t}</span>{i<2&&<span className="opacity-40">:</span>}</span>)}
           </div>
         )}
-        <button className="store-btn-primary w-fit px-5 py-2.5 text-sm" onClick={() => onAddToCart(product)}>Shop Drop — {product.currency} {Number(product.price).toFixed(2)}</button>
+        <button className="store-btn-primary w-fit px-5 py-2.5 text-sm" onClick={() => onAddToCart(product)}>Shop Drop - {product.currency} {Number(product.price).toFixed(2)}</button>
       </div>
       {hasImg && <div className="relative h-[200px] w-full overflow-hidden rounded-[var(--store-radius)] sm:w-[200px] sm:flex-shrink-0"><Image src={imgUrl} alt={product.name} fill className="object-cover" /></div>}
     </section>

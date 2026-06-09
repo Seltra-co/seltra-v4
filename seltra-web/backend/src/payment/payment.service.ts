@@ -177,7 +177,7 @@ export class PaymentService {
             where: { id: existingOrder.id },
             data: {
               customerId: customer?.id ?? existingOrder.customerId,
-              status: 'paid',
+              status: existingOrder.merchantAmount ? existingOrder.status : 'pending',
               totalAmount: grossAmount,
               currency: payload.data.currency || 'GHS',
               customerEmail,
@@ -192,21 +192,21 @@ export class PaymentService {
           })
         : await prisma.order.create({
             data: {
-          tenantId: tenant.id,
-          customerId: customer?.id,
-          customerEmail,
-          customerName,
-          customerPhone: customerDetails.customerPhone,
-          shippingAddress: customerDetails.shippingAddress,
-          shippingCity: customerDetails.shippingCity,
-          shippingCountry: customerDetails.shippingCountry,
-          marketingOptIn: Boolean(customerDetails.marketingOptIn),
-          totalAmount: grossAmount,
-          currency: payload.data.currency || 'GHS',
-          status: 'paid',
-          paystackRef: reference,
-          items: items as unknown as Prisma.InputJsonValue,
-        },
+              tenantId: tenant.id,
+              customerId: customer?.id,
+              customerEmail,
+              customerName,
+              customerPhone: customerDetails.customerPhone,
+              shippingAddress: customerDetails.shippingAddress,
+              shippingCity: customerDetails.shippingCity,
+              shippingCountry: customerDetails.shippingCountry,
+              marketingOptIn: Boolean(customerDetails.marketingOptIn),
+              totalAmount: grossAmount,
+              currency: payload.data.currency || 'GHS',
+              status: 'pending',
+              paystackRef: reference,
+              items: items as unknown as Prisma.InputJsonValue,
+            },
           })
 
       await this.creditMerchantLedger(tenant.id, order.id, grossAmount, reference)
@@ -262,7 +262,7 @@ export class PaymentService {
             marketingOptIn: Boolean(customerDetails.marketingOptIn),
             totalAmount: grossAmount,
             currency,
-            status: 'paid',
+            status: existingOrder.merchantAmount ? existingOrder.status : 'pending',
             items: items as unknown as Prisma.InputJsonValue,
           },
         })
@@ -279,7 +279,7 @@ export class PaymentService {
             marketingOptIn: Boolean(customerDetails.marketingOptIn),
             totalAmount: grossAmount,
             currency,
-            status: 'paid',
+            status: 'pending',
             paystackRef: reference,
             items: items as unknown as Prisma.InputJsonValue,
           },
@@ -363,7 +363,6 @@ export class PaymentService {
     await prisma.order.update({
       where: { id: orderId },
       data: {
-        status: 'paid',
         disbursed: false,
         merchantAmount,
         seltraFee,
@@ -393,7 +392,7 @@ export class PaymentService {
   async getMerchantSales(authorization: string | undefined, page = 1, perPage = 20, tenantId?: string) {
     const resolvedTenantId = await this.resolveTenantId(authorization, tenantId)
     const skip = (page - 1) * perPage
-    const where = { tenantId: resolvedTenantId, status: 'paid' }
+    const where = { tenantId: resolvedTenantId, merchantAmount: { not: null } }
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
         where,
@@ -417,7 +416,7 @@ export class PaymentService {
       where: { tenantId: resolvedTenantId },
       include: {
         orders: {
-          where: { status: { in: ['paid', 'processing', 'shipped', 'delivered'] } },
+          where: { merchantAmount: { not: null } },
           orderBy: { createdAt: 'desc' },
         },
       },

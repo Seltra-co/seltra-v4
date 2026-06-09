@@ -74,6 +74,11 @@
   --store-radius:           0.5rem;
   --store-section-spacing:  5rem;
   --store-shadow:           none;
+  --store-radius-sm:   calc(var(--store-radius) * 0.5);
+  --store-radius-lg:   calc(var(--store-radius) * 1.5);
+  --store-radius-xl:   calc(var(--store-radius) * 2);
+  --store-radius-2xl:  calc(var(--store-radius) * 3);
+  --store-radius-full: 9999px;
 
   background-color: var(--store-bg);
   color: var(--store-text);
@@ -142,16 +147,17 @@
   transition: transform 0.22s cubic-bezier(0.4,0,0.2,1), box-shadow 0.22s cubic-bezier(0.4,0,0.2,1);
 }
 .store-product-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.09);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.11), 0 2px 8px rgba(0,0,0,0.06);
 }
 
 /* ── Hero mesh gradient background ───────────────────────────────────── */
 .store-hero-mesh {
   background:
-    radial-gradient(at 40% 20%, color-mix(in srgb, var(--store-accent) 8%, var(--store-bg)) 0px, transparent 55%),
-    radial-gradient(at 80% 0%,  color-mix(in srgb, var(--store-accent) 4%, var(--store-surface)) 0px, transparent 50%),
-    radial-gradient(at 5%  50%, color-mix(in srgb, var(--store-accent) 5%, transparent) 0px, transparent 50%),
+    radial-gradient(at 20% 10%, color-mix(in srgb, var(--store-accent) 10%, transparent) 0px, transparent 50%),
+    radial-gradient(at 80% 0%,  color-mix(in srgb, var(--store-accent)  6%, transparent) 0px, transparent 45%),
+    radial-gradient(at 5%  60%, color-mix(in srgb, var(--store-accent)  7%, transparent) 0px, transparent 50%),
+    radial-gradient(at 90% 80%, color-mix(in srgb, var(--store-accent)  4%, transparent) 0px, transparent 40%),
     var(--store-bg);
 }
 
@@ -212,6 +218,48 @@
   font-size: 0.73rem; opacity: 0.65; color: var(--store-text);
 }
 
+/* ── Floating stat card ──────────────────────────────────────────────── */
+.store-stat-card {
+  background: var(--store-surface);
+  border: 1px solid var(--store-border);
+  border-radius: var(--store-radius-lg);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.store-stat-card__number {
+  font-family: var(--store-heading-font), Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--store-text);
+}
+.store-stat-card__label {
+  font-size: 0.7rem;
+  color: var(--store-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Bestseller badge ───────────────────────────────────────────────── */
+.store-badge-bestseller {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  background: var(--store-accent);
+  color: var(--store-accent-text);
+  border-radius: var(--store-radius-full);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.6rem;
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* ── Dashboard utilities ─────────────────────────────────────────────── */
 .glass {
   background: linear-gradient(180deg, hsl(0 0% 100% / 0.04), hsl(0 0% 100% / 0.015));
@@ -241,4 +289,12 @@
 @keyframes trustLogoSlide {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes scroll-announce {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 }

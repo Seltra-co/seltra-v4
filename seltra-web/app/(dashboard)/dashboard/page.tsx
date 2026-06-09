@@ -44,6 +44,11 @@ const statusClass = (status: string) => {
   return 'border-yellow-500/30 bg-yellow-500/10 text-yellow-500'
 }
 
+const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded']
+
+const hasConfirmedPayment = (order: OrderRecord) =>
+  order.merchantAmount !== null && order.merchantAmount !== undefined
+
 const storeIdOf = (store: StoreData | null) => store?.id ?? store?.slug
 
 async function createConversation(title: string, userId?: string) {
@@ -1110,6 +1115,7 @@ function StoreTab({
 function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
   const [rows, setRows] = useState<OrderRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -1128,12 +1134,25 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
     return () => { cancelled = true }
   }, [activeStore])
 
+  const updateOrderStatus = async (order: OrderRecord, status: string) => {
+    const tenantId = storeIdOf(activeStore)
+    setUpdatingId(order.id)
+    const { data, error } = await apiFetch<OrderRecord>(`/api/v1/orders/${encodeURIComponent(order.id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, tenantId }),
+    })
+    setUpdatingId(null)
+    if (error) { toast.error(error); return }
+    setRows((current) => current.map((item) => item.id === order.id ? { ...item, status: data?.status ?? status } : item))
+    toast.success('Order status updated')
+  }
+
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <PageHeader tab="orders" title="Orders" subtitle="Every checkout your agent has processed." />
         <section className="rounded-lg border border-border bg-card/30">
-          <GridHeader cols="grid-cols-[1.2fr_1.4fr_.8fr_.8fr_.9fr]" items={['order ref', 'customer', 'items', 'amount', 'status']} />
+          <GridHeader cols="grid-cols-[1.2fr_1.4fr_.8fr_.8fr_.7fr_1fr]" items={['order ref', 'customer', 'items', 'amount', 'payment', 'status']} />
           {loading ? (
             <EmptyRows text="Loading orders..." />
           ) : rows.length === 0 ? (
@@ -1141,7 +1160,7 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
           ) : (
             <div className="divide-y divide-border">
               {rows.map((order) => (
-                <div key={order.id} className="grid grid-cols-[1.2fr_1.4fr_.8fr_.8fr_.9fr] gap-3 px-4 py-4 text-sm">
+                <div key={order.id} className="grid grid-cols-[1.2fr_1.4fr_.8fr_.8fr_.7fr_1fr] gap-3 px-4 py-4 text-sm">
                   <div className="truncate font-mono text-xs">{order.paystackRef ?? order.id}</div>
                   <div className="min-w-0">
                     <div className="truncate font-medium">{order.customerName || order.customerEmail}</div>
@@ -1149,7 +1168,16 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
                   </div>
                   <div>{order.items?.length ?? 0} items</div>
                   <div className="font-semibold">{money(order.totalAmount, order.currency)}</div>
-                  <StatusBadge status={order.status} />
+                  <StatusBadge status={hasConfirmedPayment(order) ? 'paid' : 'awaiting'} />
+                  <select
+                    value={order.status}
+                    disabled={updatingId === order.id}
+                    onChange={(event) => void updateOrderStatus(order, event.target.value)}
+                    className="h-8 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  >
+                    {!ORDER_STATUSES.includes(order.status) && <option value={order.status}>{order.status}</option>}
+                    {ORDER_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
                 </div>
               ))}
             </div>
@@ -1169,14 +1197,14 @@ function SalesTab({ activeStore }: { activeStore: StoreData | null }) {
     let cancelled = false
     const load = async () => {
       const tenantId = storeIdOf(activeStore)
-      const search = new URLSearchParams({ page: '1', perPage: '50', status: 'paid' })
+      const search = new URLSearchParams({ page: '1', perPage: '50' })
       if (tenantId) search.set('tenantId', tenantId)
       const [salesResult, ledgerResult] = await Promise.all([
         apiFetch<{ data: OrderRecord[] }>(`/api/v1/orders?${search.toString()}`),
         apiFetch<Ledger>(`/api/v1/payment/ledger${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
       ])
       if (cancelled) return
-      setRows(salesResult.data?.data ?? [])
+      setRows((salesResult.data?.data ?? []).filter(hasConfirmedPayment))
       setLedgerBalance(Number(ledgerResult.data?.balance ?? 0))
     }
     void load()
@@ -1416,7 +1444,7 @@ function AnalyticsTab({ activeStore }: { activeStore: StoreData | null }) {
     return () => { cancelled = true }
   }, [activeStore])
 
-  const paid = orders.filter((order) => order.status === 'paid')
+  const paid = orders.filter(hasConfirmedPayment)
   const revenue = paid.reduce((sum, order) => sum + Number(order.merchantAmount ?? order.totalAmount ?? 0), 0)
   const products = activeStore?.products?.length ?? 0
   const conversionHint = customers.length ? Math.min(18, Math.max(2, Math.round((paid.length / customers.length) * 100))) : 0

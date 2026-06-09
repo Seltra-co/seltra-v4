@@ -2,9 +2,15 @@
 import { ProductCard } from './ProductCard'
 import type { StoreProduct } from './types'
 
-interface Props { section: { headline: string; subtext?: string; limit?: number }; products: StoreProduct[]; onAddToCart: (p: StoreProduct) => void; storeName: string }
+interface Props {
+  section: { headline: string; subtext?: string; limit?: number }
+  products: StoreProduct[]
+  onAddToCart: (p: StoreProduct) => void
+  storeName: string
+  onViewDetail?: (p: StoreProduct) => void
+}
 
-export function ProductShelf({ section, products, onAddToCart }: Props) {
+export function ProductShelf({ section, products, onAddToCart, onViewDetail }: Props) {
   return (
     <section className="storefront-section overflow-hidden">
       <div className="mb-4 flex items-end justify-between">
@@ -16,7 +22,7 @@ export function ProductShelf({ section, products, onAddToCart }: Props) {
       </div>
       <div className="store-shelf-track">
         {products.slice(0, section.limit ?? 6).map((p, i) => (
-          <div key={p.id} className="w-[clamp(150px,24vw,200px)] flex-shrink-0"><ProductCard product={p} showCategory={false} index={i} onAddToCart={onAddToCart} compact /></div>
+          <div key={p.id} className="w-[clamp(150px,24vw,200px)] flex-shrink-0"><ProductCard product={p} showCategory={false} index={i} onAddToCart={onAddToCart} onViewDetail={onViewDetail} compact /></div>
         ))}
       </div>
     </section>
