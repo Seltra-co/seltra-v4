@@ -16,8 +16,12 @@ import {
   Sparkles,
   Twitter,
   X,
+  ArrowUpRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { MessageSquare, Wand2, Rocket } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { toast } from '@/hooks/use-toast'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
 
@@ -103,6 +107,46 @@ const features = [
   },
 ]
 
+// ─── Simple modal that avoids all radix/forwardRef JSX issues ────────────────
+function SimpleModal({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean
+  onClose: () => void
+  children: React.ReactNode
+}) {
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open, onClose])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/80"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg">
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// ─── Header ──────────────────────────────────────────────────────────────────
 function Header() {
   const [open, setOpen] = useState(false)
   const [authed, setAuthed] = useState(false)
@@ -134,7 +178,7 @@ function Header() {
             <Button asChild size="sm" className="rounded-md font-mono text-xs">
               <Link href="/apply">Apply to sell on Seltra</Link>
             </Button>
-            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setOpen((value) => !value)} aria-label="Toggle menu">
+            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setOpen((v) => !v)} aria-label="Toggle menu">
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
           </div>
@@ -155,6 +199,7 @@ function Header() {
   )
 }
 
+// ─── Hero ─────────────────────────────────────────────────────────────────────
 function Hero() {
   const [chatInput, setChatInput] = useState('')
   const router = useRouter()
@@ -198,10 +243,10 @@ function Hero() {
               <div className="px-4 pb-1 pt-4 sm:px-5 sm:pb-2">
                 <textarea
                   value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault()
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
                       void handleRun()
                     }
                   }}
@@ -223,7 +268,13 @@ function Hero() {
                   <button type="button" className="flex h-8 w-8 items-center justify-center rounded-full text-white/50 transition-colors hover:bg-white/[0.04] hover:text-white sm:h-9 sm:w-9" title="Voice prompt">
                     <Mic className="h-4 w-4" />
                   </button>
-                  <button type="button" onClick={() => void handleRun()} className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black transition-colors hover:bg-primary hover:text-primary-foreground disabled:pointer-events-none disabled:opacity-45 sm:h-9 sm:w-9" disabled={!chatInput.trim()} title="Build store">
+                  <button
+                    type="button"
+                    onClick={() => void handleRun()}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black transition-colors hover:bg-primary hover:text-primary-foreground disabled:pointer-events-none disabled:opacity-45 sm:h-9 sm:w-9"
+                    disabled={!chatInput.trim()}
+                    title="Build store"
+                  >
                     <ArrowUp className="h-4 w-4" />
                   </button>
                 </div>
@@ -253,6 +304,7 @@ function Hero() {
   )
 }
 
+// ─── Trust Logos ──────────────────────────────────────────────────────────────
 function TrustLogos() {
   const repeatedLogos = [...logos, ...logos]
   return (
@@ -281,6 +333,7 @@ function TrustLogos() {
   )
 }
 
+// ─── Showcase ─────────────────────────────────────────────────────────────────
 function Showcase() {
   return (
     <section id="showcase" className="border-t border-border py-20 sm:py-28">
@@ -333,6 +386,298 @@ function Showcase() {
   )
 }
 
+// ─── How It Works ─────────────────────────────────────────────────────────────
+const steps = [
+  {
+    icon: MessageSquare,
+    title: 'Describe your business',
+    desc: "Type what you're selling, who you're selling to, and where. The agent handles the rest.",
+    code: "$ seltra build 'skincare for gen-z in accra'",
+  },
+  {
+    icon: Wand2,
+    title: 'Agent builds your stack',
+    desc: 'Products, images, storefront, domain, and payments scaffolded in under 15 minutes.',
+    code: '✓ 7 steps · 12m 04s',
+  },
+  {
+    icon: Rocket,
+    title: 'Ship and scale',
+    desc: 'Your store goes live on your subdomain. The agent keeps it running, updated, and converting.',
+    code: 'agent.status = autopilot',
+  },
+]
+
+function HowItWorks() {
+  return (
+    <section id="pipeline" className="py-20 sm:py-28 border-t border-border">
+      <div className="container mx-auto px-4 sm:px-6">
+        <div className="max-w-3xl mb-12 sm:mb-16">
+          <div className="font-mono text-xs text-primary mb-3">// how it works</div>
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
+            One prompt. <span className="text-primary">Live store.</span>
+          </h2>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {steps.map((s, i) => (
+            <div key={i} className="relative rounded-xl border border-border bg-card p-6 sm:p-8">
+              <div className="absolute -top-3 left-6 font-mono text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground">
+                step_{String(i + 1).padStart(2, '0')}
+              </div>
+              <div className="h-10 w-10 rounded-md bg-primary/10 border border-primary/30 flex items-center justify-center mb-5 mt-2">
+                <s.icon className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold text-xl mb-2">{s.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed mb-5">{s.desc}</p>
+              <div className="font-mono text-[11px] text-primary bg-[hsl(var(--terminal-bg))] border border-border rounded-md px-3 py-2 truncate">
+                {s.code}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── Investors ────────────────────────────────────────────────────────────────
+const backers = [
+  { initials: 'HB', name: 'Harold Benji', role: 'CEO, Abonten Technology' },
+  { initials: 'JO', name: 'James Owuraku', role: 'Operations Lead' },
+  { initials: 'NM', name: 'Nana M.', role: 'Founder' },
+  { initials: 'EA', name: 'Ewurabena A.', role: 'Business Advisor' },
+]
+
+const seeded = (i: number) => {
+  const x = Math.sin(i * 9301 + 49297) * 233280
+  return x - Math.floor(x)
+}
+const palette = ['bg-muted/40', 'bg-muted/20', 'bg-card', 'bg-background', 'bg-primary/10', 'bg-muted/60']
+const TILE_COUNT = 132
+
+const investorStats = [
+  { v: '10+', l: 'Early angels committed' },
+  { v: '10+', l: 'Merchants in pipeline' },
+  { v: 'MVP', l: 'In active development' },
+  { v: '2026', l: 'First onboarding target' },
+]
+
+function Investors() {
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState({ name: '', email: '', ticket_size: '', note: '' })
+
+  // Display-only: shows a toast and closes
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim() || !form.email.trim()) {
+      toast({ title: 'Please fill in your name and email' })
+      return
+    }
+    toast({
+      title: "Thanks — we'll be in touch",
+      description: 'Your interest has been recorded. We\'ll reach out shortly.',
+    })
+    setOpen(false)
+    setForm({ name: '', email: '', ticket_size: '', note: '' })
+  }
+
+  return (
+    <section id="investors" className="py-20 sm:py-28 border-t border-border">
+      <div className="container mx-auto px-4 sm:px-6">
+        <div className="grid lg:grid-cols-[1fr_1.1fr] gap-12 lg:gap-20 items-start">
+
+          {/* Left: copy */}
+          <div className="lg:sticky lg:top-24">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground mb-4">
+              Backed by early believers
+            </p>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-[-0.035em] leading-[1.05] mb-5">
+              Built with people<br />
+              who <em className="font-serif italic text-primary/90">believe</em> in the mission
+            </h2>
+            <p className="text-muted-foreground text-sm sm:text-base leading-relaxed max-w-lg">
+              A small group of close advisors, operators, and friends helping us get from zero to our first merchants — each one invested personally in the problem we're solving.
+            </p>
+
+            <div className="mt-6 inline-flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground border border-border rounded-full px-4 py-2 bg-card/40">
+              <span>+ Friends &amp; family round</span>
+              <span className="text-border">·</span>
+              <span>YC Standard SAFE</span>
+              <span className="text-border">·</span>
+              <span>$50K cap</span>
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-px bg-border rounded-2xl overflow-hidden border border-border max-w-lg">
+              {investorStats.map((s, i) => (
+                <div key={i} className="bg-background p-4">
+                  <div className="text-xl font-semibold text-foreground tracking-tight">{s.v}</div>
+                  <div className="text-[10px] text-muted-foreground mt-1 font-mono leading-snug">{s.l}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8">
+              <button
+                onClick={() => setOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card hover:border-primary/40 hover:text-primary transition-colors px-5 py-2.5 text-sm font-medium"
+              >
+                Join the round <ArrowUpRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Right: backer tile wall */}
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground mb-6">
+              Our founding backers
+            </p>
+
+            <div
+              className="relative w-full h-[360px] sm:h-[440px] overflow-hidden rounded-2xl border border-border bg-background"
+              style={{ perspective: '900px' }}
+            >
+              <div className="absolute inset-0 z-10 pointer-events-none bg-gradient-to-b from-background/80 via-transparent to-background" />
+              <div className="absolute inset-0 z-10 pointer-events-none bg-gradient-to-r from-background via-transparent to-background" />
+
+              <div
+                className="absolute inset-0 grid grid-cols-12 gap-1.5 p-4"
+                style={{
+                  transform: 'rotateX(35deg) rotateZ(-2deg) scale(1.15)',
+                  transformOrigin: 'center 60%',
+                }}
+              >
+                {Array.from({ length: TILE_COUNT }).map((_, i) => {
+                  const named = [
+                    { pos: 28, b: backers[0] },
+                    { pos: 47, b: backers[1] },
+                    { pos: 64, b: backers[2] },
+                    { pos: 81, b: backers[3] },
+                  ].find((n) => n.pos === i)
+
+                  const yourSpot = i === 55
+
+                  const r = seeded(i)
+                  const bg = palette[Math.floor(r * palette.length)]
+                  const opacity = Math.round((0.4 + seeded(i + 1) * 0.6) * 10000) / 10000
+                  
+                  if (named) {
+                    return (
+                      <div
+                        key={i}
+                        className="aspect-square rounded-sm bg-card border border-primary/30 flex items-center justify-center font-mono text-[10px] sm:text-xs font-semibold text-foreground shadow-lg shadow-primary/10"
+                        title={`${named.b.name} — ${named.b.role}`}
+                      >
+                        {named.b.initials}
+                      </div>
+                    )
+                  }
+
+                  if (yourSpot) {
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setOpen(true)}
+                        className="aspect-square rounded-sm bg-primary/20 border border-primary/50 flex items-center justify-center hover:bg-primary/30 transition-colors"
+                        title="Your spot — round still open"
+                      >
+                        <Plus className="h-3 w-3 text-primary" />
+                      </button>
+                    )
+                  }
+
+                  return (
+                    <div
+                      key={i}
+                      className={`aspect-square rounded-sm ${bg} border border-border/40`}
+                      style={{ opacity }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+
+            <p className="font-mono text-[11px] text-muted-foreground mt-4 text-center">
+              4 named backers · Your spot still open —{' '}
+              <button onClick={() => setOpen(true)} className="text-primary hover:underline">
+                join the round
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal — no radix, no forwardRef issues */}
+      <SimpleModal open={open} onClose={() => setOpen(false)}>
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">Join the round</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Share a few details and we'll follow up with the SAFE and round info.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+          <div className="space-y-1.5">
+            <label htmlFor="inv-name" className="block text-sm font-medium text-foreground">
+              Full name
+            </label>
+            <Input
+              id="inv-name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="Ada Lovelace"
+              required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="inv-email" className="block text-sm font-medium text-foreground">
+              Email
+            </label>
+            <Input
+              id="inv-email"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="you@domain.com"
+              required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="inv-ticket" className="block text-sm font-medium text-foreground">
+              Ticket size <span className="text-muted-foreground">(optional)</span>
+            </label>
+            <Input
+              id="inv-ticket"
+              value={form.ticket_size}
+              onChange={(e) => setForm({ ...form, ticket_size: e.target.value })}
+              placeholder="$100"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="inv-note" className="block text-sm font-medium text-foreground">
+              Anything else? <span className="text-muted-foreground">(optional)</span>
+            </label>
+            <Input
+              id="inv-note"
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+              placeholder="A short note..."
+            />
+          </div>
+
+          <Button type="submit" className="w-full rounded-full h-11">
+            Submit interest →
+          </Button>
+        </form>
+      </SimpleModal>
+    </section>
+  )
+}
+
+// ─── Features ─────────────────────────────────────────────────────────────────
 function Features() {
   return (
     <section className="relative py-20 sm:py-28">
@@ -360,6 +705,7 @@ function Features() {
   )
 }
 
+// ─── CTA ──────────────────────────────────────────────────────────────────────
 function CTA() {
   return (
     <section id="cta" className="border-t border-border py-24 sm:py-32">
@@ -389,6 +735,7 @@ function CTA() {
   )
 }
 
+// ─── Footer ───────────────────────────────────────────────────────────────────
 function Footer() {
   return (
     <footer className="border-t border-border bg-background py-10">
@@ -423,6 +770,7 @@ function Footer() {
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   return (
     <div className="min-h-screen">
@@ -431,6 +779,8 @@ export default function LandingPage() {
       <TrustLogos />
       <Showcase />
       <Features />
+      <HowItWorks />
+      <Investors />
       <CTA />
       <Footer />
     </div>
