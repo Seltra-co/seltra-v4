@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/FounderStory.tsx
 'use client'
 export function FounderStory({ founderName, story, storeName, variant='portrait-left' }: { founderName?: string; story?: string; storeName: string; variant?: string }) {
   return (

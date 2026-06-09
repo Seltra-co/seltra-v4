@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/StorefrontPreview.tsx
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { StorefrontCanvas } from './StorefrontCanvas'

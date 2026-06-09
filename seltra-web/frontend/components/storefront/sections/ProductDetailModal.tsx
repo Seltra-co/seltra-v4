@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/ProductDetailModal.tsx
 'use client'
 import { AnimatePresence, motion } from 'framer-motion'
 import Image from 'next/image'

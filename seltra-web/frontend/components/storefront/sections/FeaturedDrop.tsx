@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/FeaturedDrop.tsx
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'

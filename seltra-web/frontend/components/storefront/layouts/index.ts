@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/layouts/index.ts
 export type LayoutKey = 'editorial' | 'conversion' | 'storytelling' | 'catalog' | 'showcase'
 
 export interface LayoutSection { type: string; required: boolean; defaultVariant: string; position: 'top' | 'middle' | 'bottom' }

@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/ProductGrid.tsx
 'use client'
 import { useMemo, useState } from 'react'
 import { ProductCard } from './ProductCard'

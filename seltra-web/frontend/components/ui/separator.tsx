@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/ui/separator.tsx
 'use client'
 
 import * as React from 'react'

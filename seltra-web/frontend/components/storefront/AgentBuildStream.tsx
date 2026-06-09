@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/AgentBuildStream.tsx
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { Check, Loader2, Brain, Package, Palette, CreditCard, Rocket, Zap } from 'lucide-react'

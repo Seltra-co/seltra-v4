@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/StorefrontShell.tsx
 'use client'
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { Monitor, Smartphone, ExternalLink } from 'lucide-react'

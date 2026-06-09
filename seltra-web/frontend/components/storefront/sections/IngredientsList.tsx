@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/IngredientsList.tsx
 'use client'
 import { motion } from 'framer-motion'
 

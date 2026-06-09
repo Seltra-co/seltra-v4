@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/LookbookGrid.tsx
 'use client'
 import { motion } from 'framer-motion'
 import Image from 'next/image'

@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/AnnouncementBar.tsx
 'use client'
 export function AnnouncementBar({ message }: { message: string }) {
   return (

@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/BeforeAfter.tsx
 'use client'
 export function BeforeAfter({ headline, beforeLabel='Before', afterLabel='After' }: { headline?: string; beforeLabel?: string; afterLabel?: string }) {
   return (

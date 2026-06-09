@@ -1,3 +1,4 @@
+//seltra-web/frontend/context/StoreContext.tsx
 'use client'
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { StoreData } from '@/components/storefront/StorefrontPreview'

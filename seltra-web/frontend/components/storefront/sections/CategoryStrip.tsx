@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/CategoryStrip.tsx
 'use client'
 import { useState } from 'react'
 export function CategoryStrip({ categories, headline }: { categories: string[]; headline?: string }) {

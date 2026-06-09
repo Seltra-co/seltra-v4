@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/types.ts
 export interface StorePalette {
   bg: string; surface: string; border: string; text: string
   muted: string; accent: string; accentText: string; accentSoft: string

@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/FAQSection.tsx
 'use client'
 import * as Accordion from '@radix-ui/react-accordion'
 import { Minus, Plus } from 'lucide-react'

@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/themes/index.ts
 export type ThemeKey = 'luxury' | 'bold-dark' | 'minimal-light' | 'editorial' | 'warm-earth' | 'cool-modern' | 'vibrant'
 
 export interface DesignTokens {
