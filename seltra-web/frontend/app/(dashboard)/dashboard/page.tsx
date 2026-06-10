@@ -1,3 +1,4 @@
+//seltra-web/frontend/app/(dashboard)/dashboard/page.tsx
 'use client'
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -161,7 +162,7 @@ function buildFeedback(store: StoreData): string {
   return [
     `**${store.name}** is ready.`,
     `Positioned for ${store.targetAudience ?? 'your customers'} with ${prodCount} products across ${cats}.`,
-    `Paystack is wired for checkout. Your store is live at \`${store.slug}.seltra.store\`.`,
+    `Paystack is wired for checkout. Your store is live at \`${store.slug}.seltra.co\`.`,
     `Ask me to add products, update colors, refine copy, or attach a logo file.`,
   ].join('\n\n')
 }
@@ -373,21 +374,28 @@ export default function DashboardPage() {
     void loadStores()
   }
 
-  const newStore = () => {
+const newStore = () => {
     setActiveStore(null)
     setMsgs([])
     setConvId(undefined)
-    setRev(0)
+    setStores([])
+    setRev((v) => v + 1)
     setTab('home')
     setSidebarOpen(true)
+    void loadStores()
   }
 
   const signOut = () => { clearAuth(); setActiveStore(null); router.push('/auth') }
 
-  const hasStore   = Boolean(activeStore) || msgs.length > 0
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  const hasStore = mounted && (Boolean(activeStore) || msgs.length > 0)
   const storeTitle = activeStore?.name ?? msgs[0]?.content?.slice(0, 40) ?? 'My Store'
-  const storeSlug  = activeStore?.slug ?? storeTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)
-  const buildSteps = getBuildSteps(activeStore, sending)
+  const storeSlug  = useMemo(
+    () => activeStore?.slug ?? storeTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30),
+    [activeStore?.slug, storeTitle]
+  )
+  const buildSteps = useMemo(() => getBuildSteps(activeStore, sending), [activeStore, sending])
 
   // Render non-home tabs
   if (tab !== 'home') {
@@ -414,7 +422,13 @@ export default function DashboardPage() {
             onStoreDeleted={(id) => {
               const next = stores.filter((s) => s.id !== id && s.slug !== id)
               setStores(next)
-              if (activeStore?.id === id || activeStore?.slug === id) { setActiveStore(next[0] ?? null); setTab('home') }
+              if (activeStore?.id === id || activeStore?.slug === id) {
+                setActiveStore(null)
+                setMsgs([])
+                setConvId(undefined)
+                setRev((v) => v + 1)
+                setTab('home')
+              }
             }}
             onStoreUpdated={(store) => {
               setStores((current) => current.map((item) => item.id === store.id ? store : item))
@@ -463,10 +477,7 @@ export default function DashboardPage() {
             onAttach={(f) => { setInput((p) => p ? `${p}\nI uploaded "${f.name}".` : `I uploaded "${f.name}".`); toast.success(`${f.name} attached`, { duration: 1400 }) }}
           />
         ) : (
-          <div className={`grid min-h-0 flex-1 transition-all duration-300 ${
-            // When building: give preview 60%, agent 40%. Otherwise 2:3 split.
-            sending ? 'grid-cols-[2fr_3fr]' : 'grid-cols-[2fr_3fr]'
-          } lg:grid-cols-[${sending ? '5fr_7fr' : '2fr_3fr'}]`}>
+            <div className="grid min-h-0 flex-1 grid-cols-[5fr_7fr]">
 
             {/* Agent panel */}
             <section className="flex min-h-0 flex-col border-r border-border bg-background">
@@ -562,13 +573,11 @@ export default function DashboardPage() {
             </section>
 
             {/* Storefront preview — enlarged when building */}
-            <StorefrontShell slug={storeSlug}>
+          <StorefrontShell slug={storeSlug} isStream={sending && !activeStore?.storefrontCode}>
               {sending && !activeStore?.storefrontCode ? (
-                <div className="min-h-[560px]">
-                  <AgentBuildStream storeName={storeTitle} buildSteps={buildSteps} isBuilding={sending} />
-                </div>
+                <AgentBuildStream storeName={storeTitle} buildSteps={buildSteps} isBuilding={sending} />
               ) : (
-                <StorefrontPreview key={`${storeSlug}-${rev}`} storeSlug={storeSlug} />
+                <StorefrontPreview key={`${storeSlug}-${rev}`} storeSlug={storeSlug} suppressFallback={!activeStore} />
               )}
             </StorefrontShell>
           </div>
@@ -731,6 +740,9 @@ function SidebarDesktop({
 
 // ── Mobile header ──────────────────────────────────────────────────────────────
 function MobileHeader({ storeName, onMenuOpen, onSignOut }: { storeName?: string; onMenuOpen: () => void; onSignOut: () => void }) {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
   return (
     <header className="lg:hidden flex h-14 flex-shrink-0 items-center justify-between border-b border-border bg-card/40 px-4">
       <button onClick={onMenuOpen} className="text-muted-foreground hover:text-foreground">
@@ -741,7 +753,11 @@ function MobileHeader({ storeName, onMenuOpen, onSignOut }: { storeName?: string
           <span className="font-mono text-[10px] font-bold text-primary">S</span>
         </div>
         <span className="font-mono font-semibold text-sm">seltra</span>
-        {storeName && <span className="text-muted-foreground text-xs">· {storeName}</span>}
+        {mounted && storeName && (
+          <span className="text-muted-foreground text-xs">
+            · {storeName}
+          </span>
+        )}
       </div>
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onSignOut}>
         <LogOut className="h-4 w-4" />
@@ -884,14 +900,29 @@ function ChatInput({ input, setInput, send, sending, onAttach, compact = false }
   input: string; setInput: (v: string) => void; send: () => void
   sending: boolean; onAttach: (f: File) => void; compact?: boolean
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const maxHeight = compact ? 96 : 140
+    const newHeight = Math.min(el.scrollHeight, maxHeight)
+    el.style.height = `${newHeight}px`
+  }, [input, compact])
+
   return (
     <div className={`border-t border-border bg-card/40 backdrop-blur ${compact ? 'p-3' : 'p-4 sm:p-6'}`}>
       <div className={`${compact ? '' : 'mx-auto max-w-3xl'} flex items-end gap-2`}>
         <textarea
-          value={input} onChange={(e) => setInput(e.target.value)}
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          rows={1} placeholder="Message your agent…"
-          className="max-h-40 flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+          rows={1}
+          placeholder="Message your agent…"
+          className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring transition-[height] duration-100"
+          style={{ minHeight: '40px', overflowY: 'auto' }}
         />
         <label className="flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:text-primary transition-colors">
           <Paperclip className="h-4 w-4" />
@@ -1042,7 +1073,7 @@ function StoreTab({
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <button type="button" onClick={() => onSelectStore(store)} className="min-w-0 flex-1 text-left">
                       <h2 className="truncate text-base font-semibold">{store.name}</h2>
-                      <p className="font-mono text-[11px] text-primary">{store.slug}.seltra.store</p>
+                      <p className="font-mono text-[11px] text-primary">{store.slug}.seltra.co</p>
                     </button>
                     <div className="flex items-center gap-1.5">
                       <span className="rounded-full border border-border px-2 py-1 font-mono text-[10px] text-muted-foreground">
@@ -1540,7 +1571,7 @@ function SettingsTab({
           <section className="rounded-lg border border-border bg-card/40 p-4">
             <div className="mb-4">
               <h2 className="text-sm font-semibold">Active Store</h2>
-              <p className="text-xs text-muted-foreground">{activeStore ? `${activeStore.slug}.seltra.store` : 'Create or select a store first.'}</p>
+              <p className="text-xs text-muted-foreground">{activeStore ? `${activeStore.slug}.seltra.co` : 'Create or select a store first.'}</p>
             </div>
             <div className="grid gap-3">
               <label className="grid gap-1.5 text-sm">Store name<input value={name} onChange={(event) => setName(event.target.value)} disabled={!activeStore} className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" /></label>

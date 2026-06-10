@@ -12,7 +12,7 @@ export default function TermsPage() {
           <h2 className="text-foreground text-lg font-semibold mt-6">Data</h2>
           <p>We store your store data, product catalog, and order information to operate the platform. We do not sell your data to third parties.</p>
           <h2 className="text-foreground text-lg font-semibold mt-6">Contact</h2>
-          <p>For questions: hello@seltra.store</p>
+          <p>For questions: hello@seltra.co</p>
         </div>
       </div>
     </div>

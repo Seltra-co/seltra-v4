@@ -62,12 +62,12 @@ export class AgentService {
       success: true,
       provider,
       tenantId: tenant.id,
-      storeUrl: `${blueprint.storeSlug}.seltra.store`,
+      storeUrl: `${blueprint.storeSlug}.seltra.co`,
       layoutVariant,
       blueprint,
       products: tenant.products,
       categoriesCreated: tenant.categories.length,
-      message: `Store "${blueprint.businessName}" is live at ${blueprint.storeSlug}.seltra.store`,
+      message: `Store "${blueprint.businessName}" is live at ${blueprint.storeSlug}.seltra.co`,
     }
   }
 

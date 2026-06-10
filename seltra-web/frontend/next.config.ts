@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
     ],
   },
   env: {
-    NEXT_PUBLIC_ROOT_DOMAIN: process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.store',
+    NEXT_PUBLIC_ROOT_DOMAIN: process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.co',
   },
   async redirects() {
     return [{ source: '/store', destination: '/dashboard', permanent: false }]

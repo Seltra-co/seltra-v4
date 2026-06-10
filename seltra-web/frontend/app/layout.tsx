@@ -17,14 +17,24 @@ const displayFont = Fraunces({
 
 export const metadata: Metadata = {
   title: 'Seltra — Commerce that runs itself',
-  description: 'AI-native commerce platform. Launch your store in minutes.',
+  description: 'AI-native commerce stack. Launch your store in minutes.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable} ${displayFont.variable}`}>
-      <body>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${GeistSans.variable} ${GeistMono.variable} ${displayFont.variable}`}
+    >
+      <body suppressHydrationWarning>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          disableTransitionOnChange
+          storageKey="seltra-theme"
+        >
           <StoreProvider>
             {children}
           </StoreProvider>

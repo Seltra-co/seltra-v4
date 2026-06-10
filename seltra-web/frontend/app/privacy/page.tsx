@@ -12,7 +12,7 @@ export default function PrivacyPage() {
           <h2 className="text-foreground text-lg font-semibold mt-6">Third parties</h2>
           <p>Paystack processes payments. Unsplash provides product imagery. No advertising networks have access to your data.</p>
           <h2 className="text-foreground text-lg font-semibold mt-6">Contact</h2>
-          <p>privacy@seltra.store</p>
+          <p>privacy@seltra.co</p>
         </div>
       </div>
     </div>

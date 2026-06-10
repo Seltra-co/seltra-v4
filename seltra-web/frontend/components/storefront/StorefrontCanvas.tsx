@@ -26,6 +26,20 @@ import type {
   StoreProduct, StoreManifest, ManifestSection, StorePalette, StoreTypography,
 } from './sections/types'
 
+function StyleInjector({ fontParam, themeVars }: { fontParam: string; themeVars: string }) {
+  useEffect(() => {
+    const id = `seltra-font-${fontParam.slice(0, 40).replace(/[^a-z0-9]/gi, '')}`
+    if (!document.getElementById(id)) {
+      const link = document.createElement('link')
+      link.id = id
+      link.rel = 'stylesheet'
+      link.href = `https://fonts.googleapis.com/css2?${fontParam}&display=swap`
+      document.head.appendChild(link)
+    }
+  }, [fontParam])
+  return <style suppressHydrationWarning>{`.seltra-storefront{${themeVars}}`}</style>
+}
+
 export interface CartItem { product: StoreProduct; quantity: number }
 
 export interface StoreData {
@@ -179,12 +193,20 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
   const currency   = products[0]?.currency ?? 'GHS'
   const CART_KEY   = `seltra:cart:${storeSlug}`
 
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    if (typeof window === 'undefined') return []
-    try { const s = window.localStorage.getItem(CART_KEY); return s ? JSON.parse(s) : [] } catch { return [] }
-  })
-  const [cartOpen, setCartOpen]         = useState(false)
+ const [cart, setCart] = useState<CartItem[]>([])
+
+  // Rehydrate cart from localStorage after mount only (avoids SSR mismatch)
+  useEffect(() => {
+    try {
+      const s = window.localStorage.getItem(CART_KEY)
+      if (s) setCart(JSON.parse(s))
+    } catch {}
+  }, [CART_KEY])
+  const [cartOpen, setCartOpen]           = useState(false)
   const [detailProduct, setDetailProduct] = useState<StoreProduct | null>(null)
+  const [mounted, setMounted]             = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     try { window.localStorage.setItem(CART_KEY, JSON.stringify(cart)) } catch {}
@@ -224,8 +246,7 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
 
   return (
     <div className={`seltra-storefront relative w-full overflow-x-hidden ${minHeightClass}`}>
-      <style>{`.seltra-storefront{${buildThemeVars(palette, typography, themeKey)}}@import url('https://fonts.googleapis.com/css2?${fontParam}&display=swap');`}</style>
-
+      <StyleInjector fontParam={fontParam} themeVars={buildThemeVars(palette, typography, themeKey)} />
       {/* ── Sticky nav ─────────────────────────────────────────────── */}
       <nav
         className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b px-5 py-3 backdrop-blur-xl"
@@ -278,20 +299,22 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
         >
           <ShoppingBag className="h-3.5 w-3.5" style={{ color: 'var(--store-accent)' }} />
           Cart
-          <AnimatePresence mode="wait">
-            {cartCount > 0 && (
-              <motion.span
-                key={cartCount}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.5, opacity: 0 }}
-                className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
-                style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)' }}
-              >
-                {cartCount}
-              </motion.span>
-            )}
-          </AnimatePresence>
+       {mounted && (
+            <AnimatePresence mode="wait">
+              {cartCount > 0 && (
+                <motion.span
+                  key={cartCount}
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
+                  style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)' }}
+                >
+                  {cartCount}
+                </motion.span>
+              )}
+            </AnimatePresence>
+          )}
         </button>
       </nav>
 

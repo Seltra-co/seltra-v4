@@ -50,7 +50,7 @@ export class TenantService {
           ...(blueprint as object),
           layoutVariant, // store inside canonical JSON too for easy access
         },
-        storeUrl: `${blueprint.storeSlug}.seltra.store`,
+        storeUrl: `${blueprint.storeSlug}.seltra.co`,
 
         categories: {
           create: blueprint.productCategories.map((name) => ({ name })),

@@ -11,6 +11,10 @@ import {
   type LayoutKey,
 } from './composition-rules'
 
+import { refineManifest }            from './refinement.engine'
+import { validateStorefrontHtml, resolveRepairs } from './validator.agent'
+
+
 export interface StorefrontCodegenInput {
   blueprint: CanonicalStore
   products: Array<{
@@ -325,29 +329,43 @@ async function getManifest(input: StorefrontCodegenInput): Promise<StoreManifest
 
   const baseManifest: StoreManifest = { sections, palette, typography: { headingFont: typography.headingFont, bodyFont: typography.bodyFont }, industry }
 
-  if (!process.env.GROQ_API_KEY || process.env.SELTRA_LLM_MANIFEST !== 'true') {
-    return sanitiseManifest(baseManifest, input)
+// ── LLM copy enrichment (optional, non-blocking) ──────────────────────────
+  if (process.env.GROQ_API_KEY && process.env.SELTRA_LLM_MANIFEST === 'true') {
+    try {
+      const displayName = getDisplayName(input.blueprint)
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000))
+      const result = await Promise.race([
+        codegenChat([{ role: 'user', content: `Write improved hero copy for brand "${displayName}" — type: ${input.blueprint.businessType}, audience: ${input.blueprint.targetAudience}. Return JSON: { "headline": string, "tagline": string, "subtext": string }` }], 200),
+        timeout,
+      ])
+      const raw = result.content.trim().replace(/```json|```/g, '').trim()
+      const enriched = JSON.parse(raw) as { headline?: string; tagline?: string; subtext?: string }
+      if (enriched.headline) {
+        const enrichedSections = baseManifest.sections.map(s => {
+        const heroTypes = ['hero-centered','hero-split','hero-editorial','hero-fullbleed','hero-minimal']
+          if (heroTypes.includes(s.type)) {
+            const hero = s as HeroSection
+            return { ...hero, headline: enriched.headline ?? hero.headline, tagline: enriched.tagline ?? hero.tagline, subtext: enriched.subtext ?? hero.subtext }
+          }
+          return s
+        })
+        baseManifest.sections = enrichedSections
+      }
+    } catch {
+      // LLM enrichment failed silently — rule-based manifest is fine
+    }
   }
 
-  try {
-    const displayName = getDisplayName(input.blueprint)
-    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000))
-    const result = await Promise.race([
-      codegenChat([{ role: 'user', content: `Write improved hero copy for brand "${displayName}" — type: ${input.blueprint.businessType}, audience: ${input.blueprint.targetAudience}. Return JSON: { "headline": string, "tagline": string, "subtext": string }` }], 200),
-      timeout,
-    ])
-    const raw = result.content.trim().replace(/```json|```/g, '').trim()
-    const enriched = JSON.parse(raw) as { headline?: string; tagline?: string; subtext?: string }
-    const enrichedSections = sections.map(s => {
-      if (s.type.startsWith('hero') && enriched.headline) {
-        return { ...s, headline: enriched.headline, tagline: enriched.tagline ?? (s as HeroSection).tagline, subtext: enriched.subtext ?? (s as HeroSection).subtext }
-      }
-      return s
-    })
-    return sanitiseManifest({ ...baseManifest, sections: enrichedSections }, input)
-  } catch {
-    return sanitiseManifest(baseManifest, input)
+  // ── Critic + refinement loop — runs on EVERY generation ──────────────────
+  const sanitised = sanitiseManifest(baseManifest, input)
+  const { manifest: refined, fixesApplied, finalReport } = await refineManifest(
+    sanitised as unknown as import('./critic.agent').ManifestForCritic,
+    input.blueprint,
+  )
+  if (fixesApplied.length > 0) {
+    console.log(`[Codegen] Refinement applied ${fixesApplied.length} fix(es). Final critic score: ${finalReport.score}/100`)
   }
+  return refined as unknown as StoreManifest
 }
 
 // ── Section renderers ─────────────────────────────────────────────────────────
@@ -1125,8 +1143,39 @@ ${buildJS(currency)}
 // ── Main export ───────────────────────────────────────────────────────────────
 export async function generateStorefrontCode(input: StorefrontCodegenInput): Promise<StorefrontCodegenResult> {
   const manifest = await getManifest(input)
-  const html = buildStorefront(input, manifest)
-  const sections = manifest.sections.map(s => s.type).join(', ')
-  console.log(`[Codegen] Built storefront — ${html.length} chars | sections: ${sections} | industry: ${manifest.industry}`)
-  return { success: true, html, provider: 'manifest+programmatic-v4', error: null }
+  const html     = buildStorefront(input, manifest)
+
+  //Post-render validation
+  const validationReport = validateStorefrontHtml(html, input.blueprint.businessName)
+
+  if (!validationReport.passed) {
+    const repairs = resolveRepairs(validationReport)
+    const needsFullRegen = repairs.some(r => r.type === 'full_regeneration')
+
+    if (needsFullRegen) {
+      console.warn('[Codegen] Validator triggered full regeneration')
+      //One retry — if it fails again, serve the first attempt rather than crashing
+      try {
+        const retryManifest = await getManifest(input)
+        const retryHtml     = buildStorefront(input, retryManifest)
+        const retryReport   = validateStorefrontHtml(retryHtml, input.blueprint.businessName)
+        if (retryReport.score >= validationReport.score) {
+          console.log(`[Codegen] Retry succeeded — score improved from ${validationReport.score} to ${retryReport.score}`)
+          const sections = retryManifest.sections.map((s: { type: string }) => s.type).join(', ')
+          return { success: true, html: retryHtml, provider: 'manifest+programmatic-v4+self-healed', error: null }
+        }
+      } catch (e) {
+        console.warn('[Codegen] Retry failed, serving original output:', e)
+      }
+    }
+  }
+
+  const sections = manifest.sections.map((s: { type: string }) => s.type).join(', ')
+  console.log(`[Codegen] Built storefront — ${html.length} chars | sections: ${sections} | validator: ${validationReport.score}/100`)
+  return {
+    success: true,
+    html,
+    provider: `manifest+programmatic-v4+critic:${validationReport.score}`,
+    error: null,
+  }
 }

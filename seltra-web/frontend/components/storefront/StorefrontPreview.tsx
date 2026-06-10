@@ -20,7 +20,7 @@ function fallback(slug: string): StoreData {
   return { id:`fallback-${slug}`, name, slug, businessType:'AI-built storefront', targetAudience:'modern shoppers', heroTitle:name, heroSubtitle:'A polished storefront.', canonical:{ storeFeatures:['Fast checkout','Curated catalog','Local delivery','AI merchandising'], productCategories:['Starter','Signature','Gift'], recommendedTechStack:{ paymentGateways:['Paystack'] } }, products:[ { id:`${slug}-1`, name:'Signature Starter Set', description:'A ready-to-launch bundle.', price:49, currency:'GHS', category:'Signature' }, { id:`${slug}-2`, name:'Daily Essential', description:'Your hero product.', price:28, currency:'GHS', category:'Starter' }, { id:`${slug}-3`, name:'Gift Box', description:'A premium giftable option.', price:72, currency:'GHS', category:'Gift' } ] }
 }
 
-export default function StorefrontPreview({ storeSlug }: { storeSlug: string }) {
+export default function StorefrontPreview({ storeSlug, suppressFallback = false }: { storeSlug: string; suppressFallback?: boolean }) {
   const { activeStore } = useStore()
   const activeStoreData = activeStore as StoreData | null
   const [store, setStore]   = useState<StoreData | null>(null)
@@ -35,15 +35,32 @@ export default function StorefrontPreview({ storeSlug }: { storeSlug: string }) 
       try {
         const res = await fetch(`${API_BASE}/api/v1/seltra/store/${encodeURIComponent(storeSlug)}`, { headers:token?{Authorization:`Bearer ${token}`}:{} })
         if (!cancelled && res.ok) { const d = await res.json(); setStore(d); setLoading(false); if (!d.storefrontCode && pollCount.current < 20) { pollCount.current++; if (pollTimer.current) clearTimeout(pollTimer.current); pollTimer.current = setTimeout(() => { if (!cancelled) load() }, 3000) } }
-        else if (!cancelled) { setStore(activeStoreData?.slug === storeSlug ? activeStoreData : fallback(storeSlug)); setLoading(false) }
-      } catch { if (!cancelled) { setStore(fallback(storeSlug)); setLoading(false) } }
+        else if (!cancelled) {
+          if (!suppressFallback) {
+            setStore(activeStoreData?.slug === storeSlug ? activeStoreData : fallback(storeSlug))
+          }
+          setLoading(false)
+        }
+      } catch {
+        if (!cancelled) {
+          if (!suppressFallback) setStore(fallback(storeSlug))
+          setLoading(false)
+        }
+      }
     }
     load()
     return () => { cancelled = true; if (pollTimer.current) clearTimeout(pollTimer.current) }
   }, [storeSlug, activeStoreData])
 
   if (loading && !store) return <div className="flex min-h-[400px] items-center justify-center"><div className="flex flex-col items-center gap-2"><div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary" /><div className="font-mono text-xs text-muted-foreground">building storefront...</div></div></div>
-  if (!store) return null
+  if (!store || suppressFallback && !activeStore) return (
+    <div className="flex min-h-[400px] items-center justify-center">
+      <div className="text-center text-sm text-muted-foreground">
+        <div className="mb-2 font-mono text-xs text-primary">{'// ready'}</div>
+        Describe your store to get started.
+      </div>
+    </div>
+  )
 
   const themeKey = store.storeDNA?.brandPersonality==='luxury'?'luxury': store.canonical?.layoutVariant==='bold'?'bold-dark': store.canonical?.layoutVariant==='editorial'?'editorial':'minimal-light'
   return <StorefrontCanvas store={store} storeSlug={storeSlug} themeKey={themeKey} />

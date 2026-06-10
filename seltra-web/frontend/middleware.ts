@@ -1,6 +1,6 @@
 // import { NextRequest, NextResponse } from 'next/server'
 
-// const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.store'
+// const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.co'
 
 // export function middleware(req: NextRequest) {
 //   const url      = req.nextUrl.clone()

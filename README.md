@@ -155,7 +155,7 @@ Seltra generates:
 Each tenant receives:
 
 ```text
-brandname.seltra.store
+brandname.seltra.co
 ```
 
 Routing is powered by:

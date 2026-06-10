@@ -14,7 +14,22 @@ Build a B2B supply store for restaurant and food business owners across Ghana �
 My brand is Lumière Skin — a premium skincare line for Ghanaian women with melanin-rich skin. We sell vitamin C serums, shea butter moisturizers, and glow face oils. Our customers are women aged 25–40 who care about clean, effective ingredients. Based in Kumasi, shipping nationwide.
 
 
+Prompt 1 — Fashion Brand
 
+I run a modern African fashion brand called Adinkra Threads. We create premium ready-to-wear clothing for young professionals and creatives across Ghana and the diaspora. I want an elegant online store with a luxury feel, large product photography, product categories for Men's Wear, Women's Wear, Accessories, and New Arrivals. Include customer reviews, featured collections, WhatsApp support, and a seamless checkout experience. My target audience is fashion-conscious customers between 20 and 45 years old who value quality, culture, and style.
+
+Prompt 2 — Electronics & Gadgets Store
+
+I own a consumer electronics business called TechHub Ghana. We sell smartphones, laptops, gaming accessories, smartwatches, networking equipment, and computer peripherals. Build a professional ecommerce store focused on trust, fast browsing, and high conversion rates. Include product filtering, featured deals, bestseller sections, warranty information, customer testimonials, and secure online payments. My customers are students, professionals, gamers, and small businesses looking for reliable technology products.
+
+Prompt 3 — Handmade Wellness & Beauty Brand
+
+I operate a handmade wellness and beauty company called Bloom & Essence. We create scented candles, essential oils, bath products, body butters, and wellness gift boxes. Design a warm, premium, lifestyle-focused online store that feels calming and luxurious. Showcase our brand story, product collections, seasonal gift bundles, subscription options, and customer testimonials. My target audience is women and professionals aged 25–55 who prioritize self-care, wellness, and high-quality natural products.
+
+
+Prompt 4 (Restaurant & Food Delivery)
+
+I own a fast-growing restaurant called Spice Garden Kitchen that serves authentic African and continental meals. I want an online ordering platform where customers can browse the menu, place orders for pickup or delivery, view featured meals, and make secure payments online. The design should be modern, mobile-first, and visually appealing with high-quality food photography. My customers are busy professionals, families, and students looking for convenient, delicious meals.
 
 //seltra context engineering MVP:
 - memory
