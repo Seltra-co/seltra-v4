@@ -135,7 +135,7 @@ export default function MerchantApplyPage() {
             <h1 className="mb-3 text-3xl font-bold tracking-tight sm:text-4xl">Apply to sell on Seltra</h1>
             <p className="text-muted-foreground">Be among the first merchants to launch your online store in minutes with Seltra.</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              We onboard early merchants personally. Tell us about your business and we will be in touch within 24 hours.
+              We onboard early merchants personally. Tell us about your business and we will be in touch with you.
             </p>
           </div>
 
