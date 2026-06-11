@@ -172,7 +172,7 @@ export default function MerchantApplyPage() {
                 <div className="space-y-4">
                   <Field label="Full name *"><Input value={data.full_name} onChange={(event) => set('full_name', event.target.value)} placeholder="Ama Mensah" /></Field>
                   <Field label="Phone or WhatsApp *"><Input value={data.phone} onChange={(event) => set('phone', event.target.value)} placeholder="+233 24 000 0000" inputMode="tel" /></Field>
-                  <Field label="Email (optional)"><Input type="email" value={data.email} onChange={(event) => set('email', event.target.value)} placeholder="you@business.com" /></Field>
+                  <Field label="Email *"><Input type="email" value={data.email} onChange={(event) => set('email', event.target.value)} placeholder="you@business.com" /></Field>
                 </div>
               )}
 
