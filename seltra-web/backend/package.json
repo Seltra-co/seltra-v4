@@ -29,7 +29,9 @@
     "passport": "^0.7",
     "passport-jwt": "^4",
     "reflect-metadata": "^0.2",
-    "rxjs": "^7"
+    "resend": "^6.12.4",
+    "rxjs": "^7",
+    "tall": "^8.0.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10",

@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
@@ -13,40 +13,36 @@ model User {
   email        String   @unique
   passwordHash String
   name         String?
-  tenants      Tenant[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  tenants      Tenant[]
 }
 
 model Tenant {
-  id             String    @id @default(uuid())
-  ownerId        String?
-  owner          User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  name           String
-  slug           String    @unique
-  businessType   String?
-  targetAudience String?
-  platform       String    @default("Seltra")
-  status         String    @default("active")
-  canonical      Json
-  storeUrl       String?
-
-  storefrontCode          String?   //Generated HTML storefront (full page)
-  storefrontVersion       Int       @default(0)
-  storefrontGeneratedAt   DateTime?
-
-  products         Product[]
-  categories       Category[]
-  paymentProviders PaymentProvider[]
-  shippingZones    ShippingZone[]
-  orders           Order[]
-  customers        Customer[]
-  ledger           MerchantLedger?
-
-  storeDNA             Json?     // Extracted StoreDNA — industry, personality, composition
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                    String            @id @default(uuid())
+  ownerId               String?
+  name                  String
+  slug                  String            @unique
+  businessType          String?
+  targetAudience        String?
+  platform              String            @default("Seltra")
+  status                String            @default("active")
+  canonical             Json
+  storeUrl              String?
+  storefrontCode        String?
+  storefrontVersion     Int               @default(0)
+  storefrontGeneratedAt DateTime?
+  storeDNA              Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  categories            Category[]
+  customers             Customer[]
+  ledger                MerchantLedger?
+  orders                Order[]
+  paymentProviders      PaymentProvider[]
+  products              Product[]
+  shippingZones         ShippingZone[]
+  owner                 User?             @relation(fields: [ownerId], references: [id])
 
   @@index([ownerId])
 }
@@ -55,9 +51,9 @@ model Conversation {
   id        String    @id
   title     String
   userId    String    @map("user_id")
-  messages  Message[]
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  messages  Message[]
 
   @@index([userId, updatedAt(sort: Desc)], map: "Conversation_user_updated_idx")
   @@map("Conversation")
@@ -66,11 +62,11 @@ model Conversation {
 model Message {
   id             String       @id
   conversationId String       @map("conversation_id")
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   userId         String       @map("user_id")
   role           String
   content        String
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt], map: "Message_conversation_created_idx")
   @@map("Message")
@@ -79,54 +75,52 @@ model Message {
 model Category {
   id       String @id @default(uuid())
   tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name     String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
 }
 
 model Product {
-  id          String  @id @default(uuid())
+  id          String           @id @default(uuid())
   tenantId    String
-  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name        String
   description String?
-  price       Decimal @db.Decimal(10, 2)
-  currency    String  @default("GHS")
+  price       Decimal          @db.Decimal(10, 2)
+  currency    String           @default("GHS")
   category    String?
   sku         String?
   tags        Json?
-  status      String  @default("active")
-
-  images   ProductImage[]
-  variants ProductVariant[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status      String           @default("active")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  images      ProductImage[]
+  variants    ProductVariant[]
 }
 
 model ProductImage {
   id        String  @id @default(uuid())
   productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   url       String
   isPrimary Boolean @default(false)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model ProductVariant {
   id        String  @id @default(uuid())
   productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   name      String
   value     String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model PaymentProvider {
   id       String @id @default(uuid())
   tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   provider String
   config   Json?
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, provider])
 }
@@ -134,40 +128,40 @@ model PaymentProvider {
 model ShippingZone {
   id           String  @id @default(uuid())
   tenantId     String
-  tenant       Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name         String
   deliveryTime String?
   fee          String?
   metadata     Json?
+  tenant       Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
 }
 
 model Order {
-  id              String   @id @default(uuid())
+  id              String              @id @default(uuid())
   tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customerId      String?
-  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   customerEmail   String
   customerName    String?
   customerPhone   String?
   shippingAddress String?
   shippingCity    String?
   shippingCountry String?
-  marketingOptIn  Boolean  @default(false)
-  totalAmount     Decimal  @db.Decimal(10, 2)
-  currency        String   @default("GHS")
-  status          String   @default("pending")
+  marketingOptIn  Boolean             @default(false)
+  totalAmount     Decimal             @db.Decimal(10, 2)
+  currency        String              @default("GHS")
+  status          String              @default("pending")
   paystackRef     String?
   items           Json
-  disbursed       Boolean  @default(false)
+  disbursed       Boolean             @default(false)
   disbursedAt     DateTime?
-  seltraFee       Decimal? @db.Decimal(10, 2)
-  merchantAmount  Decimal? @db.Decimal(10, 2)
+  seltraFee       Decimal?            @db.Decimal(10, 2)
+  merchantAmount  Decimal?            @db.Decimal(10, 2)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
   ledgerTx        LedgerTransaction[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  customer        Customer?           @relation(fields: [customerId], references: [id])
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, customerEmail])
   @@index([customerId])
@@ -176,7 +170,6 @@ model Order {
 model Customer {
   id             String   @id @default(uuid())
   tenantId       String
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   email          String
   name           String?
   phone          String?
@@ -184,43 +177,40 @@ model Customer {
   city           String?
   country        String?
   marketingOptIn Boolean  @default(false)
-  orders         Order[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders         Order[]
 
   @@unique([tenantId, email])
   @@index([tenantId, updatedAt])
 }
 
-// Subsidiary ledger account per merchant
 model MerchantLedger {
-  id           String   @id @default(uuid())
-  tenantId     String   @unique
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  balance      Decimal  @default(0) @db.Decimal(12, 2)
-  currency     String   @default("GHS")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
+  id           String              @id @default(uuid())
+  tenantId     String              @unique
+  balance      Decimal             @default(0) @db.Decimal(12, 2)
+  currency     String              @default("GHS")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
   transactions LedgerTransaction[]
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
-// Every credit/debit on a merchant's ledger
 model LedgerTransaction {
-  id          String   @id @default(uuid())
+  id          String         @id @default(uuid())
   ledgerId    String
-  ledger      MerchantLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
   orderId     String?
-  order       Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
   type        String
-  amount      Decimal  @db.Decimal(12, 2)
-  currency    String   @default("GHS")
+  amount      Decimal        @db.Decimal(12, 2)
+  currency    String         @default("GHS")
   description String?
   meta        Json?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime       @default(now())
+  ledger      MerchantLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  order       Order?         @relation(fields: [orderId], references: [id])
 }
 
-// Master account record of every Paystack event
 model PaystackEvent {
   id            String   @id @default(uuid())
   reference     String   @unique
@@ -236,18 +226,11 @@ model PaystackEvent {
   createdAt     DateTime @default(now())
 }
 
-enum MerchantStatus {
-  pending
-  approved
-  rejected
-  suspended
-}
-
 model MerchantApplication {
-  id             String   @id @default(uuid())
+  id             String         @id @default(uuid())
   fullName       String
   phone          String
-  email          String?  @unique
+  email          String?        @unique
   businessName   String
   businessType   String
   storeName      String
@@ -261,27 +244,33 @@ model MerchantApplication {
   aiFeelings     String?
   allowAiHelp    String?
   status         MerchantStatus @default(pending)
-  merchantId     String?  @unique
+  merchantId     String?        @unique
   createdBy      String?
-  notionPageId   String?
   reviewNotes    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   @@index([status])
   @@index([merchantId])
 }
 
 model OtpCode {
-  id         String   @id @default(uuid())
-  merchantId String
-  hashedCode String
-  expiresAt  DateTime
-  used       Boolean  @default(false)
-  attempts   Int      @default(0)
+  id          String    @id @default(uuid())
+  merchantId  String
+  hashedCode  String
+  expiresAt   DateTime
+  used        Boolean   @default(false)
+  attempts    Int       @default(0)
   lockedUntil DateTime?
-  createdAt  DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([merchantId])
   @@index([expiresAt])
+}
+
+enum MerchantStatus {
+  pending
+  approved
+  rejected
+  suspended
 }

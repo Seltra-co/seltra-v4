@@ -13,6 +13,7 @@ import { KeepAliveModule } from './keep-alive/keep-alive.module'
 import { ConversationsModule } from './conversations/conversations.module'
 import { PaymentModule } from './payment/payment.module'
 import { ApplicationModule } from './application/application.module'
+import { ResendService } from './resend/resend.service';
 
 @Module({
   imports: [
@@ -32,6 +33,6 @@ import { ApplicationModule } from './application/application.module'
     KeepAliveModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, ResendService],
 })
 export class AppModule {}

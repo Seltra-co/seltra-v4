@@ -1,3 +1,4 @@
+//seltra-merchant-v5/frontend/app/apply/page.tsx`
 'use client'
 
 import { useMemo, useState } from 'react'
@@ -144,11 +145,14 @@ export default function MerchantApplyPage() {
                 <Check className="h-6 w-6 text-primary" />
               </div>
               <h2 className="mb-2 text-xl font-semibold">Application received</h2>
-              <p className="text-sm text-muted-foreground">
-                The Seltra team will reach out on <span className="font-mono text-foreground">{data.phone}</span>
-                {data.email && <> or {data.email}</>} within 24 hours to book your onboarding call.
-              </p>
-              <p className="mt-4 text-sm text-muted-foreground">Once approved, you will receive a Merchant ID to activate your dashboard.</p>
+
+          <p className="text-sm text-muted-foreground">
+            The Seltra team will reach out to you as soon as we launch to book your onboarding call.
+          </p>
+          <p className="mt-4 text-sm text-muted-foreground">Once approved, you will receive a Merchant ID to activate your dashboard.</p>
+          <p className="mt-4 text-sm text-muted-foreground">
+            Early merchants get priority onboarding and 30 days free. We can not wait to build with you. 
+          </p>
               <Button className="mt-6 rounded-md" onClick={() => router.push('/')}>Back to home</Button>
             </div>
           ) : (

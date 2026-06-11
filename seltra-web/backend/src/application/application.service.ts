@@ -1,23 +1,32 @@
+//seltra-merchant-v5/backend/src/application/application.service.ts
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { prisma } from '../db'
 import { ApplicationDto, normalizeApplicationDto } from './application.dto'
-import { NotionService } from './notion.service'
+import { ResendService } from '../resend/resend.service'
 
 @Injectable()
 export class ApplicationService {
-  constructor(private readonly notionService: NotionService) {}
+  constructor(private readonly resendService: ResendService) {}
 
   async submitApplication(dto: ApplicationDto) {
-    const data = normalizeApplicationDto(dto)
-    const application = await prisma.merchantApplication.create({ data })
-    const notionPageId = await this.notionService.createApplicationPage(dto)
+     const data = normalizeApplicationDto(dto)
 
-    if (notionPageId) {
-      await prisma.merchantApplication.update({
-        where: { id: application.id },
-        data: { notionPageId },
-      })
+      if (data.email) {
+    const existing = await prisma.merchantApplication.findUnique({
+      where: { email: data.email },
+    })
+    if (existing) {
+      throw new BadRequestException(
+        'An application with this email already exists. Try using a different email address or reach out to support.'
+      )
     }
+  }
+
+   
+    const application = await prisma.merchantApplication.create({ data })
+
+    // Fire-and-forget — email failure never blocks the applicant
+    void this.resendService.sendApplicationNotification(dto, application.id)
 
     return { success: true, applicationId: application.id }
   }

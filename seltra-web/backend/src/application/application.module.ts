@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common'
 import { ApplicationController } from './application.controller'
 import { ApplicationService } from './application.service'
-import { NotionService } from './notion.service'
+import { ResendService } from '../resend/resend.service'
 
 @Module({
   controllers: [ApplicationController],
-  providers: [ApplicationService, NotionService],
+  providers: [ApplicationService, ResendService],
 })
 export class ApplicationModule {}
