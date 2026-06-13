@@ -519,7 +519,7 @@ function Narrative() {
     <section className="border-t border-border py-20 sm:py-28">
       <div className="container mx-auto px-4 sm:px-6">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="mb-3 font-mono text-xs text-primary">{'// why now'}</p>
+          <p className="mb-3 font-mono text-xs text-primary">{'// why seltra exists'}</p>
           <h2 className="mb-6 text-2xl font-semibold leading-tight tracking-[-0.025em] sm:text-4xl md:text-5xl">
             Commerce is becoming
             <br />
