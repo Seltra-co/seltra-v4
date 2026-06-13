@@ -827,7 +827,7 @@ function CTA() {
             Your store is <span className="text-primary">one prompt</span> away.
           </h2>
           <p className="mx-auto mb-8 max-w-xl text-base text-muted-foreground sm:text-lg">
-            No code. No designers. No dashboards. Just describe what you are building.
+            No code. No designers. No manual setup. Just describe what you are building.
           </p>
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button size="lg" className="rounded-md px-7" asChild>

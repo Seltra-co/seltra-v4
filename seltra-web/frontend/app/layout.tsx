@@ -40,9 +40,9 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: 'https://www.seltra.co',
     siteName: 'Seltra',
-    title: 'Seltra — Launch a storefront today. AI agents run the business.',
+    title: 'Seltra — Launch a full storefront today. AI agents run the business.',
     description:
-      'Autonomous AI agents that handle operations, marketing, payments, and fulfillment for your online store.',
+      'Autonomous AI agents that handle commerce operations, marketing, payments, and fulfillment for your online store.',
     images: [
       {
         url: '/og-image.png',
@@ -56,9 +56,9 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     site: '@seltra_co',
     creator: '@seltra_co',
-    title: 'Seltra — Launch a storefront today. AI agents run the business.',
+    title: 'Seltra — Launch a full storefront today. AI agents run the business.',
     description:
-      'Autonomous AI agents that handle operations, marketing, payments, and fulfillment for your online store.',
+      'Autonomous AI agents that handle commerce operations, marketing, payments, and fulfillment for your online store.',
     images: ['/og-image.png'],
   },
   robots: {
