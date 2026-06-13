@@ -16,8 +16,68 @@ const displayFont = Fraunces({
 })
 
 export const metadata: Metadata = {
-  title: 'Seltra — Commerce that runs itself',
-  description: 'AI-native commerce stack. Launch your store in minutes.',
+  metadataBase: new URL('https://www.seltra.co'),
+  title: {
+    default: 'Seltra — Launch a full storefront today. AI agents run the business.',
+    template: '%s | Seltra',
+  },
+  description:
+    'Seltra deploys autonomous AI agents that manage storefronts, payments, fulfillment, marketing, and customer support — so merchants can launch and run an online business in minutes.',
+  keywords: [
+    'AI commerce platform',
+    'autonomous AI agents',
+    'storefront builder Africa',
+    'AI ecommerce Ghana',
+    'AI merchant tools',
+    'online store builder',
+    'AI agents for business',
+  ],
+  authors: [{ name: 'Seltra' }],
+  creator: 'Seltra',
+  publisher: 'Seltra',
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: 'https://www.seltra.co',
+    siteName: 'Seltra',
+    title: 'Seltra — Launch a storefront today. AI agents run the business.',
+    description:
+      'Autonomous AI agents that handle operations, marketing, payments, and fulfillment for your online store.',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Seltra — AI agents for commerce',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    site: '@seltra_co',
+    creator: '@seltra_co',
+    title: 'Seltra — Launch a storefront today. AI agents run the business.',
+    description:
+      'Autonomous AI agents that handle operations, marketing, payments, and fulfillment for your online store.',
+    images: ['/og-image.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
+  alternates: {
+    canonical: 'https://www.seltra.co',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

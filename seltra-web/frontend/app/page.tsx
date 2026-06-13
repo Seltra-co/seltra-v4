@@ -1,3 +1,4 @@
+//seltra-web/frontend/app/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -50,17 +51,27 @@ const examples = [
   'Build a handmade jewelry boutique',
 ]
 
-const logos = [
-  'Foundry Co.',
-  'Aya Botanics',
-  'Volta Supply Co.',
-  'Muse & Thread',
-  'Rafiki Studio',
-  'Forme Skincare',
-  'The Craft Edit',
-  'Indigo House',
-  'Cedar',
-  'Kora Living',
+// ─── Merchant logos ────────────────────────────────────────────────────────
+// Supabase-style trust strip: grayscale by default, full color/visible on
+// hover. Real merchant logos for Kem's Outlet and De-Yogo Bar; the rest are
+// styled text wordmarks treated the same way.
+type BrandLogo = {
+  name: string
+  img?: string
+  font?: string
+}
+
+const logos: BrandLogo[] = [
+  { name: 'Foundry Co.', font: 'font-serif italic font-semibold' },
+  { name: 'Aya Botanics', font: 'font-sans font-medium tracking-wide' },
+  { name: 'Volta Supply Co.', font: 'font-sans font-bold uppercase tracking-tight' },
+  { name: "Kem's Outlet", img: '/seltra/kems-outlet.jpg' },
+  { name: 'Rafiki Studio', font: 'font-mono font-semibold lowercase' },
+  { name: 'Forme Skincare', font: 'font-serif font-light tracking-widest uppercase' },
+  { name: 'De-Yogo Bar', img: '/seltra/deyogo-bar.jpg' },
+  { name: 'Indigo House', font: 'font-sans font-bold uppercase tracking-tight' },
+  { name: 'Cedar', font: 'font-serif font-semibold tracking-[0.2em] uppercase' },
+  { name: 'Kora Living', font: 'font-sans font-semibold' },
 ]
 
 const showcaseStores = [
@@ -93,7 +104,7 @@ const features = [
   {
     icon: CreditCard,
     title: 'Payments, built in',
-    desc: 'Paystack wired up on day one. Accept mobile money, cards, and bank transfers. Ghana and Nigeria-ready.',
+    desc: 'Cards, mobile money, and bank transfers wired up from day one. Ghana and Nigeria-ready.',
   },
   {
     icon: ImageIcon,
@@ -191,7 +202,13 @@ function Header() {
             <Link href="/#showcase" className="py-2 text-muted-foreground hover:text-primary" onClick={() => setOpen(false)}>/showcase</Link>
             <Link href="/careers" className="py-2 text-muted-foreground hover:text-primary" onClick={() => setOpen(false)}>/careers</Link>
             <Link href="/apply" className="py-2 text-muted-foreground hover:text-primary" onClick={() => setOpen(false)}>/apply</Link>
-            <Link href="/auth?next=/dashboard" className="py-2 text-muted-foreground hover:text-primary sm:hidden" onClick={() => setOpen(false)}>/merchant-login</Link>
+            <Link
+              href={authed ? '/dashboard' : '/auth?next=/dashboard'}
+              className="py-2 text-muted-foreground hover:text-primary sm:hidden"
+              onClick={() => setOpen(false)}
+            >
+              {authed ? '/dashboard' : '/merchant-login'}
+            </Link>
           </nav>
         </div>
       )}
@@ -202,9 +219,11 @@ function Header() {
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 function Hero() {
   const [chatInput, setChatInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
   const handleRun = async () => {
+    setIsLoading(true)
     const prompt = chatInput.trim()
     if (prompt) sessionStorage.setItem('seltra:pending_prompt', prompt)
 
@@ -228,6 +247,26 @@ function Hero() {
 
       <div className="container relative z-10 mx-auto px-4 sm:px-6">
         <div className="fade-in mx-auto w-full max-w-3xl space-y-3 text-center sm:space-y-4">
+          {/* Backed by Moolre */}
+          <div className="mb-1 flex justify-center">
+            <a
+              // href="https://startup.moolre.com/?product=storefront#products"
+              // target="_blank"
+              // rel="noreferrer"
+              className="group inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3.5 py-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-primary/40"
+            >
+              <span>Backed by</span>
+              <span className="inline-flex items-center gap-1.5 font-sans font-semibold">
+                <img
+                  src="/seltra/moolre-icon.png"
+                  alt="Moolre"
+                  className="h-3.5 w-3.5"
+                />
+                <span style={{ color: '#f7941d' }}>Moolre</span>
+              </span>
+            </a>
+          </div>
+
           <h1 className="text-balance px-2 text-[2rem] font-semibold leading-[1.08] tracking-[-0.035em] text-foreground sm:text-4xl md:text-5xl">
             Describe your store.
             <br />
@@ -271,11 +310,15 @@ function Hero() {
                   <button
                     type="button"
                     onClick={() => void handleRun()}
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black transition-colors hover:bg-primary hover:text-primary-foreground disabled:pointer-events-none disabled:opacity-45 sm:h-9 sm:w-9"
-                    disabled={!chatInput.trim()}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black transition-colors hover:bg-primary hover:text-primary-foreground disabled:pointer-events-none disabled:opacity-60 sm:h-9 sm:w-9"
+                    disabled={!chatInput.trim() || isLoading}
                     title="Build store"
                   >
-                    <ArrowUp className="h-4 w-4" />
+                    {isLoading ? (
+                      <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -305,8 +348,12 @@ function Hero() {
 }
 
 // ─── Trust Logos ──────────────────────────────────────────────────────────────
+// trust strip: each card shows a brand mark + name, gently
+// fading in and out on a staggered loop so the row feels alive without
+// being a distracting marquee.
 function TrustLogos() {
-  const repeatedLogos = [...logos, ...logos]
+  const repeated = [...logos, ...logos]
+
   return (
     <section className="border-y border-border bg-card/30 py-12 sm:py-16">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -321,14 +368,39 @@ function TrustLogos() {
           <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-card/95 to-transparent" />
           <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-card/95 to-transparent" />
           <div className="trust-logo-track flex w-max items-center gap-6">
-            {repeatedLogos.map((logo, index) => (
-              <div key={`${logo}-${index}`} className="flex h-16 w-44 flex-shrink-0 items-center justify-center rounded-md border border-border bg-background/70 px-5 text-center font-semibold text-muted-foreground shadow-sm">
-                {logo}
+            {repeated.map((brand, index) => (
+              <div
+                key={`${brand.name}-${index}`}
+                className="logo-fade group flex h-16 w-44 flex-shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-background/70 px-5 text-center shadow-sm"
+                style={{ animationDelay: `${(index % logos.length) * 0.45}s` }}
+              >
+                {brand.img ? (
+                  <img
+                    src={brand.img}
+                    alt={brand.name}
+                    className="h-9 w-9 rounded-full object-cover grayscale transition-all duration-300 group-hover:grayscale-0"
+                  />
+                ) : null}
+                <span
+                  className={`truncate text-muted-foreground transition-colors duration-300 group-hover:text-foreground ${brand.font ?? 'font-sans font-medium'}`}
+                >
+                  {brand.name}
+                </span>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes logo-fade {
+          0%, 100% { opacity: 0.35; }
+          50% { opacity: 1; }
+        }
+        .logo-fade {
+          animation: logo-fade 4.5s ease-in-out infinite;
+        }
+      `}</style>
     </section>
   )
 }
@@ -371,7 +443,7 @@ function Showcase() {
         <div className="mt-12 grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-card/40 sm:mt-16 lg:grid-cols-4">
           {[
             { v: '10+', l: 'Merchants in pipeline' },
-            { v: '1,800', l: 'Visits across stores / day' },
+            { v: '1,800', l: 'Visits across stores / week' },
             { v: 'GHS 42k', l: 'Daily merchant payments processed' },
             { v: '15 min', l: 'Avg. time to live' },
           ].map((stat, index, arr) => (
@@ -392,19 +464,19 @@ const steps = [
     icon: MessageSquare,
     title: 'Describe your business',
     desc: "Type what you're selling, who you're selling to, and where. The agent handles the rest.",
-    code: "$ seltra build 'skincare for gen-z in accra'",
+    // code: "$ seltra build 'skincare for gen-z in accra'",
   },
   {
     icon: Wand2,
     title: 'Agent builds your stack',
     desc: 'Products, images, storefront, domain, and payments scaffolded in under 15 minutes.',
-    code: '✓ 7 steps · 12m 04s',
+    // code: '✓ 7 steps · 12m 04s',
   },
   {
     icon: Rocket,
     title: 'Ship and scale',
     desc: 'Your store goes live on your subdomain. The agent keeps it running, updated, and converting.',
-    code: 'agent.status = autopilot',
+    // code: 'agent.status = autopilot',
   },
 ]
 
@@ -430,11 +502,46 @@ function HowItWorks() {
               </div>
               <h3 className="font-semibold text-xl mb-2">{s.title}</h3>
               <p className="text-sm text-muted-foreground leading-relaxed mb-5">{s.desc}</p>
-              <div className="font-mono text-[11px] text-primary bg-[hsl(var(--terminal-bg))] border border-border rounded-md px-3 py-2 truncate">
+              {/* <div className="font-mono text-[11px] text-primary bg-[hsl(var(--terminal-bg))] border border-border rounded-md px-3 py-2 truncate">
                 {s.code}
-              </div>
+              </div> */}
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── Narrative ──────────────────────────────────────────────────────────────
+function Narrative() {
+  return (
+    <section className="border-t border-border py-20 sm:py-28">
+      <div className="container mx-auto px-4 sm:px-6">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="mb-3 font-mono text-xs text-primary">{'// why now'}</p>
+          <h2 className="mb-6 text-2xl font-semibold leading-tight tracking-[-0.025em] sm:text-4xl md:text-5xl">
+            Commerce is becoming
+            <br />
+            <span className="text-primary">autonomous and AI-first.</span>
+          </h2>
+          <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Most small and medium businesses (SMEs) still run on a patchwork of DMs, spreadsheets, and disconnected tools — selling through Instagram, taking orders on WhatsApp, tracking inventory in a notebook, with no real storefront and no way to scale past one person doing everything manually. Going from "I sell things online" to "I run an online business" has always required a developer, a designer, and weeks of setup.
+          </p>
+          <p className="mt-6 text-base font-medium leading-relaxed text-foreground sm:text-lg">
+            We built Seltra so that gap closes to one sentence.
+          </p>
+
+          <div className="mt-10 flex items-center justify-center gap-3">
+            {/* <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card font-mono text-xs font-semibold text-foreground">
+              W
+            </div> */}
+            <img src="/seltra/william.jpg" className="h-10 w-10 rounded-full object-cover" alt="William" />
+            <div className="text-left">
+              <div className="text-sm font-medium text-foreground">William</div>
+              <div className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">Co-founder, Seltra</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -458,9 +565,9 @@ const TILE_COUNT = 132
 
 const investorStats = [
   { v: '10+', l: 'Early angels committed' },
-  { v: '10+', l: 'Merchants in pipeline' },
-  { v: 'MVP', l: 'In active development' },
-  { v: '2026', l: 'First onboarding target' },
+  { v: '10+', l: 'Merchants' },
+  { v: 'BETA', l: 'Live' },
+  { v: '15 min', l: 'Idea to live store' },
 ]
 
 function Investors() {
@@ -501,11 +608,11 @@ function Investors() {
             </p>
 
             <div className="mt-6 inline-flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground border border-border rounded-full px-4 py-2 bg-card/40">
-              <span>+ Friends &amp; family round</span>
-              <span className="text-border">·</span>
-              <span>YC Standard SAFE</span>
-              <span className="text-border">·</span>
-              <span>$50K cap</span>
+              {/* <span>+ Friends &amp; family round</span> */}
+              {/* <span className="text-border">·</span> */}
+              <span>Featured: Moolre Spotlight, Demo Fridays 8.0</span>
+              {/* <span className="text-border">·</span>
+              <span>$50K cap</span> */}
             </div>
 
             <div className="mt-8 grid grid-cols-2 gap-px bg-border rounded-2xl overflow-hidden border border-border max-w-lg">
@@ -700,6 +807,10 @@ function Features() {
             </div>
           ))}
         </div>
+
+        <p className="mt-5 text-center font-mono text-[11px] text-muted-foreground">
+          SSL/TLS encrypted · PCI-compliant payment processing · Your data stays private and protected
+        </p>
       </div>
     </section>
   )
@@ -780,6 +891,7 @@ export default function LandingPage() {
       <Showcase />
       <Features />
       <HowItWorks />
+      <Narrative />
       <Investors />
       <CTA />
       <Footer />
