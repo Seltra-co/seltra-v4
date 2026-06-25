@@ -15,68 +15,108 @@ const displayFont = Fraunces({
   style: ['normal', 'italic'],
 })
 
+const siteUrl = 'https://www.seltra.co'
+const siteImage ='https://res.cloudinary.com/dfmsaarli/image/upload/favicon-48x48_rtftsi.png'
+const siteImageGraph = 'https://www.seltra.co/og-image.png'
+
 export const metadata: Metadata = {
-  metadataBase: new URL('https://www.seltra.co'),
+  metadataBase: new URL(siteUrl),
+
   title: {
-    default: 'Seltra — Launch a full storefront today. AI agents run the business.',
+    default: 'Seltra | AI Commerce Platform for Modern Businesses',
     template: '%s | Seltra',
   },
+
   description:
-    'Seltra deploys autonomous AI agents that manage storefronts, payments, fulfillment, marketing, and customer support — so merchants can launch and run an online business in minutes.',
+    'Launch an AI-powered online business in minutes. Seltra deploys autonomous AI agents to manage your storefront, inventory, payments, customer support, marketing, and fulfillment—all from a single platform.',
+
+  applicationName: 'Seltra',
+
   keywords: [
-    'AI commerce platform',
-    'autonomous AI agents',
-    'storefront builder Africa',
-    'AI ecommerce Ghana',
-    'AI merchant tools',
+    'Seltra',
+    'AI commerce',
+    'AI ecommerce',
+    'AI storefront',
+    'AI online store',
+    'AI business',
+    'AI agents',
+    'AI shopping',
+    'commerce automation',
+    'ecommerce automation',
     'online store builder',
-    'AI agents for business',
+    'AI website builder',
+    'merchant platform',
+    'AI startup',
+    'digital commerce',
+    'small business software',
+    'Africa ecommerce',
+    'Ghana ecommerce',
+    'AI business platform',
+    'AI merchant tools',
+    'storefront builder',
   ],
+
   authors: [{ name: 'Seltra' }],
   creator: 'Seltra',
   publisher: 'Seltra',
-  openGraph: {
-    type: 'website',
-    locale: 'en_US',
-    url: 'https://www.seltra.co',
-    siteName: 'Seltra',
-    title: 'Seltra — Launch a full storefront today. AI agents run the business.',
-    description:
-      'Autonomous AI agents that handle commerce operations, marketing, payments, and fulfillment for your online store.',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'Seltra — AI agents for commerce',
-      },
-    ],
+
+  category: 'Technology',
+
+  referrer: 'origin-when-cross-origin',
+
+  alternates: {
+    canonical: siteUrl,
   },
-  twitter: {
-    card: 'summary_large_image',
-    site: '@seltra_co',
-    creator: '@seltra_co',
-    title: 'Seltra — Launch a full storefront today. AI agents run the business.',
-    description:
-      'Autonomous AI agents that handle commerce operations, marketing, payments, and fulfillment for your online store.',
-    images: ['/og-image.png'],
-  },
+
   robots: {
     index: true,
     follow: true,
+    nocache: false,
     googleBot: {
       index: true,
       follow: true,
+      'max-video-preview': -1,
       'max-image-preview': 'large',
       'max-snippet': -1,
     },
   },
+
   icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    icon: [
+      { url: siteImage, type: 'image/png' },
+    ],
+    shortcut: siteImage,
+    apple: siteImage,
   },
-  alternates: {
-    canonical: 'https://www.seltra.co',
+
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: siteUrl,
+    siteName: 'Seltra',
+    title: 'Seltra — AI Commerce Platform',
+    description:
+      'Autonomous AI agents that launch and operate your online business—from storefront creation to payments, fulfillment, customer support, and growth.',
+
+    images: [
+      {
+        url: siteImageGraph,
+        width: 1200,
+        height: 630,
+        alt: "Seltra — AI Commerce Platform",
+      },
+    ],
+  },
+
+  twitter: {
+    card: 'summary_large_image',
+    site: '@seltra_co',
+    creator: '@seltra_co',
+    title: 'Seltra — AI Commerce Platform',
+    description:
+      'Launch an AI-powered business in minutes with autonomous AI agents.',
+
+    images: [siteImage],
   },
 }
 
@@ -95,6 +135,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           disableTransitionOnChange
           storageKey="seltra-theme"
         >
+          <script
+  type="application/ld+json"
+  dangerouslySetInnerHTML={{
+    __html: JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'Seltra',
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Web',
+      url: 'https://www.seltra.co',
+      logo: siteImage,
+      image: siteImage,
+      description:
+        'AI-native commerce platform that launches and operates online businesses using autonomous AI agents.',
+      creator: {
+        '@type': 'Organization',
+        name: 'Seltra',
+      },
+    }),
+  }}
+/>
+
           <StoreProvider>
             {children}
           </StoreProvider>

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MessageSquare, Wand2, Rocket } from 'lucide-react'
+import { Linkedin } from "lucide-react";
+import { SiX } from "@icons-pack/react-simple-icons";
 import { Input } from '@/components/ui/input'
 import { toast } from '@/hooks/use-toast'
 
@@ -864,12 +866,25 @@ function Footer() {
             <Link href="/careers" className="transition-colors hover:text-primary">careers</Link>
             <Link href="/terms" className="transition-colors hover:text-primary">terms</Link>
             <Link href="/privacy" className="transition-colors hover:text-primary">privacy</Link>
-            <a href="https://x.com/seltra" target="_blank" rel="noreferrer" className="transition-colors hover:text-primary" aria-label="Twitter">
-              <Twitter className="h-4 w-4" />
-            </a>
-            <a href="https://github.com/" target="_blank" rel="noreferrer" className="transition-colors hover:text-primary" aria-label="GitHub">
-              <Github className="h-4 w-4" />
-            </a>
+                <a
+            href="https://x.com/seltra_co"
+            target="_blank"
+            rel="noreferrer"
+            className="transition-colors hover:text-primary"
+            aria-label="X"
+          >
+            <SiX size={16} />
+          </a>
+
+          <a
+            href="https://www.linkedin.com/company/seltra-inc/"
+            target="_blank"
+            rel="noreferrer"
+            className="transition-colors hover:text-primary"
+            aria-label="LinkedIn"
+          >
+            <Linkedin className="h-4 w-4" />
+          </a>
           </div>
         </div>
         <div className="mt-8 flex flex-col justify-between gap-2 border-t border-border pt-6 font-mono text-[11px] text-muted-foreground sm:flex-row">
