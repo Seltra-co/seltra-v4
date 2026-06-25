@@ -1,21 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  ArrowLeft,
-  ChevronRight,
-  DollarSign,
-  Eye,
-  EyeOff,
-  FileText,
-  Package,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Store,
-  Truck,
+  ArrowLeft, ChevronRight, DollarSign, Eye, EyeOff,
+  FileText, Package, Search, ShieldCheck, Sparkles, Store, Truck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -28,13 +18,8 @@ type Step = 'welcome' | 'terms' | 'privacy' | 'business' | 'product' | 'revenue'
 const order: Step[] = ['welcome', 'terms', 'privacy', 'business', 'product', 'revenue', 'prompt']
 
 const businesses = [
-  'Fashion & Apparel',
-  'Beauty & Skincare',
-  'Food & Beverage',
-  'Electronics',
-  'Home & Lifestyle',
-  'Digital Products',
-  'Other',
+  'Fashion & Apparel', 'Beauty & Skincare', 'Food & Beverage',
+  'Electronics', 'Home & Lifestyle', 'Digital Products', 'Other',
 ]
 
 const productLabels: Record<string, string> = {
@@ -52,9 +37,7 @@ function getUser() {
   try {
     const raw = localStorage.getItem('seltra:user')
     return raw ? JSON.parse(raw) as { email?: string; user_metadata?: Record<string, string | undefined> } : null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 async function apiFetch<T>(path: string, opts: RequestInit = {}) {
@@ -64,7 +47,6 @@ async function apiFetch<T>(path: string, opts: RequestInit = {}) {
     ...(opts.headers as Record<string, string> ?? {}),
   }
   if (token) headers.Authorization = `Bearer ${token}`
-
   try {
     const res = await fetch(`${API_BASE}${path}`, { ...opts, headers })
     const json = await res.json().catch(() => ({}))
@@ -76,12 +58,7 @@ async function apiFetch<T>(path: string, opts: RequestInit = {}) {
 }
 
 function storeNameFromPrompt(prompt: string, business: string) {
-  const clean = prompt
-    .trim()
-    .replace(/\s+/g, ' ')
-    .split(/[.!?]/)[0]
-    .slice(0, 48)
-    .trim()
+  const clean = prompt.trim().replace(/\s+/g, ' ').split(/[.!?]/)[0].slice(0, 48).trim()
   if (clean) return clean
   return business ? `${business} Store` : 'My Seltra Store'
 }
@@ -97,27 +74,23 @@ export default function OnboardingPage() {
   const [revenue, setRevenue] = useState('')
   const [prompt, setPrompt] = useState('')
   const [creating, setCreating] = useState(false)
+  // Ref-based guard so HMR reloads don't reset the in-flight lock
+  const creatingRef = useRef(false)
 
   useEffect(() => {
     const init = async () => {
-      if (!getToken()) {
-        router.replace('/auth?next=/onboarding')
-        return
-      }
-
+      if (!getToken()) { router.replace('/auth?next=/onboarding'); return }
       const { data } = await apiFetch<StoreData[]>('/api/v1/seltra/store')
       if (Array.isArray(data) && data.length > 0) {
         setActiveStore(data[0])
-        router.replace('/dashboard')
+        window.location.href = '/dashboard'
         return
       }
-
       const user = getUser()
       const meta = user?.user_metadata ?? {}
       const userName = meta.full_name || meta.name || user?.email?.split('@')[0]
       if (userName) setName(String(userName).split(' ')[0])
     }
-
     void init()
     const pending = sessionStorage.getItem('seltra:pending_prompt')
     if (pending) setPrompt(pending)
@@ -125,23 +98,16 @@ export default function OnboardingPage() {
 
   const idx = order.indexOf(step)
   const progress = ((idx + 1) / order.length) * 100
-
-  const next = () => {
-    const i = order.indexOf(step)
-    if (i < order.length - 1) setStep(order[i + 1])
-  }
-
-  const back = () => {
-    const i = order.indexOf(step)
-    if (i > 0) setStep(order[i - 1])
-  }
+  const next = () => { const i = order.indexOf(step); if (i < order.length - 1) setStep(order[i + 1]) }
+  const back = () => { const i = order.indexOf(step); if (i > 0) setStep(order[i - 1]) }
 
   const finish = async () => {
     const text = prompt.trim()
-    if (!text || creating) return
+    // Double-guard: ref persists across HMR, state drives UI
+    if (!text || creatingRef.current) return
 
+    creatingRef.current = true
     setCreating(true)
-    sessionStorage.setItem('seltra:pending_prompt', text)
 
     const { data, error } = await apiFetch<{ store: StoreData }>('/api/v1/seltra/store', {
       method: 'POST',
@@ -151,7 +117,9 @@ export default function OnboardingPage() {
         targetAudience: [
           productLabels[product] ?? product,
           revenue ? `monthly revenue: ${revenue}` : '',
-          privacy === 'share' ? 'conversation sharing: anonymized improvement ok' : 'conversation sharing: private',
+          privacy === 'share'
+            ? 'conversation sharing: anonymized improvement ok'
+            : 'conversation sharing: private',
         ].filter(Boolean).join('; '),
         prompt: text,
       }),
@@ -159,21 +127,22 @@ export default function OnboardingPage() {
 
     if (error || !data?.store) {
       toast.error(error || 'Could not create your store')
+      creatingRef.current = false
       setCreating(false)
       return
     }
 
     setActiveStore(data.store)
-    router.push('/dashboard')
+    // Hard navigate — avoids any race between router, StoreContext, and HMR
+    window.location.href = '/dashboard'
   }
 
   return (
     <div className="auth-aurora relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,transparent_30%,hsl(0_0%_0%/0.6))]" />
-
       <div className="relative w-full max-w-xl">
         <Link href="/" className="mb-6 flex items-center justify-center gap-2">
-          <img src="/seltra/seltra-icon.png" alt="Seltra" className="h-9 w-9 rounded-xl" />
+          <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1782364695/ICON_large_ngiv41.png" alt="Seltra" className="h-9 w-10 rounded-xl" />
           <span className="font-mono text-lg font-semibold text-white">seltra</span>
         </Link>
 
@@ -220,21 +189,15 @@ export default function OnboardingPage() {
           {step === 'terms' && (
             <div className="text-center">
               <h1 className="mb-2 text-2xl font-semibold text-white">Terms & Privacy</h1>
-              <p className="mb-7 text-sm text-white/55">
-                Before we get started, please review our privacy practices and terms of service.
-              </p>
+              <p className="mb-7 text-sm text-white/55">Before we get started, please review our privacy practices and terms of service.</p>
               <div className="mb-8 space-y-2.5 text-left">
                 <Link href="/privacy" target="_blank" className="glass-soft flex items-center gap-3 rounded-2xl border border-transparent px-4 py-3.5 transition hover:border-white/20">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
-                    <ShieldCheck className="h-4 w-4 text-primary" />
-                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><ShieldCheck className="h-4 w-4 text-primary" /></div>
                   <div className="flex-1 text-sm font-semibold text-white">Privacy Practices</div>
                   <ChevronRight className="h-4 w-4 text-white/40" />
                 </Link>
                 <Link href="/terms" target="_blank" className="glass-soft flex items-center gap-3 rounded-2xl border border-transparent px-4 py-3.5 transition hover:border-white/20">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
-                    <FileText className="h-4 w-4 text-primary" />
-                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10"><FileText className="h-4 w-4 text-primary" /></div>
                   <div className="flex-1 text-sm font-semibold text-white">Terms of Service</div>
                   <ChevronRight className="h-4 w-4 text-white/40" />
                 </Link>
@@ -254,7 +217,8 @@ export default function OnboardingPage() {
                   { v: 'share' as const, t: 'Share Conversations', s: 'Help us improve Seltra by sharing anonymized conversations. We only see what was said, never who said it.', i: Eye },
                   { v: 'keep' as const, t: 'Keep Private', s: 'Your conversations stay private, out of analytics, and never used to improve Seltra.', i: EyeOff },
                 ].map((option) => (
-                  <button key={option.v} onClick={() => setPrivacy(option.v)} className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-all ${privacy === option.v ? 'border-white/40 bg-white/10' : 'glass-soft hover:border-white/20'}`}>
+                  <button key={option.v} onClick={() => setPrivacy(option.v)}
+                    className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-all ${privacy === option.v ? 'border-white/40 bg-white/10' : 'glass-soft hover:border-white/20'}`}>
                     <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white/10">
                       <option.i className="h-4 w-4 text-primary" />
                     </div>
@@ -278,7 +242,8 @@ export default function OnboardingPage() {
               <p className="mb-7 text-sm text-white/55">Helps your agent pick the right playbook.</p>
               <div className="mb-8 grid grid-cols-2 gap-2.5">
                 {businesses.map((item) => (
-                  <button key={item} onClick={() => setBusiness(item)} className={`rounded-2xl border p-3.5 text-left text-sm font-medium transition-all ${business === item ? 'border-white/40 bg-white/10 text-white' : 'glass-soft text-white/80 hover:border-white/20'}`}>
+                  <button key={item} onClick={() => setBusiness(item)}
+                    className={`rounded-2xl border p-3.5 text-left text-sm font-medium transition-all ${business === item ? 'border-white/40 bg-white/10 text-white' : 'glass-soft text-white/80 hover:border-white/20'}`}>
                     {item}
                   </button>
                 ))}
@@ -297,7 +262,8 @@ export default function OnboardingPage() {
                   { v: 'exploring', t: 'No, still exploring', s: 'Looking for the right product', i: Search },
                   { v: 'dropship', t: 'I want to dropship', s: 'Source winners and sell', i: Truck },
                 ].map((option) => (
-                  <button key={option.v} onClick={() => setProduct(option.v)} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-all ${product === option.v ? 'border-white/40 bg-white/10' : 'glass-soft hover:border-white/20'}`}>
+                  <button key={option.v} onClick={() => setProduct(option.v)}
+                    className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-all ${product === option.v ? 'border-white/40 bg-white/10' : 'glass-soft hover:border-white/20'}`}>
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
                       <option.i className="h-4 w-4 text-primary" />
                     </div>
@@ -323,7 +289,8 @@ export default function OnboardingPage() {
                   { v: '5-50k', t: '$5K - $50K', s: 'Per month' },
                   { v: '50k+', t: '$50K+', s: 'Per month' },
                 ].map((option) => (
-                  <button key={option.v} onClick={() => setRevenue(option.v)} className={`rounded-2xl border p-4 text-left transition-all ${revenue === option.v ? 'border-white/40 bg-white/10' : 'glass-soft hover:border-white/20'}`}>
+                  <button key={option.v} onClick={() => setRevenue(option.v)}
+                    className={`rounded-2xl border p-4 text-left transition-all ${revenue === option.v ? 'border-white/40 bg-white/10' : 'glass-soft hover:border-white/20'}`}>
                     <div className="mb-1 flex items-center gap-2">
                       <DollarSign className="h-3.5 w-3.5 text-primary" />
                       <div className="text-sm font-semibold text-white">{option.t}</div>
@@ -346,14 +313,18 @@ export default function OnboardingPage() {
                   <span className="text-primary">$</span>
                   <textarea
                     value={prompt}
-                    onChange={(event) => setPrompt(event.target.value)}
+                    onChange={(e) => setPrompt(e.target.value)}
                     placeholder="e.g. handmade shea butter skincare for young women in Accra and Lagos..."
                     className="min-h-[140px] flex-1 resize-none border-none bg-transparent text-white placeholder:text-white/30 focus:outline-none"
                     autoFocus
                   />
                 </div>
               </div>
-              <Button onClick={() => void finish()} disabled={!prompt.trim() || creating} className="h-12 w-full rounded-full bg-white font-medium text-black hover:bg-white/90 disabled:opacity-40">
+              <Button
+                onClick={() => void finish()}
+                disabled={!prompt.trim() || creating}
+                className="h-12 w-full rounded-full bg-white font-medium text-black hover:bg-white/90 disabled:opacity-40"
+              >
                 {creating ? 'Creating store...' : 'Build my store ->'}
               </Button>
             </div>

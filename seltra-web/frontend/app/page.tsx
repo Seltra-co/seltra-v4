@@ -62,16 +62,16 @@ type BrandLogo = {
 }
 
 const logos: BrandLogo[] = [
-  { name: 'Foundry Co.', font: 'font-serif italic font-semibold' },
-  { name: 'Aya Botanics', font: 'font-sans font-medium tracking-wide' },
-  { name: 'Volta Supply Co.', font: 'font-sans font-bold uppercase tracking-tight' },
+  { name: 'Glow Circle Beauty', img: '/seltra/Glow_Circle_Beauty.jpg' },
+  { name: 'Amy Beats',  img: '/seltra/Amy_Beats.jpg' },
+  { name: 'Colossals', font: 'font-sans font-bold uppercase tracking-tight' },
   { name: "Kem's Outlet", img: '/seltra/kems-outlet.jpg' },
-  { name: 'Rafiki Studio', font: 'font-mono font-semibold lowercase' },
-  { name: 'Forme Skincare', font: 'font-serif font-light tracking-widest uppercase' },
+  { name: "Jay's Collection", font: 'font-sans font-medium tracking-wide' },
+  { name: 'Waffles & Co.', font: 'font-serif font-light tracking-widest uppercase' },
   { name: 'De-Yogo Bar', img: '/seltra/deyogo-bar.jpg' },
-  { name: 'Indigo House', font: 'font-sans font-bold uppercase tracking-tight' },
-  { name: 'Cedar', font: 'font-serif font-semibold tracking-[0.2em] uppercase' },
-  { name: 'Kora Living', font: 'font-sans font-semibold' },
+  { name: 'Favera', img: '/seltra/favera.jpeg' },
+  { name: 'I&R Kicks', img: '/seltra/i&R.jpeg' },
+  { name: 'Stacey’s Ts', img: '/seltra/stacey_ts.jpg'},
 ]
 
 const showcaseStores = [
@@ -170,7 +170,7 @@ function Header() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex min-w-0 items-center gap-6 lg:gap-10">
             <Link href="/" className="flex min-w-0 items-center gap-2">
-              <img src="/seltra/seltra-icon.png" alt="Seltra" className="h-7 w-7 shrink-0 rounded-md" />
+              <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1782364695/ICON_large_ngiv41.png" alt="Seltra" className="h-9 w-9 shrink-0 rounded-md" />
               <span className="font-mono font-semibold tracking-tight text-foreground">seltra</span>
               <span className="hidden rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">beta</span>
             </Link>
@@ -442,10 +442,10 @@ function Showcase() {
 
         <div className="mt-12 grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-card/40 sm:mt-16 lg:grid-cols-4">
           {[
-            { v: '10+', l: 'Merchants in pipeline' },
+            { v: '15+', l: 'Merchants in pipeline' },
             { v: '1,800', l: 'Visits across stores / week' },
             { v: 'GHS 42k', l: 'Daily merchant payments processed' },
-            { v: '15 min', l: 'Avg. time to live' },
+            { v: '15 min', l: 'Avg. time to go live' },
           ].map((stat, index, arr) => (
             <div key={stat.l} className={`border-border p-6 text-center ${index < arr.length - 1 ? 'border-r' : ''} ${index < 2 ? 'border-b lg:border-b-0' : ''}`}>
               <div className="text-2xl font-semibold tracking-tight text-primary sm:text-3xl">{stat.v}</div>
@@ -565,7 +565,7 @@ const TILE_COUNT = 132
 
 const investorStats = [
   { v: '10+', l: 'Early angels committed' },
-  { v: '10+', l: 'Merchants' },
+  { v: '15+', l: 'Merchants' },
   { v: 'BETA', l: 'Live' },
   { v: '15 min', l: 'Idea to live store' },
 ]
@@ -854,7 +854,7 @@ function Footer() {
         <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div>
             <Link href="/" className="mb-2 flex items-center gap-2">
-              <img src="/seltra/seltra-icon.png" alt="Seltra" className="h-6 w-6 rounded-md" />
+              <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1782364695/ICON_large_ngiv41.png" alt="Seltra" className="h-7 w-7 rounded-md" />
               <span className="font-mono font-semibold">seltra</span>
             </Link>
             <p className="max-w-md text-sm text-muted-foreground">Commerce that runs itself.</p>

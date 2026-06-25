@@ -82,7 +82,7 @@ function AuthContent() {
       <div className="relative w-full max-w-md">
         <Link href="/" className="mb-6 flex items-center justify-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/20">
-            <span className="font-mono text-sm font-bold text-primary">S</span>
+              <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1782364695/ICON_large_ngiv41.png" alt="Seltra" className="h-7 w-7 rounded-md" />
           </div>
           <span className="font-mono text-lg font-semibold text-white">seltra</span>
         </Link>
