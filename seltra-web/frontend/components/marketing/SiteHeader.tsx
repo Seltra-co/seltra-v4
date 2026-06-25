@@ -22,7 +22,7 @@ export function SiteHeader() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex min-w-0 items-center gap-6 lg:gap-10">
             <Link href="/" className="flex min-w-0 items-center gap-2">
-              <Image src="/seltra/seltra-icon.png" alt="Seltra" width={28} height={28} className="shrink-0 rounded-md" />
+              <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1782364695/ICON_large_ngiv41.png" alt="Seltra" className="h-9 w-9 rounded-md" />
               <span className="font-mono font-semibold tracking-tight text-foreground">seltra</span>
               <span className="hidden rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">beta</span>
             </Link>

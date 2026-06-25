@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { Github, Twitter } from 'lucide-react'
+import { Linkedin } from "lucide-react";
+import { SiX } from "@icons-pack/react-simple-icons";
 
 export function SiteFooter() {
   return (
@@ -9,7 +11,7 @@ export function SiteFooter() {
         <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div>
             <Link href="/" className="mb-2 flex items-center gap-2">
-              <Image src="/seltra/seltra-icon.png" alt="Seltra" width={24} height={24} className="rounded-md" />
+          <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1782364695/ICON_large_ngiv41.png" alt="Seltra" className="h-7 w-7 rounded-xl" />
               <span className="font-mono font-semibold">seltra</span>
             </Link>
             <p className="max-w-md text-sm text-muted-foreground">Commerce that runs itself.</p>
@@ -18,12 +20,25 @@ export function SiteFooter() {
             <Link href="/careers" className="transition-colors hover:text-primary">careers</Link>
             <Link href="/terms" className="transition-colors hover:text-primary">terms</Link>
             <Link href="/privacy" className="transition-colors hover:text-primary">privacy</Link>
-            <a href="https://x.com/seltra" target="_blank" rel="noreferrer" className="transition-colors hover:text-primary" aria-label="Twitter">
-              <Twitter className="h-4 w-4" />
-            </a>
-            <a href="https://github.com/" target="_blank" rel="noreferrer" className="transition-colors hover:text-primary" aria-label="GitHub">
-              <Github className="h-4 w-4" />
-            </a>
+          <a
+            href="https://x.com/seltra_co"
+            target="_blank"
+            rel="noreferrer"
+            className="transition-colors hover:text-primary"
+            aria-label="X"
+          >
+            <SiX size={16} />
+          </a>
+
+          <a
+            href="https://www.linkedin.com/company/seltra-inc/"
+            target="_blank"
+            rel="noreferrer"
+            className="transition-colors hover:text-primary"
+            aria-label="LinkedIn"
+          >
+            <Linkedin className="h-4 w-4" />
+          </a>
           </div>
         </div>
         <div className="mt-8 flex flex-col justify-between gap-2 border-t border-border pt-6 font-mono text-[11px] text-muted-foreground sm:flex-row">
