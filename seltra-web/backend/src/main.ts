@@ -2,10 +2,15 @@
 import { NestFactory } from '@nestjs/core'
 import { Logger } from '@nestjs/common'
 import { AppModule } from './app.module'
+import * as bodyParser from 'body-parser'
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap')
   const app = await NestFactory.create(AppModule)
+
+  // Raise JSON + raw body limits to handle base64 image uploads (default is 100kb)
+  app.use(bodyParser.json({ limit: '15mb' }))
+  app.use(bodyParser.urlencoded({ limit: '15mb', extended: true }))
 
   app.enableCors({
     origin: ['http://localhost:3000', 'https://seltra.co', 'https://www.seltra.co', 'https://seltra-merchant.vercel.app/'],

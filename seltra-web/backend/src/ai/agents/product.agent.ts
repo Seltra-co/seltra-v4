@@ -77,7 +77,7 @@ const PRODUCT_SYSTEM_PROMPT = `You are Seltra's Product Generator AI.
 Given a store blueprint, generate a realistic product catalog.
 
 Rules:
-1. Generate exactly 8 products.
+1. Generate exactly 20 products.
 2. Return ONLY a valid JSON array. No markdown, no explanation, no code blocks.
 3. Use GHS (Ghanaian Cedi) as the currency.
 4. Prices must be realistic for the Ghanaian/African market.
@@ -108,25 +108,23 @@ function cleanJSON(raw: string): string {
   return s.trim()
 }
 
+
 function fallbackProducts(blueprint: CanonicalStore): GeneratedProduct[] {
   const categories = blueprint.productCategories.length > 0 ? blueprint.productCategories : ['Featured']
   const names = [
-    'Starter Set',
-    'Daily Essential',
-    'Signature Bundle',
-    'Premium Kit',
-    'Travel Pack',
-    'Gift Box',
-    'Limited Drop',
-    'Refill Pack',
+    'Starter Set', 'Daily Essential', 'Signature Bundle', 'Premium Kit',
+    'Travel Pack', 'Gift Box', 'Limited Drop', 'Refill Pack',
+    'Discovery Kit', 'Luxury Edition', 'Mini Collection', 'Value Pack',
+    'Seasonal Special', 'Core Essential', 'Pro Bundle', 'Sample Set',
+    'Bestseller Box', 'New Arrival', 'Classic Set', 'Exclusive Drop',
   ]
 
   return names.map((name, index) => {
     const category = categories[index % categories.length]
     return {
-      name: `${blueprint.businessName} ${name}`,
+      name: `${blueprint.brandName || blueprint.businessName.split(' ').slice(0, 2).join(' ')} ${name}`,
       description: `A customer-ready ${category.toLowerCase()} product for ${blueprint.targetAudience}. Designed as part of the first Seltra-generated catalog.`,
-      price: 45 + index * 12,
+      price: 45 + index * 8,
       currency: 'GHS',
       category,
       sku: `SKU-${String(index + 1).padStart(3, '0')}`,
@@ -209,9 +207,9 @@ export async function generateProducts(blueprint: CanonicalStore): Promise<{
           `Type: ${blueprint.businessType}\n` +
           `Target Audience: ${blueprint.targetAudience}\n` +
           `Categories: ${blueprint.productCategories.join(', ')}\n\n` +
-          `Generate 8 realistic products for this store.`,
+          `Generate 20 realistic products for this store.`,
       },
-    ], { maxTokens: 500 })
+    ], { maxTokens: 700 })
   } catch (error) {
     const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint))
     return {

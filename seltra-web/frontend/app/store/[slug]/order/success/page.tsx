@@ -22,16 +22,37 @@ export default function OrderSuccessPage() {
     }
 
     let cancelled = false
-    const verify = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/v1/payment/verify?reference=${encodeURIComponent(reference)}`)
-        const data = await res.json().catch(() => ({}))
-        if (cancelled) return
-        setStatus(data?.success ? 'Payment received. Your order is pending fulfillment.' : 'Payment is being confirmed. Receipt details will follow by email.')
-      } catch {
-        if (!cancelled) setStatus('Payment is being confirmed. Receipt details will follow by email.')
-      }
+    // const verify = async () => {
+    //   try {
+    //     const res = await fetch(`${API_BASE}/api/v1/payment/verify?reference=${encodeURIComponent(reference)}`)
+    //     const data = await res.json().catch(() => ({}))
+    //     if (cancelled) return
+    //     setStatus(data?.success ? 'Payment received. Your order is pending fulfillment.' : 'Payment is being confirmed. Receipt details will follow by email.')
+    //   } catch {
+    //     if (!cancelled) setStatus('Payment is being confirmed. Receipt details will follow by email.')
+    //   }
+    // }
+    // Replace the verify() function body inside the useEffect in order/success/page.tsx
+
+const verify = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/payment/verify?reference=${encodeURIComponent(reference)}`)
+    const data = await res.json().catch(() => ({}))
+    if (cancelled) return
+
+    if (data?.success) {
+      setStatus('Payment received. Your order is being prepared.')
+    } else if (data?.status === 'pending') {
+      setStatus('Payment is being confirmed — this can take up to 60 seconds. This page will update automatically.')
+      // Poll again in 8 seconds if still pending
+      setTimeout(() => { if (!cancelled) void verify() }, 8000)
+    } else {
+      setStatus('Payment is being confirmed. Receipt details will follow by email.')
     }
+  } catch {
+    if (!cancelled) setStatus('Payment is being confirmed. Receipt details will follow by email.')
+  }
+}
     void verify()
     return () => { cancelled = true }
   }, [])

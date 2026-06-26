@@ -6,7 +6,7 @@ import { Check, Loader2, Brain, Package, Palette, CreditCard, Rocket, Zap } from
 const STEP_DEFS = [
   { key:'intent',    label:'Understanding your business', sub:'Extracting brand DNA from your prompt',  icon:Brain    },
   { key:'blueprint', label:'Reasoning about your store',  sub:'Selecting layout, theme, and sections', icon:Zap      },
-  { key:'products',  label:'Building your catalog',       sub:'Generating 8 launch-ready products',    icon:Package  },
+  { key:'products',  label:'Building your catalog',       sub:'Generating 20+ launch-ready products',    icon:Package  },
   { key:'brand',     label:'Designing your brand',        sub:'Palette, fonts, and visual identity',   icon:Palette  },
   { key:'payments',  label:'Setting up payments',         sub:'Wiring Paystack for GHS checkout',      icon:CreditCard },
   { key:'deploy',    label:'Deploying your storefront',   sub:'Publishing to yourstore.seltra.co',     icon:Rocket   },

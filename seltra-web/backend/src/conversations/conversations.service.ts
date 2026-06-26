@@ -1,5 +1,5 @@
 //seltra/backend/src/conversations/conversations.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common'
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { randomUUID } from 'crypto'
 import { prisma } from '../db'
@@ -24,6 +24,7 @@ type MessageRow = {
 @Injectable()
 export class ConversationsService {
   constructor(private readonly jwtService: JwtService) {}
+    private readonly logger = new Logger(ConversationsService.name)
 
   private ready?: Promise<void>
 
@@ -109,29 +110,41 @@ export class ConversationsService {
     return { success: rows.length > 0 }
   }
 
-  async createMessage(
-    conversationId: string,
-    body: { user_id?: string; role: 'user' | 'assistant'; content: string },
-    authorization?: string,
-  ) {
-    await this.ensureTables()
-    const userId = await this.userId(authorization, body.user_id)
-    const rows = await prisma.$queryRawUnsafe<MessageRow[]>(
-      `INSERT INTO "Message" (id, conversation_id, user_id, role, content)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, conversation_id, user_id, role, content, created_at`,
-      randomUUID(),
-      conversationId,
-      userId,
-      body.role,
-      body.content,
-    )
-    await prisma.$executeRawUnsafe(
-      `UPDATE "Conversation" SET updated_at = now() WHERE id = $1`,
-      conversationId,
-    )
-    return rows[0]
+async createMessage(
+  conversationId: string,
+  body: { user_id?: string; role: 'user' | 'assistant'; content: string },
+  authorization?: string,
+) {
+  await this.ensureTables()
+  const userId = await this.userId(authorization, body.user_id)
+
+  // Guard: verify the conversation exists before inserting the message
+  const convExists = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+    `SELECT id FROM "Conversation" WHERE id = $1 LIMIT 1`,
+    conversationId,
+  )
+  if (!convExists || convExists.length === 0) {
+    this.logger.warn?.(`[Conversations] Skipping message — conversation ${conversationId} not found`)
+    // Return a no-op row rather than throwing, so the frontend doesn't error
+    return null
   }
+
+  const rows = await prisma.$queryRawUnsafe<MessageRow[]>(
+    `INSERT INTO "Message" (id, conversation_id, user_id, role, content)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, conversation_id, user_id, role, content, created_at`,
+    randomUUID(),
+    conversationId,
+    userId,
+    body.role,
+    body.content,
+  )
+  await prisma.$executeRawUnsafe(
+    `UPDATE "Conversation" SET updated_at = now() WHERE id = $1`,
+    conversationId,
+  )
+  return rows[0]
+}
 
   private async userId(authorization?: string, fallbackUserId?: string) {
     const token = authorization?.replace(/^Bearer\s+/i, '')

@@ -66,6 +66,61 @@ async function saveMessage(conversationId: string | undefined, role: 'user' | 'a
   })
 }
 
+async function compressImage(file: File, maxPx = 1200, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image()
+    const objectUrl = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, w, h)
+      // Always output as JPEG for consistent compression
+      const dataUrl = canvas.toDataURL('image/jpeg', quality)
+      resolve(dataUrl.split(',')[1]) // return only the base64 part
+    }
+    img.onerror = reject
+    img.src = objectUrl
+  })
+}
+
+// async function uploadImageToCloudinary(file: File, storeId: string): Promise<string | null> {
+//   try {
+//     const reader = new FileReader()
+//     const base64 = await new Promise<string>((res, rej) => {
+//       reader.onload = () => res((reader.result as string).split(',')[1])
+//       reader.onerror = rej
+//       reader.readAsDataURL(file)
+//     })
+//     const tempProductId = `composer-${Date.now()}`
+//     const { data } = await apiFetch<{ url: string }>('/api/v1/seltra/upload/product-image', {
+//       method: 'POST',
+//       body: JSON.stringify({ storeId, productId: tempProductId, imageBase64: base64, mimeType: file.type }),
+//     })
+//     return data?.url ?? null
+//   } catch {
+//     return null
+//   }
+// }
+async function uploadImageToCloudinary(file: File, storeId: string): Promise<string | null> {
+  try {
+    const base64 = await compressImage(file)
+    const tempProductId = `composer-${Date.now()}`
+    const { data } = await apiFetch<{ url: string }>('/api/v1/seltra/upload/product-image', {
+      method: 'POST',
+      body: JSON.stringify({ storeId, productId: tempProductId, imageBase64: base64, mimeType: 'image/jpeg' }),
+    })
+    return data?.url ?? null
+  } catch {
+    return null
+  }
+}
+
 const NAV_TABS = [
   { id: 'home',      label: 'Home',      icon: Home       },
   { id: 'store',     label: 'Store',     icon: StoreIcon  },
@@ -128,7 +183,6 @@ function getBuildSteps(store: StoreData | null, building: boolean) {
   ]
 }
 
-// ── Sidebar shared props type (excludes mobile-only props) ───────────────────
 type SidebarSharedProps = {
   user: { id?: string; email: string; name: string; avatar: string; joinedAt?: string } | null
   tab: string
@@ -158,72 +212,69 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileSidebar, setMobileSidebar] = useState(false)
   const [stores, setStores] = useState<StoreData[]>([])
+  const [pendingAttachment, setPendingAttachment] = useState<{ name: string; url: string } | null>(null)
 
   useEffect(() => { if (sending) setSidebarOpen(false) }, [sending])
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
-// ── Effect 1: auth + user setup + store init ──────────────────────────────
-useEffect(() => {
-  if (!getToken()) { router.replace('/auth'); return }
+  useEffect(() => {
+    if (!getToken()) { router.replace('/auth'); return }
 
-  const u = getUser() as UserRecord | null
-  let resolvedUser: typeof user = null
-  if (u) {
-    const m = u.user_metadata ?? {}
-    resolvedUser = {
-      id: u.id, email: u.email,
-      name: m.full_name || m.name || u.email?.split('@')[0] || '',
-      avatar: m.avatar_url || m.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.email}`,
-      joinedAt: u.created_at || u.createdAt,
-    }
-    setUser(resolvedUser)
-  }
-
-  const pending = sessionStorage.getItem('seltra:pending_prompt')
-  if (pending) sessionStorage.removeItem('seltra:pending_prompt')
-
-  const init = async () => {
-    await loadConversations()
-    const { data } = await apiFetch<StoreData[]>('/api/v1/seltra/store')
-    const existing = data ?? []
-    setStores(existing)
-
-    if (existing.length > 0) {
-      // Store already exists — set it and show the agent panel, no build needed
-      setActiveStore(existing[0])
-    } else if (pending) {
-      // No store yet but a pending prompt exists — trigger agent build
-      // We need user.id for saveMessage; use resolvedUser directly (not stale state)
-      setSending(true)
-      const { data: conv } = await createConversation(pending, resolvedUser?.id)
-      if (conv) { setConvId(conv.id); setConversations((c) => [conv, ...c]) }
-      setMsgs([{ role: 'user', content: pending }])
-
-      const { data: storeData } = await apiFetch<{ store: StoreData }>('/api/v1/seltra/store', {
-        method: 'POST', body: JSON.stringify({ name: pending.slice(0, 48), prompt: pending })
-      })
-      if (storeData?.store) {
-        setActiveStore(storeData.store)
-        setStores([storeData.store])
-        setRev((v) => v + 1)
-        const reply = buildFeedback(storeData.store)
-        setMsgs((prev) => [...prev, { role: 'assistant', content: reply }])
-        await saveMessage(conv?.id, 'user', pending, resolvedUser?.id)
-        await saveMessage(conv?.id, 'assistant', reply, resolvedUser?.id)
+    const u = getUser() as UserRecord | null
+    let resolvedUser: typeof user = null
+    if (u) {
+      const m = u.user_metadata ?? {}
+      resolvedUser = {
+        id: u.id, email: u.email,
+        name: m.full_name || m.name || u.email?.split('@')[0] || '',
+        avatar: m.avatar_url || m.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.email}`,
+        joinedAt: u.created_at || u.createdAt,
       }
-      setSending(false)
-      setTimeout(() => setSidebarOpen(true), 1200)
+      setUser(resolvedUser)
     }
-  }
 
-  void init()
-}, [router]) // eslint-disable-line react-hooks/exhaustive-deps
+    const pending = sessionStorage.getItem('seltra:pending_prompt')
+    if (pending) sessionStorage.removeItem('seltra:pending_prompt')
 
-// ── Effect 2: auto-scroll messages ────────────────────────────────────────
-useEffect(() => {
-  scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-}, [msgs])
+    const init = async () => {
+      await loadConversations()
+      const { data } = await apiFetch<StoreData[]>('/api/v1/seltra/store')
+      const existing = data ?? []
+      setStores(existing)
+
+      if (existing.length > 0) {
+        setActiveStore(existing[0])
+      } else if (pending) {
+        setSending(true)
+        const { data: conv } = await createConversation(pending, resolvedUser?.id)
+        if (conv) { setConvId(conv.id); setConversations((c) => [conv, ...c]) }
+        setMsgs([{ role: 'user', content: pending }])
+
+        const { data: storeData } = await apiFetch<{ store: StoreData }>('/api/v1/seltra/store', {
+          method: 'POST', body: JSON.stringify({ name: pending.slice(0, 48), prompt: pending })
+        })
+        if (storeData?.store) {
+          setActiveStore(storeData.store)
+          setStores([storeData.store])
+          setRev((v) => v + 1)
+          const reply = buildFeedback(storeData.store)
+          setMsgs((prev) => [...prev, { role: 'assistant', content: reply }])
+          await saveMessage(conv?.id, 'user', pending, resolvedUser?.id)
+          await saveMessage(conv?.id, 'assistant', reply, resolvedUser?.id)
+        }
+        setSending(false)
+        setTimeout(() => setSidebarOpen(true), 1200)
+      }
+    }
+
+    void init()
+  }, [router]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+  }, [msgs])
+
   const loadStores = async () => {
     const { data } = await apiFetch<StoreData[]>('/api/v1/seltra/store')
     setStores(data ?? [])
@@ -324,22 +375,45 @@ useEffect(() => {
     setTimeout(() => setSidebarOpen(true), 1200)
   }
 
-  const send = async () => {
-    const text = input.trim(); if (!text || sending) return
-    setInput(''); setSending(true)
-    if (!activeStore) { await startConv(text); setSending(false); return }
-    let activeConversationId = convId
-    if (!activeConversationId) {
-      const { data: conversation } = await createConversation(text, user?.id)
-      if (conversation) { activeConversationId = conversation.id; setConvId(conversation.id); setConversations((c) => [conversation, ...c]) }
+const send = async () => {
+  const text = input.trim()
+  if ((!text && !pendingAttachment) || sending) return
+
+  // Declare displayText FIRST — needed for both the conversation title and the chat message
+  const displayText = text || (pendingAttachment ? `Uploaded image: ${pendingAttachment.name}` : '')
+
+  // Build the actual message with hidden URL context for the agent
+  const messageToSend = pendingAttachment?.url
+    ? `${text || 'Please apply the uploaded image as requested'}\n[image: ${pendingAttachment.url}]`
+    : text
+
+  setInput('')
+  setPendingAttachment(null)
+  setSending(true)
+
+  if (!activeStore) { await startConv(messageToSend); setSending(false); return }
+
+  let activeConversationId = convId
+  if (!activeConversationId) {
+    const { data: conversation } = await createConversation(
+      displayText.slice(0, 60) || 'New conversation',
+      user?.id,
+    )
+    if (conversation) {
+      activeConversationId = conversation.id
+      setConvId(conversation.id)
+      setConversations((c) => [conversation, ...c])
     }
-    setMsgs((prev) => [...prev, { role: 'user', content: text }])
-    await saveMessage(activeConversationId, 'user', text, user?.id)
-    const reply = await sendToAgent(activeStore.id ?? activeStore.slug, text)
-    if (reply) await saveMessage(activeConversationId, 'assistant', reply, user?.id)
-    setSending(false)
-    void loadStores()
   }
+
+  setMsgs((prev) => [...prev, { role: 'user', content: displayText }])
+  await saveMessage(activeConversationId, 'user', displayText, user?.id)
+  const reply = await sendToAgent(activeStore.id ?? activeStore.slug, messageToSend)
+  if (reply) await saveMessage(activeConversationId, 'assistant', reply, user?.id)
+  setSending(false)
+  setRev((v) => v + 1)
+  void loadStores()
+}
 
   const newStore = () => {
     setActiveStore(null); setMsgs([]); setConvId(undefined); setStores([])
@@ -358,7 +432,20 @@ useEffect(() => {
   )
   const buildSteps = useMemo(() => getBuildSteps(activeStore, sending), [activeStore, sending])
 
-  // ── Sidebar props — typed explicitly to avoid spread collisions ──────────
+  // ── Shared attach handler for the agent panel (with Cloudinary upload) ──
+const handleAgentAttach = async (f: File) => {
+  if (activeStore) {
+    const url = await uploadImageToCloudinary(f, activeStore.id ?? activeStore.slug)
+    if (url) {
+      setPendingAttachment({ name: f.name, url })
+      toast.success(`${f.name} ready to send`, { duration: 1400 })
+      return
+    }
+  }
+  setPendingAttachment({ name: f.name, url: '' })
+  toast.success(`${f.name} attached`, { duration: 1400 })
+}
+
   const sidebarProps: SidebarSharedProps = {
     user,
     tab,
@@ -396,7 +483,6 @@ useEffect(() => {
             reloadStores={loadStores} user={user}
           />
         </main>
-        {/* ── Mobile sidebar — props passed explicitly, no spread collision ── */}
         <MobileSidebarDrawer
           open={mobileSidebar}
           onClose={() => setMobileSidebar(false)}
@@ -420,15 +506,18 @@ useEffect(() => {
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <MobileHeader storeName={activeStore?.name} onMenuOpen={() => setMobileSidebar(true)} onSignOut={signOut} />
         {!hasStore ? (
-            <EmptyState
-              input={input} setInput={setInput} send={send} sending={sending} name={user?.name ?? ''}
-              conversations={conversations}
-              onLoadConversation={loadConversationMessages}
-              onAttach={(f) => { setInput((p) => p ? `${p}\nI uploaded "${f.name}".` : `I uploaded "${f.name}".`); toast.success(`${f.name} attached`, { duration: 1400 }) }}
-            />
+          <EmptyState
+            input={input} setInput={setInput} send={send} sending={sending} name={user?.name ?? ''}
+            conversations={conversations}
+            onLoadConversation={loadConversationMessages}
+            onAttach={(f) => {
+              setInput((p) => p ? `${p}\nI uploaded "${f.name}".` : `I uploaded "${f.name}".`)
+              toast.success(`${f.name} attached`, { duration: 1400 })
+            }}
+          />
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-[5fr_7fr] overflow-hidden">
-            {/* ── Agent panel — flex column, input pinned at bottom ── */}
+            {/* ── Agent panel ── */}
             <section className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-background">
               {/* Header */}
               <div className="flex flex-shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
@@ -444,7 +533,7 @@ useEffect(() => {
                 </div>
               </div>
 
-              {/* Workflow steps — shrinks to fit, never pushes input off screen */}
+              {/* Workflow steps */}
               <AnimatePresence>
                 {sending && (
                   <motion.div
@@ -471,7 +560,7 @@ useEffect(() => {
                 )}
               </AnimatePresence>
 
-              {/* Messages — scrollable, takes remaining space */}
+              {/* Messages */}
               <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 text-[13px]">
                 {msgs.length === 0 && !sending && (
                   <div className="rounded-2xl border border-border bg-card/30 p-4 text-sm text-muted-foreground">
@@ -497,12 +586,14 @@ useEffect(() => {
                 )}
               </div>
 
-              {/* Input — always pinned at bottom, never scrolls away */}
+              {/* Input — pinned at bottom, uses Cloudinary upload handler */}
               <div className="flex-shrink-0">
-                <ChatInput
-                  input={input} setInput={setInput} send={send} sending={sending} compact
-                  onAttach={(f) => { setInput((p) => p ? `${p}\nI uploaded "${f.name}".` : `I uploaded "${f.name}".`); toast.success(`${f.name} attached`, { duration: 1400 }) }}
-                />
+               <ChatInput
+                    input={input} setInput={setInput} send={send} sending={sending} compact
+                    onAttach={handleAgentAttach}
+                    pendingAttachment={pendingAttachment}
+                    onClearAttachment={() => setPendingAttachment(null)}
+                  />
               </div>
             </section>
 
@@ -510,14 +601,12 @@ useEffect(() => {
               {sending && !activeStore?.storefrontCode ? (
                 <AgentBuildStream storeName={storeTitle} buildSteps={buildSteps} isBuilding={sending} />
               ) : (
-                <StorefrontPreview key={`${storeSlug}-${rev}`} storeSlug={storeSlug} suppressFallback={!activeStore} />
-              )}
+           <StorefrontPreview key={storeSlug} storeSlug={storeSlug} suppressFallback={!activeStore} rev={rev} />              )}
             </StorefrontShell>
           </div>
         )}
       </main>
 
-      {/* ── Mobile sidebar — props passed explicitly, no spread collision ── */}
       <MobileSidebarDrawer
         open={mobileSidebar}
         onClose={() => setMobileSidebar(false)}
@@ -546,13 +635,12 @@ function SidebarDesktop({
       transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
       className="hidden flex-col border-r border-border bg-card/50 lg:flex overflow-hidden flex-shrink-0"
     >
-      {/* Logo row */}
       <div className="flex h-[60px] flex-shrink-0 items-center justify-between border-b border-border px-4">
         <AnimatePresence>
           {open && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2.5 overflow-hidden">
               <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-primary/20">
-                      <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1782364695/ICON_large_ngiv41.png" alt="Seltra" className="h-7 w-7 rounded-md" />
+                <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1782364695/ICON_large_ngiv41.png" alt="Seltra" className="h-7 w-7 rounded-md" />
               </div>
               <span className="whitespace-nowrap font-mono text-[15px] font-semibold tracking-tight">seltra</span>
               <span className="flex-shrink-0 rounded-full border border-border px-2 py-0.5 font-mono text-[9px] text-muted-foreground">beta</span>
@@ -564,7 +652,6 @@ function SidebarDesktop({
         </button>
       </div>
 
-      {/* New store pill */}
       <div className="border-b border-border p-3">
         <button
           onClick={onNewStore}
@@ -582,7 +669,6 @@ function SidebarDesktop({
         </button>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
         {open && <div className="mb-2 px-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">Workspace</div>}
         <div className="space-y-0.5">
@@ -606,7 +692,6 @@ function SidebarDesktop({
         </div>
       </nav>
 
-      {/* History */}
       <div className="border-t border-border px-3 py-3" style={{ maxHeight: 240 }}>
         {open && <div className="mb-2 px-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">History</div>}
         <div className="space-y-0.5 overflow-y-auto">
@@ -638,7 +723,6 @@ function SidebarDesktop({
         </div>
       </div>
 
-      {/* User footer */}
       {user && (
         <div className={`flex flex-shrink-0 items-center gap-2.5 border-t border-border px-4 py-3.5 ${!open ? 'justify-center' : ''}`}>
           <Image src={user.avatar} alt={user.name} width={32} height={32} className="flex-shrink-0 rounded-full border border-border" unoptimized />
@@ -681,7 +765,6 @@ function MobileHeader({ storeName, onMenuOpen, onSignOut }: { storeName?: string
 }
 
 // ── Mobile sidebar drawer ──────────────────────────────────────────────────────
-// Props are explicit — no spread from sidebarProps to avoid 'open' collision
 function MobileSidebarDrawer({
   open, onClose, user, tab, setTab, onSignOut, onNewStore,
   conversations, activeConversationId, onLoadConversation, onDeleteConversation,
@@ -833,7 +916,6 @@ function EmptyState({ input, setInput, send, sending, name, onAttach, conversati
           </div>
 
           <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
-            {/* Left — Getting started (no count badge) */}
             <div>
               <div className="mb-4">
                 <span className="text-[13px] font-semibold text-foreground">Getting started</span>
@@ -860,7 +942,6 @@ function EmptyState({ input, setInput, send, sending, name, onAttach, conversati
               </div>
             </div>
 
-            {/* Right — Quick launches + real recent chats */}
             <div>
               <div className="mb-4">
                 <span className="text-[13px] font-semibold text-foreground">Quick launches</span>
@@ -886,7 +967,6 @@ function EmptyState({ input, setInput, send, sending, name, onAttach, conversati
                 ))}
               </div>
 
-              {/* Recent chats — real data, not placeholder */}
               <div className="mt-6">
                 <div className="mb-3 text-[13px] font-semibold">Recent chats</div>
                 {conversations.length === 0 ? (
@@ -928,10 +1008,13 @@ function EmptyState({ input, setInput, send, sending, name, onAttach, conversati
   )
 }
 
-// ── Chat input — pill composer ─────────────────────────────────────────────────
-function ChatInput({ input, setInput, send, sending, onAttach, compact = false }: {
+// ── Chat input ─────────────────────────────────────────────────────────────────
+// Update ChatInput props type
+function ChatInput({ input, setInput, send, sending, onAttach, compact = false, pendingAttachment, onClearAttachment }: {
   input: string; setInput: (v: string) => void; send: () => void
   sending: boolean; onAttach: (f: File) => void; compact?: boolean
+  pendingAttachment?: { name: string; url: string } | null
+  onClearAttachment?: () => void
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -944,7 +1027,19 @@ function ChatInput({ input, setInput, send, sending, onAttach, compact = false }
 
   return (
     <div className={compact ? 'border-t border-border bg-card/40 backdrop-blur p-3' : ''}>
-      {/* ── items-center so icons stay vertically centred with single-line textarea ── */}
+      {pendingAttachment && (
+        <div className="mb-2 flex items-center gap-1.5 px-1">
+          <div className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs text-primary">
+            <span className="truncate max-w-[160px]">{pendingAttachment.name}</span>
+            <button
+              type="button"
+              onClick={onClearAttachment}
+              className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity leading-none"
+              aria-label="Remove attachment"
+            >✕</button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2 rounded-[28px] border border-border bg-card/60 px-3 py-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10">
         <label className="flex h-9 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/60 hover:text-primary">
           <Plus className="h-[18px] w-[18px]" />
@@ -957,12 +1052,12 @@ function ChatInput({ input, setInput, send, sending, onAttach, compact = false }
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
           rows={1}
-          placeholder="Message your agent…"
+          placeholder={pendingAttachment ? `Describe what to do with ${pendingAttachment.name}…` : 'Message your agent…'}
           className="flex-1 resize-none bg-transparent py-1.5 px-1 text-sm outline-none placeholder:text-muted-foreground leading-[1.5]"
           style={{ minHeight: 36, maxHeight: compact ? 120 : 160, overflowY: 'auto' }}
         />
         <button
-          onClick={send} disabled={sending || !input.trim()}
+          onClick={send} disabled={sending || (!input.trim() && !pendingAttachment)}
           className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-35"
         >
           <Send className="h-4 w-4" />
@@ -1331,29 +1426,207 @@ function PaymentsTab({ activeStore }: { activeStore: StoreData | null }) {
 }
 
 function ProductsTab({ activeStore }: { activeStore: StoreData | null }) {
-  const products = activeStore?.products ?? []
+  type Product = { id: string; name: string; description?: string | null; price: string | number; currency: string; category?: string | null; images?: { url: string; isPrimary: boolean }[] }
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading]   = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editBuf, setEditBuf]   = useState<Partial<Product>>({})
+  const [saving, setSaving]     = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [adding, setAdding]     = useState(false)
+  const [newProduct, setNewProduct] = useState({ name: '', price: '', description: '', category: '' })
+
+  const storeId = storeIdOf(activeStore)
+
+  const load = async () => {
+    if (!storeId) return
+    setLoading(true)
+    const { data } = await apiFetch<Product[]>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products`)
+    setLoading(false)
+    setProducts(data ?? [])
+  }
+
+  useEffect(() => { void load() }, [activeStore])
+
+  const startEdit = (p: Product) => {
+    setEditingId(p.id)
+    setEditBuf({ name: p.name, price: p.price, description: p.description ?? '', category: p.category ?? '' })
+  }
+  const cancelEdit = () => { setEditingId(null); setEditBuf({}) }
+
+  const saveEdit = async (id: string) => {
+    if (!storeId) return
+    setSaving(true)
+    const { error } = await apiFetch<Product>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: editBuf.name, price: String(editBuf.price), description: editBuf.description, category: editBuf.category }),
+    })
+    setSaving(false)
+    if (error) { toast.error(error); return }
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...editBuf, price: String(editBuf.price ?? p.price) } : p))
+    setEditingId(null)
+    toast.success('Product updated')
+  }
+
+const uploadImage = async (productId: string, file: File) => {
+  if (!storeId) return
+  setUploading(true)
+  try {
+    const base64 = await compressImage(file)
+    const { data, error } = await apiFetch<{ url: string }>('/api/v1/seltra/upload/product-image', {
+      method: 'POST',
+      body: JSON.stringify({ storeId, productId, imageBase64: base64, mimeType: 'image/jpeg' }),
+    })
+    if (error || !data?.url) { toast.error(error || 'Upload failed'); return }
+    setProducts(prev => prev.map(p => p.id === productId
+      ? { ...p, images: [{ url: data.url, isPrimary: true }] }
+      : p
+    ))
+    toast.success('Image updated')
+  } catch {
+    toast.error('Upload failed')
+  } finally {
+    setUploading(false)
+  }
+}
+
+  const deleteProduct = async (id: string, name: string) => {
+    if (!storeId || !confirm(`Delete "${name}"? This cannot be undone.`)) return
+    const { error } = await apiFetch<{ success: boolean }>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (error) { toast.error(error); return }
+    setProducts(prev => prev.filter(p => p.id !== id))
+    toast.success('Product deleted')
+  }
+
+  const addProduct = async () => {
+    if (!storeId || !newProduct.name || !newProduct.price) { toast.error('Name and price are required'); return }
+    setSaving(true)
+    const { data, error } = await apiFetch<Product>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products`, {
+      method: 'POST',
+      body: JSON.stringify({ name: newProduct.name, price: newProduct.price, description: newProduct.description, category: newProduct.category, currency: 'GHS' }),
+    })
+    setSaving(false)
+    if (error || !data) { toast.error(error || 'Could not add product'); return }
+    setProducts(prev => [data, ...prev])
+    setNewProduct({ name: '', price: '', description: '', category: '' })
+    setAdding(false)
+    toast.success('Product added')
+  }
+
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <PageHeader tab="products" title="Products" subtitle="Your agent-generated product catalog." />
-        {products.length === 0 ? (
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <PageHeader tab="products" title="Products" subtitle="Your agent-generated product catalog. Edit inline or ask the agent." />
+          <Button size="sm" className="rounded-full gap-1.5" onClick={() => setAdding(true)} disabled={!storeId}>
+            <Plus className="h-3.5 w-3.5" /> Add product
+          </Button>
+        </div>
+
+        {adding && (
+          <div className="mb-6 rounded-2xl border border-primary/30 bg-card/50 p-5">
+            <h3 className="mb-4 text-sm font-semibold">New product</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { label: 'Name *', key: 'name', placeholder: 'Product name' },
+                { label: 'Price (GHS) *', key: 'price', placeholder: '0.00' },
+                { label: 'Category', key: 'category', placeholder: 'e.g. Skincare' },
+                { label: 'Description', key: 'description', placeholder: 'Short product description' },
+              ].map(({ label, key, placeholder }) => (
+                <label key={key} className="grid gap-1.5 text-sm">{label}
+                  <input value={newProduct[key as keyof typeof newProduct]}
+                    onChange={e => setNewProduct(p => ({ ...p, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button size="sm" className="rounded-full" onClick={() => void addProduct()} disabled={saving}>{saving ? 'Adding…' : 'Add product'}</Button>
+              <Button size="sm" variant="outline" className="rounded-full" onClick={() => { setAdding(false); setNewProduct({ name: '', price: '', description: '', category: '' }) }}>Cancel</Button>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="p-10 text-center text-sm text-muted-foreground">Loading products…</div>
+        ) : products.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card/30 p-12 text-center text-sm text-muted-foreground">
-            Products appear here. Ask your agent to add or update them.
+            No products yet. Ask your agent to generate them or add one above.
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {products.map((product) => {
-              const image = product.images?.find((i) => i.isPrimary)?.url ?? product.images?.[0]?.url
+              const image = product.images?.find(i => i.isPrimary)?.url ?? product.images?.[0]?.url
+              const isEditing = editingId === product.id
               return (
-                <div key={product.id} className="overflow-hidden rounded-2xl border border-border bg-card/40">
-                  {image && <img src={image} alt={product.name} className="aspect-[16/10] w-full object-cover" />}
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <h2 className="font-semibold">{product.name}</h2>
-                      <span className="font-mono text-xs text-primary">{money(product.price, product.currency ?? 'GHS')}</span>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{product.description ?? 'AI-generated product'}</p>
-                    <div className="mt-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{product.category ?? 'catalog'}</div>
+                <div key={product.id} className="overflow-hidden rounded-2xl border border-border bg-card/40 flex flex-col">
+                  <div className="relative aspect-[16/10] bg-card/60 overflow-hidden">
+                    {image
+                      ? <img src={image} alt={product.name} className="h-full w-full object-cover" />
+                      : <div className="flex h-full w-full items-center justify-center text-muted-foreground/30">
+                          <Package className="h-10 w-10" />
+                        </div>
+                    }
+                    {isEditing && (
+                      <label className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1.5 bg-black/50 text-white opacity-0 transition-opacity hover:opacity-100">
+                        {uploading
+                          ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          : <>
+                              <Plus className="h-5 w-5" />
+                              <span className="text-xs font-medium">Change image</span>
+                            </>
+                        }
+                        <input type="file" className="hidden" accept="image/*"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) void uploadImage(product.id, f); e.target.value = '' }} />
+                      </label>
+                    )}
+                  </div>
+
+                  <div className="p-4 flex-1 flex flex-col gap-2">
+                    {isEditing ? (
+                      <>
+                        <label className="grid gap-1 text-xs text-muted-foreground">Name
+                          <input value={editBuf.name ?? ''} onChange={e => setEditBuf(b => ({ ...b, name: e.target.value }))}
+                            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                        </label>
+                        <label className="grid gap-1 text-xs text-muted-foreground">Price (GHS)
+                          <input value={editBuf.price ?? ''} onChange={e => setEditBuf(b => ({ ...b, price: e.target.value }))} type="number" step="0.01"
+                            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                        </label>
+                        <label className="grid gap-1 text-xs text-muted-foreground">Category
+                          <input value={editBuf.category ?? ''} onChange={e => setEditBuf(b => ({ ...b, category: e.target.value }))}
+                            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                        </label>
+                        <label className="grid gap-1 text-xs text-muted-foreground">Description
+                          <textarea value={editBuf.description ?? ''} onChange={e => setEditBuf(b => ({ ...b, description: e.target.value }))} rows={2}
+                            className="resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                        </label>
+                        <p className="text-[11px] text-muted-foreground">Hover the image above to change it.</p>
+                        <div className="flex gap-2 mt-1">
+                          <Button size="sm" className="rounded-full h-7 text-xs px-3" onClick={() => void saveEdit(product.id)} disabled={saving || uploading}>
+                            {saving ? 'Saving…' : 'Save'}
+                          </Button>
+                          <Button size="sm" variant="outline" className="rounded-full h-7 text-xs px-3" onClick={cancelEdit}>Cancel</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <h2 className="font-semibold text-sm leading-tight">{product.name}</h2>
+                          <span className="font-mono text-xs text-primary flex-shrink-0">{money(product.price, product.currency ?? 'GHS')}</span>
+                        </div>
+                        {product.description && <p className="line-clamp-2 text-xs text-muted-foreground">{product.description}</p>}
+                        <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{product.category ?? 'catalog'}</div>
+                        <div className="flex gap-1.5 mt-auto pt-2">
+                          <Button size="sm" variant="outline" className="rounded-full h-7 text-xs px-3 flex-1" onClick={() => startEdit(product)}>Edit</Button>
+                          <Button size="sm" variant="ghost" className="rounded-full h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => void deleteProduct(product.id, product.name)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )
