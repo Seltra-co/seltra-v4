@@ -631,6 +631,10 @@ function activeProvider(): 'moolre' | 'paystack' {
   return (process.env.PAYMENT_PROVIDER || 'moolre') === 'paystack' ? 'paystack' : 'moolre'
 }
 
+const baseUrl = process.env.SELTRA_BASE_URL || 'http://localhost:3001'
+const moolreCallbackUrl = `${baseUrl}/api/v1/webhooks/moolre`   // POST webhook
+const moolreRedirectUrl = `${baseUrl}/api/v1/webhooks/moolre`   // GET redirect (backend bounces to frontend)
+
 @Injectable()
 export class PaymentService {
   constructor(
@@ -708,10 +712,18 @@ export class PaymentService {
       },
     })
 
+    // const result = await this.moolreService.generatePaymentLink({
+    //   amount: totalAmount,
+    //   reference,
+    //   callbackUrl: moolreCallbackUrl,
+    // })
+    // inside initializePaymentMoolre(), replace the generatePaymentLink call:
+
     const result = await this.moolreService.generatePaymentLink({
       amount: totalAmount,
       reference,
       callbackUrl: moolreCallbackUrl,
+      redirectUrl: moolreRedirectUrl,   // same host, but handled by @Get() above
     })
 
     if (!result.success || !result.paymentUrl) {
@@ -794,16 +806,20 @@ private async initializePaymentPaystack(
 }
 
   // ── MOOLRE: webhook handler ───────────────────────────────────────────────
-  async handleMoolreWebhook(body: MoolreWebhookBody) {
-    console.log('[Moolre] Webhook received:', JSON.stringify(body))
+async handleMoolreWebhook(body: MoolreWebhookBody) {
+  console.log('[Moolre] Webhook received:', JSON.stringify(body))
 
-    // Moolre success: status === 1 and code === 'P01'
-    if (body.status !== 1 || body.code !== 'P01') {
-      console.log('[Moolre] Webhook ignored — not a success event:', body.code)
-      return { received: true }
-    }
+  // Moolre success codes: P01 (sandbox legacy) or SPV03 (current)
+  const SUCCESS_CODES = new Set(['P01', 'SPV03'])
+  
+  if (body.status !== 1 || !SUCCESS_CODES.has(body.code)) {
+    console.log('[Moolre] Webhook ignored — not a success event:', body.code)
+    return { received: true }
+  }
 
-    const externalref = body.data?.externalref
+  // Use body.data.reference (not externalref) — your webhook payload uses "reference"
+  // const externalref = body.data?.externalref ?? (body.data as any)?.reference
+  const externalref = body.data?.externalref || body.data?.reference
     if (!externalref) {
       console.warn('[Moolre] Webhook missing externalref — cannot match order')
       return { received: true }
