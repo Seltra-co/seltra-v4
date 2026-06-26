@@ -8,7 +8,7 @@ const STEP_DEFS = [
   { key:'blueprint', label:'Reasoning about your store',  sub:'Selecting layout, theme, and sections', icon:Zap      },
   { key:'products',  label:'Building your catalog',       sub:'Generating 20+ launch-ready products',    icon:Package  },
   { key:'brand',     label:'Designing your brand',        sub:'Palette, fonts, and visual identity',   icon:Palette  },
-  { key:'payments',  label:'Setting up payments',         sub:'Wiring Paystack for GHS checkout',      icon:CreditCard },
+  { key:'payments',  label:'Setting up payments',         sub:'Wiring Moolre for GHS checkout',      icon:CreditCard },
   { key:'deploy',    label:'Deploying your storefront',   sub:'Publishing to yourstore.seltra.co',     icon:Rocket   },
 ]
 
@@ -17,7 +17,7 @@ const LINES: Record<string, string[]> = {
   blueprint: ['→ selecting layout template...', '  matching composition rules...', '  resolving section order and hierarchy...', '✓ storefront blueprint ready'],
   products:  ['→ generating product catalog...', '  naming + pricing 8 SKUs', '  assigning categories and images...', '✓ catalog generated'],
   brand:     ['→ building brand identity...', '  primary color · fonts · spacing', '  deriving accent soft palette...', '✓ brand kit applied'],
-  payments:  ['→ connecting Paystack...', '  GHS + mobile money enabled', '  wiring checkout callbacks...', '✓ checkout ready'],
+  payments:  ['→ connecting Moolre...', '  GHS + mobile money enabled', '  wiring checkout callbacks...', '✓ checkout ready'],
   deploy:    ['→ publishing storefront...', '  running critic + refinement loop...', '  edge deploy complete', '✓ store is live'],
 }
 

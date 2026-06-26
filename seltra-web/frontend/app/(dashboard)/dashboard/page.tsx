@@ -177,7 +177,7 @@ function getBuildSteps(store: StoreData | null, building: boolean) {
     { label: 'Generating store blueprint', done: Boolean(store) },
     { label: 'Creating product catalog',   done: products > 0 },
     { label: 'Resolving product images',   done: hasImages },
-    { label: 'Wiring Paystack checkout',   done: hasPay },
+    { label: 'Wiring Moolre checkout',   done: hasPay },
     { label: 'Composing storefront',       done: hasCode },
     { label: 'Publishing to edge',         done: hasCode },
   ]
@@ -870,7 +870,7 @@ function EmptyState({ input, setInput, send, sending, name, onAttach, conversati
     {
       icon: Palette,
       title: 'Launch a streetwear label',
-      desc: 'AI builds your Afrocentric fashion store with Kente-inspired street silhouettes and Paystack checkout.',
+      desc: 'AI builds your Afrocentric fashion store with Kente-inspired street silhouettes and Moolre checkout.',
       prompt: 'A contemporary African streetwear brand blending Kente with street silhouettes',
     },
     {
@@ -1178,7 +1178,7 @@ function StoreTab({ stores, activeStore, onSelectStore, onStoreDeleted, reloadSt
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visibleStores.map((store) => {
-              const providers = (store as StoreData & { paymentProviders?: { provider: string }[] }).paymentProviders?.map((p) => p.provider).join(' / ') || 'Paystack'
+              const providers = (store as StoreData & { paymentProviders?: { provider: string }[] }).paymentProviders?.map((p) => p.provider).join(' / ') || 'Moolre'
               const active = activeStore?.id === store.id || activeStore?.slug === store.slug
               return (
                 <div key={store.id ?? store.slug} className={`rounded-2xl border p-5 transition-colors hover:border-primary/50 ${active ? 'border-primary/60 bg-primary/5' : 'border-border bg-card/40'}`}>

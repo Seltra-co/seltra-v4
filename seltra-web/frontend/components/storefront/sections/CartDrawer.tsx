@@ -132,7 +132,7 @@ export function CartDrawer({ open, items, currency, storeSlug, storeId, onClose,
                     <input type="checkbox" checked={mkt} onChange={(e) => setMkt(e.target.checked)} /> Send me order updates and store offers
                   </label>
                   <button onClick={checkout} disabled={!name||!email||!phone||loading} className="store-btn-primary mt-1 flex w-full items-center justify-center gap-2 py-3 text-sm font-bold disabled:opacity-40">
-                    {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Paystack…</> : <>Pay {currency} {total.toFixed(2)} <ArrowRight className="h-4 w-4" /></>}
+                    {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Moolre…</> : <>Pay {currency} {total.toFixed(2)} <ArrowRight className="h-4 w-4" /></>}
                   </button>
                 </div>
               </div>

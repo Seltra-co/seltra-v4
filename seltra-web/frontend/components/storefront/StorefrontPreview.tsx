@@ -20,7 +20,7 @@ function fallback(slug: string): StoreData {
   return {
     id: `fallback-${slug}`, name, slug, businessType: 'AI-built storefront',
     targetAudience: 'modern shoppers', heroTitle: name, heroSubtitle: 'A polished storefront.',
-    canonical: { storeFeatures: ['Fast checkout','Curated catalog','Local delivery','AI merchandising'], productCategories: ['Starter','Signature','Gift'], recommendedTechStack: { paymentGateways: ['Paystack'] } },
+    canonical: { storeFeatures: ['Fast checkout','Curated catalog','Local delivery','AI merchandising'], productCategories: ['Starter','Signature','Gift'], recommendedTechStack: { paymentGateways: ['Moolre'] } },
     products: [
       { id: `${slug}-1`, name: 'Signature Starter Set', description: 'A ready-to-launch bundle.', price: 49, currency: 'GHS', category: 'Signature' },
       { id: `${slug}-2`, name: 'Daily Essential', description: 'Your hero product.', price: 28, currency: 'GHS', category: 'Starter' },
