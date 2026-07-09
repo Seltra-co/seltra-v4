@@ -4,9 +4,10 @@ import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { prisma } from '../db'
+import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 
 const GENERIC_LOGIN_ERROR = "We couldn't find an account with those details. Contact support@seltra.co"
-const MERCHANT_ID_PATTERN = /^SELTRA-[A-Z0-9]+-[0-9A-Z]+$/
+const MERCHANT_ID_PATTERN = /^(SELTRA-[A-Z0-9]+-[0-9A-Z]+|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i
 const LOGIN_LIMIT = 10
 const LOGIN_WINDOW_MS = 60_000
 
@@ -24,7 +25,10 @@ type LoginAttemptWindow = {
 export class AuthService {
   private readonly loginAttempts = new Map<string, LoginAttemptWindow>()
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly tenantEvents: TenantEventsService,
+  ) {}
 
   async signup() {
     throw new ForbiddenException('Merchant accounts are created by Seltra Ops.')
@@ -40,21 +44,59 @@ export class AuthService {
     }
 
     const merchant = await prisma.merchantApplication.findFirst({
-      where: {
-        email: { equals: email, mode: 'insensitive' },
-        merchantId,
-        status: 'approved',
+    where: {
+      email: {
+        equals: email,
+        mode: 'insensitive',
       },
-    })
+      merchantId,
+      status: 'approved',
+    },
+    include: {
+      user: true,
+    },
+  })
+
+  if (!merchant?.user) {
+  throw new UnauthorizedException(
+    'Merchant account has not been provisioned yet.',
+  )
+}
+
+   const user = merchant.user
 
     if (!merchant?.merchantId) {
       throw new UnauthorizedException(GENERIC_LOGIN_ERROR)
     }
 
     await this.createOtpCode(merchant.merchantId)
-    const user = await this.findOrCreateMerchantUser(email, merchant.fullName)
+    // const user = await this.findOrCreateMerchantUser(email, merchant.fullName)
+    
+
+    const tenant = await prisma.tenant.findFirst({
+      where: {
+        owner: {
+          email: {
+            equals: email,
+            mode: 'insensitive',
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (tenant) {
+      void this.tenantEvents.recordForTenant(
+        tenant.id,
+        'login',
+        { email,  merchantId: merchant.merchantId },
+      )
+    }
+ 
     return {
-      ...this.authPayload(user),
+       ...this.authPayload(user),
       otpRequired: false,
       otpEnforcement: 'disabled',
     }
@@ -149,24 +191,24 @@ export class AuthService {
     })
   }
 
-  private async findOrCreateMerchantUser(email: string, name: string | null) {
-    const existing = await prisma.user.findUnique({ where: { email } })
-    if (existing) {
-      if (!existing.name && name) {
-        return prisma.user.update({ where: { id: existing.id }, data: { name } })
-      }
-      return existing
-    }
+  // private async findOrCreateMerchantUser(email: string, name: string | null) {
+  //   const existing = await prisma.user.findUnique({ where: { email } })
+  //   if (existing) {
+  //     if (!existing.name && name) {
+  //       return prisma.user.update({ where: { id: existing.id }, data: { name } })
+  //     }
+  //     return existing
+  //   }
 
-    const passwordHash = await bcrypt.hash(`ops-managed:${randomBytes(24).toString('hex')}`, 12)
-    return prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        name: name?.trim() || email.split('@')[0],
-      },
-    })
-  }
+  //   const passwordHash = await bcrypt.hash(`ops-managed:${randomBytes(24).toString('hex')}`, 12)
+  //   return prisma.user.create({
+  //     data: {
+  //       email,
+  //       passwordHash,
+  //       name: name?.trim() || email.split('@')[0],
+  //     },
+  //   })
+  // }
 
   private authPayload(user: { id: string; email: string; name: string | null; createdAt?: Date }) {
     const publicUser = this.publicUser(user)

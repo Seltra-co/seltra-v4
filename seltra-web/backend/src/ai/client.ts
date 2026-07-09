@@ -173,6 +173,7 @@ export async function chat(
 export async function codegenChat(
   messages: ChatMessage[],
   maxTokens = 1800,
+  role: 'storefront' | 'hero' | 'nav' | 'generic' = 'storefront',
 ): Promise<AIResponse> {
   const estimated = estimateTokens(messages, maxTokens)
   const hasGroqKey = Boolean(process.env.GROQ_API_KEY)
@@ -192,10 +193,10 @@ export async function codegenChat(
       try {
         return await callGroq(messages, maxTokens, GROQ_CODEGEN_MODEL)
       } catch (e) {
-        console.warn('[Groq] codegenChat primary failed, trying fallback model:', e)
+        console.warn(`[Groq] codegenChat(${role}) primary failed, trying fallback model:`, e)
       }
     } else {
-      console.warn('[Groq] codegenChat primary TPM budget exceeded, trying fallback model')
+      console.warn(`[Groq] codegenChat(${role}) primary TPM budget exceeded, trying fallback model`)
     }
   }
 
@@ -214,10 +215,10 @@ export async function codegenChat(
       try {
         return await callGroq(messages, maxTokens, GROQ_CODEGEN_FALLBACK_MODEL)
       } catch (e) {
-        console.warn('[Groq] codegenChat fallback model failed, using Ollama:', e)
+        console.warn(`[Groq] codegenChat(${role}) fallback model failed, using Ollama:`, e)
       }
     } else {
-      console.warn('[Groq] codegenChat fallback TPM budget exceeded, using Ollama')
+      console.warn(`[Groq] codegenChat(${role}) fallback TPM budget exceeded, using Ollama`)
     }
   }
 

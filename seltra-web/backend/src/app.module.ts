@@ -14,6 +14,7 @@ import { ConversationsModule } from './conversations/conversations.module'
 import { PaymentModule } from './payment/payment.module'
 import { ApplicationModule } from './application/application.module'
 import { ResendService } from './resend/resend.service';
+import { InternalOpsModule } from './internal-ops/internal-ops.module'
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ResendService } from './resend/resend.service';
     OrdersModule,
     ConversationsModule,
     ApplicationModule,
+    InternalOpsModule,
     HealthModule,
     KeepAliveModule,
   ],

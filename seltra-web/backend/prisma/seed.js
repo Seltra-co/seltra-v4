@@ -60,6 +60,18 @@ async function main() {
       passwordHash,
     },
   })
+
+//   await prisma.merchantApplication.update({
+//   where: { merchantId },
+//   data: {
+//     user: {
+//       connect: {
+//         id: user.id,
+//       },
+//     },
+//   },
+// })
+
 }
 
 main()

@@ -3,13 +3,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { StorefrontCanvas } from './StorefrontCanvas'
 import { useStore } from '@/context/StoreContext'
+import type { StoreManifest } from './sections/types'
 
 export type StoreData = {
   id?: string; name: string; slug: string; businessType?: string; targetAudience?: string
   heroTitle?: string; heroSubtitle?: string
-  canonical?: { storeFeatures?: string[]; productCategories?: string[]; layoutVariant?: string; recommendedTechStack?: { paymentGateways?: string[] } }
+  canonical?: { brandName?: string; businessName?: string; storeFeatures?: string[]; productCategories?: string[]; layoutVariant?: string; recommendedTechStack?: { paymentGateways?: string[] } }
   storeDNA?: { brandPersonality?: string; industry?: string }
   products?: Array<{ id: string; name: string; description?: string | null; price: string | number; currency?: string; category?: string | null; images?: Array<{ url: string; isPrimary?: boolean }>; variants?: Array<{ name: string; value: string }> }>
+  manifest?: StoreManifest | null
+  heroSource?: string | null
+  navSource?: string | null
   storefrontCode?: string | null; storefrontVersion?: number
 }
 
@@ -72,8 +76,8 @@ export default function StorefrontPreview({
           const d = await res.json()
           setStore(d)
           setLoading(false)
-          // Keep polling until storefrontCode is generated (background codegen)
-          if (!d.storefrontCode && pollCount.current < 20) {
+          // Keep polling until the deterministic manifest is generated.
+          if (!d.manifest && pollCount.current < 20) {
             pollCount.current++
             if (pollTimer.current) clearTimeout(pollTimer.current)
             pollTimer.current = setTimeout(() => { if (!cancelled) void load() }, 3000)

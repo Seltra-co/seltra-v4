@@ -17,6 +17,22 @@ export class ResendService {
     ])
   }
 
+  async sendMerchantApproval(input: {
+    to: string
+    fullName: string
+    storeName: string
+    loginUrl: string
+    merchantId: string
+    merchantEmail: string
+  }) {
+    await resend.emails.send({
+      from: FROM,
+      to: input.to,
+      subject: `Your Seltra account is approved: ${input.storeName}`,
+      html: buildMerchantApprovalEmail(input),
+    })
+  }
+
   private async sendAdminNotification(dto: ApplicationDto, applicationId: string) {
     try {
       await resend.emails.send({
@@ -251,6 +267,47 @@ function buildMerchantWelcomeEmail(dto: ApplicationDto): string {
       </p>
       <p style="margin:16px 0 0;font-size:13px;color:#0a0a0a;font-weight:500">— The Seltra Team</p>
 
+    </td></tr>
+  `)
+}
+
+function buildMerchantApprovalEmail(input: {
+  fullName: string
+  storeName: string
+  loginUrl: string
+  merchantId: string
+  merchantEmail: string
+}): string {
+  const firstName = input.fullName.split(' ')[0]
+  return emailShell(`
+    <tr><td style="background:#18181b;border-left:3px solid #22c55e;padding:20px 40px">
+      <p style="margin:0;font-size:11px;color:#71717a;font-family:monospace;letter-spacing:1px;text-transform:uppercase">// approved</p>
+      <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#ffffff">${input.storeName} is ready for you.</p>
+    </td></tr>
+
+    <tr><td style="background:#ffffff;padding:36px 40px">
+      <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#0a0a0a">Welcome in, ${firstName}.</p>
+      <p style="margin:0 0 24px;font-size:13px;color:#71717a;line-height:1.7">
+        Your Seltra merchant account has been approved. Use the details below to sign in and start reviewing your store.
+      </p>
+
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e4e4e7;border-radius:8px;margin-bottom:24px">
+        <tr><td style="padding:20px 24px">
+          ${row('Merchant ID', input.merchantId)}
+          ${row('Merchant Email', input.merchantEmail)}
+          ${row('Login', input.loginUrl)}
+        </td></tr>
+      </table>
+
+      <table cellpadding="0" cellspacing="0" style="margin-bottom:24px">
+        <tr><td style="background:#22c55e;border-radius:6px">
+          <a href="${input.loginUrl}" style="display:inline-block;padding:12px 18px;color:#052e16;text-decoration:none;font-size:13px;font-weight:700">Open Seltra</a>
+        </td></tr>
+      </table>
+
+      <p style="margin:0;font-size:12px;color:#71717a;line-height:1.6">
+        Keep this email private. You can rotate your login details after your first session.
+      </p>
     </td></tr>
   `)
 }

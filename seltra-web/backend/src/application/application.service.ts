@@ -11,7 +11,6 @@ export class ApplicationService {
   async submitApplication(dto: ApplicationDto) {
      const data = normalizeApplicationDto(dto)
 
-      if (data.email) {
     const existing = await prisma.merchantApplication.findUnique({
       where: { email: data.email },
     })
@@ -20,8 +19,6 @@ export class ApplicationService {
         'An application with this email already exists. Try using a different email address or reach out to support.'
       )
     }
-  }
-
    
     const application = await prisma.merchantApplication.create({ data })
 

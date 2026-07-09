@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, Post, Req, UnauthorizedException } from '@nestjs/common'
 import type { Request } from 'express'
 import { AuthService } from './auth.service'
+import { ApiExcludeController } from '@nestjs/swagger'
 
 class SignupDto {
   email!: string
@@ -18,6 +19,7 @@ class OtpVerifyDto {
   code!: string
 }
 
+@ApiExcludeController()
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

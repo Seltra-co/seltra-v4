@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common'
 import { JwtModule } from '@nestjs/jwt'
 import { OrdersController } from './orders.controller'
 import { OrdersService } from './orders.service'
+import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 
 @Module({
   imports: [
@@ -11,6 +12,6 @@ import { OrdersService } from './orders.service'
     }),
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, TenantEventsService],
 })
 export class OrdersModule {}

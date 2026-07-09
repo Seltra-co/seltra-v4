@@ -164,25 +164,6 @@ function buildFeedback(store: StoreData): string {
   ].join('\n\n')
 }
 
-function getBuildSteps(store: StoreData | null, building: boolean) {
-  const products = store?.products?.length ?? 0
-  const hasImages = Boolean(store?.products?.some((p: unknown) => {
-    const pr = p as { images?: { url: string }[] }
-    return Array.isArray(pr.images) && pr.images.length > 0
-  }))
-  const hasPay = Boolean((store as unknown as { paymentProviders?: unknown[] })?.paymentProviders?.length)
-  const hasCode = Boolean((store as StoreData & { storefrontCode?: string })?.storefrontCode)
-  return [
-    { label: 'Parsing business intent',    done: Boolean(store) || building },
-    { label: 'Generating store blueprint', done: Boolean(store) },
-    { label: 'Creating product catalog',   done: products > 0 },
-    { label: 'Resolving product images',   done: hasImages },
-    { label: 'Wiring Moolre checkout',   done: hasPay },
-    { label: 'Composing storefront',       done: hasCode },
-    { label: 'Publishing to edge',         done: hasCode },
-  ]
-}
-
 type SidebarSharedProps = {
   user: { id?: string; email: string; name: string; avatar: string; joinedAt?: string } | null
   tab: string
@@ -213,6 +194,8 @@ export default function DashboardPage() {
   const [mobileSidebar, setMobileSidebar] = useState(false)
   const [stores, setStores] = useState<StoreData[]>([])
   const [pendingAttachment, setPendingAttachment] = useState<{ name: string; url: string } | null>(null)
+  const [buildId, setBuildId] = useState<string | null>(null)
+  const [buildConversationId, setBuildConversationId] = useState<string | undefined>()
 
   useEffect(() => { if (sending) setSidebarOpen(false) }, [sending])
 
@@ -250,21 +233,8 @@ export default function DashboardPage() {
         const { data: conv } = await createConversation(pending, resolvedUser?.id)
         if (conv) { setConvId(conv.id); setConversations((c) => [conv, ...c]) }
         setMsgs([{ role: 'user', content: pending }])
-
-        const { data: storeData } = await apiFetch<{ store: StoreData }>('/api/v1/seltra/store', {
-          method: 'POST', body: JSON.stringify({ name: pending.slice(0, 48), prompt: pending })
-        })
-        if (storeData?.store) {
-          setActiveStore(storeData.store)
-          setStores([storeData.store])
-          setRev((v) => v + 1)
-          const reply = buildFeedback(storeData.store)
-          setMsgs((prev) => [...prev, { role: 'assistant', content: reply }])
-          await saveMessage(conv?.id, 'user', pending, resolvedUser?.id)
-          await saveMessage(conv?.id, 'assistant', reply, resolvedUser?.id)
-        }
-        setSending(false)
-        setTimeout(() => setSidebarOpen(true), 1200)
+        await saveMessage(conv?.id, 'user', pending, resolvedUser?.id)
+        await beginBuild(pending, conv?.id)
       }
     }
 
@@ -295,6 +265,22 @@ export default function DashboardPage() {
     setMsgs((data ?? []).map((m) => ({ role: m.role, content: m.content })))
     setTab('home')
   }
+
+  const beginBuild = useCallback(async (prompt: string, conversationId?: string) => {
+    setBuildId(null)
+    setBuildConversationId(conversationId)
+    const { data, error } = await apiFetch<{ buildId: string }>('/api/v1/seltra/store/build', {
+      method: 'POST',
+      body: JSON.stringify({ name: prompt.slice(0, 48), prompt }),
+    })
+    if (error || !data?.buildId) {
+      toast.error(error || 'Could not start build')
+      setSending(false)
+      setTimeout(() => setSidebarOpen(true), 1200)
+      return
+    }
+    setBuildId(data.buildId)
+  }, [])
 
   const deleteConversation = async (conversationId: string) => {
     const { error } = await apiFetch<{ success: boolean }>(`/api/v1/conversations/${encodeURIComponent(conversationId)}`, { method: 'DELETE' })
@@ -358,21 +344,8 @@ export default function DashboardPage() {
     const { data: conversation } = await createConversation(prompt, user?.id)
     if (conversation) { setConvId(conversation.id); setConversations((c) => [conversation, ...c]) }
     setMsgs([{ role: 'user', content: prompt }])
-    let store = activeStore
-    if (!store) {
-      const { data } = await apiFetch<{ store: StoreData }>('/api/v1/seltra/store', {
-        method: 'POST', body: JSON.stringify({ name: prompt.slice(0, 48), prompt })
-      })
-      if (data?.store) { store = data.store; setActiveStore(data.store); setStores((p) => [data.store, ...p]); setRev((v) => v + 1) }
-    }
     await saveMessage(conversation?.id, 'user', prompt, user?.id)
-    if (store) {
-      const reply = buildFeedback(store)
-      setMsgs((prev) => [...prev, { role: 'assistant', content: reply }])
-      await saveMessage(conversation?.id, 'assistant', reply, user?.id)
-    }
-    setSending(false)
-    setTimeout(() => setSidebarOpen(true), 1200)
+    await beginBuild(prompt, conversation?.id)
   }
 
 const send = async () => {
@@ -430,7 +403,27 @@ const send = async () => {
     () => activeStore?.slug ?? storeTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30),
     [activeStore?.slug, storeTitle]
   )
-  const buildSteps = useMemo(() => getBuildSteps(activeStore, sending), [activeStore, sending])
+  const handleBuildDone = useCallback(async (store: StoreData) => {
+    setActiveStore(store)
+    setStores((prev) => [store, ...prev.filter((item) => item.id !== store.id && item.slug !== store.slug)])
+    setRev((v) => v + 1)
+    const reply = buildFeedback(store)
+    setMsgs((prev) => [...prev, { role: 'assistant', content: reply }])
+    await saveMessage(buildConversationId ?? convId, 'assistant', reply, user?.id)
+    setSending(false)
+    setBuildId(null)
+    setBuildConversationId(undefined)
+    setTimeout(() => setSidebarOpen(true), 1200)
+    void loadStores()
+  }, [buildConversationId, convId, setActiveStore, user?.id])
+
+  const handleBuildError = useCallback((message: string) => {
+    toast.error(message)
+    setSending(false)
+    setBuildId(null)
+    setBuildConversationId(undefined)
+    setTimeout(() => setSidebarOpen(true), 1200)
+  }, [])
 
   // ── Shared attach handler for the agent panel (with Cloudinary upload) ──
 const handleAgentAttach = async (f: File) => {
@@ -533,33 +526,6 @@ const handleAgentAttach = async (f: File) => {
                 </div>
               </div>
 
-              {/* Workflow steps */}
-              <AnimatePresence>
-                {sending && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }}
-                    className="flex-shrink-0 overflow-hidden border-b border-border bg-card/30"
-                  >
-                    <div className="px-5 py-3">
-                      <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-primary/60">{'// agent workflow'}</div>
-                      <div className="space-y-1.5">
-                        {buildSteps.map((step, i) => {
-                          const isActive = buildSteps.slice(0, i).every(s => s.done) && !step.done && sending
-                          return (
-                            <div key={step.label} className={`flex items-center gap-2 text-xs transition-all ${step.done ? 'opacity-40' : isActive ? 'opacity-100' : 'opacity-20'}`}>
-                              <div className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${step.done ? 'bg-primary' : isActive ? 'animate-pulse bg-yellow-400' : 'bg-border'}`} />
-                              <span className={isActive ? 'font-medium text-foreground' : 'text-muted-foreground'}>{step.label}</span>
-                              {step.done && <span className="ml-auto font-mono text-[9px] text-primary">✓</span>}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
               {/* Messages */}
               <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 text-[13px]">
                 {msgs.length === 0 && !sending && (
@@ -597,9 +563,9 @@ const handleAgentAttach = async (f: File) => {
               </div>
             </section>
 
-            <StorefrontShell slug={storeSlug} isStream={sending && !activeStore?.storefrontCode}>
-              {sending && !activeStore?.storefrontCode ? (
-                <AgentBuildStream storeName={storeTitle} buildSteps={buildSteps} isBuilding={sending} />
+            <StorefrontShell slug={storeSlug} isStream={Boolean(buildId)}>
+              {buildId ? (
+                <AgentBuildStream storeName={storeTitle} buildId={buildId} onDone={handleBuildDone} onError={handleBuildError} />
               ) : (
            <StorefrontPreview key={storeSlug} storeSlug={storeSlug} suppressFallback={!activeStore} rev={rev} />              )}
             </StorefrontShell>

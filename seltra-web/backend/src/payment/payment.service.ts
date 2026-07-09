@@ -582,6 +582,7 @@ import { createHmac, randomBytes } from 'crypto'
 import { prisma } from '../db'
 import { PaystackService } from './paystack.service'
 import { MoolreService, type MoolreWebhookBody } from './moolre.service'
+import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 
 type CheckoutItem = {
   productId?: string
@@ -641,6 +642,7 @@ export class PaymentService {
     private readonly paystackService: PaystackService,
     private readonly moolreService: MoolreService,
     private readonly jwtService: JwtService,
+    private readonly tenantEvents: TenantEventsService,
   ) {}
 
   generateReference(tenantSlug: string) {
@@ -849,6 +851,12 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     })
 
     await this.creditMerchantLedger(existingOrder.tenantId, existingOrder.id, grossAmount, externalref)
+    void this.tenantEvents.recordForTenant(existingOrder.tenantId, 'payment_received', {
+      orderId: existingOrder.id,
+      reference: externalref,
+      amount: grossAmount.toString(),
+      provider: 'moolre',
+    })
 
     console.log(`[Moolre] Ledger credited for order ${existingOrder.id}, amount: ${grossAmount}`)
     return { received: true }
@@ -981,6 +989,12 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
           })
 
       await this.creditMerchantLedger(tenant.id, order.id, grossAmount, reference)
+      void this.tenantEvents.recordForTenant(tenant.id, 'payment_received', {
+        orderId: order.id,
+        reference,
+        amount: grossAmount.toString(),
+        provider: 'paystack',
+      })
     }
 
     return { received: true }
@@ -1087,6 +1101,12 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     })
 
     await this.creditMerchantLedger(tenant.id, order.id, grossAmount, reference)
+    void this.tenantEvents.recordForTenant(tenant.id, 'payment_received', {
+      orderId: order.id,
+      reference,
+      amount: grossAmount.toString(),
+      provider: 'paystack',
+    })
     const refreshedOrder = await prisma.order.findUnique({ where: { id: order.id } })
 
     return {

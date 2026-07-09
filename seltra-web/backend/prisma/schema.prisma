@@ -13,17 +13,23 @@ model User {
   email        String   @unique
   passwordHash String
   name         String?
+
+  application  MerchantApplication?
+  tenants      Tenant[]
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  tenants      Tenant[]
 }
 
 model Tenant {
   id                    String            @id @default(uuid())
   ownerId               String?
+  owner                 User? @relation(fields: [ownerId], references: [id])
   name                  String
   slug                  String            @unique
   businessType          String?
+  city                  String?
+  country               String?
   targetAudience        String?
   platform              String            @default("Seltra")
   status                String            @default("active")
@@ -32,6 +38,11 @@ model Tenant {
   storefrontCode        String?
   storefrontVersion     Int               @default(0)
   storefrontGeneratedAt DateTime?
+  manifest              Json?
+  heroSource            String?
+  heroGeneratedAt       DateTime?
+  navSource             String?
+  navGeneratedAt        DateTime?
   storeDNA              Json?
   merchantContext   Json?   // stores MerchantContext object
   createdAt             DateTime          @default(now())
@@ -43,9 +54,34 @@ model Tenant {
   paymentProviders      PaymentProvider[]
   products              Product[]
   shippingZones         ShippingZone[]
-  owner                 User?             @relation(fields: [ownerId], references: [id])
+  events                TenantEvent[]
 
   @@index([ownerId])
+}
+
+model TenantEvent {
+  id String @id @default(uuid())
+  tenantId String
+  type TenantEventType
+  meta Json?
+  createdAt DateTime @default(now())
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([type, createdAt])
+}
+
+model OpsAuditLog {
+  id         String   @id @default(uuid())
+  actorLabel String
+  action     String
+  targetType String
+  targetId   String
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([actorLabel, createdAt])
 }
 
 model Conversation {
@@ -231,12 +267,12 @@ model MerchantApplication {
   id             String         @id @default(uuid())
   fullName       String
   phone          String
-  email          String?        @unique
+  email          String        @unique
   businessName   String
   businessType   String
   storeName      String
   whatYouSell    String
-  basedIn        String
+  basedIn        String //(city/state/country)
   monthlyRevenue String
   existingLinks  String?
   aiFamiliarity  String?
@@ -246,8 +282,13 @@ model MerchantApplication {
   allowAiHelp    String?
   status         MerchantStatus @default(pending)
   merchantId     String?        @unique
+  userId         String?  @unique
+  user           User?    @relation(fields: [userId], references: [id])
   createdBy      String?
   reviewNotes    String?
+  reviewedAt     DateTime?
+  credentialsGeneratedAt DateTime?
+  welcomeEmailSentAt DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -275,3 +316,15 @@ enum MerchantStatus {
   rejected
   suspended
 }
+
+enum TenantEventType {
+  product_added
+  order_placed
+  payment_received
+  login
+  settings_changed
+  theme_updated
+  ai_invocation
+  merchant_onboarded
+}
+

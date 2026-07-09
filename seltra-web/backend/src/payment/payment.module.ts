@@ -7,6 +7,7 @@ import { PaystackService } from './paystack.service'
 import { PaystackWebhookController } from './paystack-webhook.controller'
 import { MoolreService } from './moolre.service'
 import { MoolreWebhookController } from './moolre-webhook.controller'
+import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { MoolreWebhookController } from './moolre-webhook.controller'
     }),
   ],
   controllers: [PaymentController, PaystackWebhookController, MoolreWebhookController],
-  providers: [PaymentService, PaystackService, MoolreService],
+  providers: [PaymentService, PaystackService, MoolreService, TenantEventsService],
   exports: [PaymentService],
 })
 export class PaymentModule {}

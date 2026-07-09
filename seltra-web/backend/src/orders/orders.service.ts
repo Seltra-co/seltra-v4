@@ -3,6 +3,7 @@ import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt'
 import { createHmac } from 'crypto'
 import { prisma } from '../db'
+import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 
 interface VerifyOrderPayload {
   reference: string
@@ -19,7 +20,10 @@ interface VerifyOrderPayload {
 export class OrdersService {
   private readonly paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || ''
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly tenantEvents: TenantEventsService,
+  ) {}
 
   async initialize(payload: VerifyOrderPayload) {
     if (!this.paystackSecretKey) {
@@ -128,6 +132,11 @@ export class OrdersService {
             price: item.product.price,
           })) as object,
         },
+      })
+      void this.tenantEvents.recordForTenant(order.tenantId, 'order_placed', {
+        orderId: order.id,
+        reference: payload.reference,
+        amount: order.totalAmount.toString(),
       })
 
       return {

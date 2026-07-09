@@ -1,6 +1,6 @@
 //seltra-web/frontend/components/storefront/StorefrontCanvas.tsx
 'use client'
-import { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { ShoppingBag } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -47,6 +47,7 @@ export interface StoreData {
   brandName?: string
   heroTitle?: string; heroSubtitle?: string
   canonical?: {
+    brandName?: string; businessName?: string
     storeFeatures?: string[]; productCategories?: string[]; layoutVariant?: string
     recommendedTechStack?: { paymentGateways?: string[] }
   }
@@ -57,6 +58,9 @@ export interface StoreData {
     images?: Array<{ url: string; isPrimary?: boolean }>
     variants?: Array<{ name: string; value: string }>
   }>
+  manifest?: StoreManifest | null
+  heroSource?: string | null
+  navSource?: string | null
   storefrontCode?: string | null; storefrontVersion?: number
 }
 
@@ -66,12 +70,6 @@ const SHADOW_MAP:  Record<string, string> = { luxury:'0 2px 12px rgba(0,0,0,0.06
 
 function buildThemeVars(p: StorePalette, t: StoreTypography, themeKey: string): string {
   return `--store-bg:${p.bg};--store-surface:${p.surface};--store-border:${p.border};--store-text:${p.text};--store-muted:${p.muted};--store-accent:${p.accent};--store-accent-text:${p.accentText};--store-accent-soft:${p.accentSoft};--store-heading-font:'${t.headingFont}';--store-body-font:'${t.bodyFont}';--store-radius:${RADIUS_MAP[themeKey]??'0.5rem'};--store-section-spacing:${SPACING_MAP[themeKey]??'5rem'};--store-shadow:${SHADOW_MAP[themeKey]??'none'};`
-}
-
-function extractManifest(html: string, store: StoreData): StoreManifest {
-  const m = html.match(/<!-- SELTRA_MANIFEST: (.+?) -->/)
-  if (m?.[1]) { try { return JSON.parse(m[1]) } catch {} }
-  return deriveManifest(store)
 }
 
 function deriveManifest(store: StoreData): StoreManifest {
@@ -93,7 +91,7 @@ function deriveManifest(store: StoreData): StoreManifest {
     : isBold
     ? { headingFont:'Bebas Neue', bodyFont:'Inter' }
     : { headingFont:'Syne', bodyFont:'Inter' }
-  const displayName = store.brandName || store.name
+  const displayName = resolveDisplayName(store)
   return {
     sections: [
       { type:'hero-centered', headline:displayName, tagline:store.heroSubtitle??'Shop the collection.', subtext:`For ${store.targetAudience??'your customers'}.`, eyebrow:store.businessType??'' },
@@ -109,10 +107,12 @@ function deriveManifest(store: StoreData): StoreManifest {
 
 // Resolve display name: brandName > short businessName
 function resolveDisplayName(store: StoreData): string {
-  if (store.brandName && store.brandName.trim().split(/\s+/).length <= 4) return store.brandName.trim()
-  const words = store.name.trim().split(/\s+/)
+  const approvedBrand = store.brandName ?? store.canonical?.brandName
+  if (approvedBrand && approvedBrand.trim().split(/\s+/).length <= 4) return approvedBrand.trim()
+  const approvedBusiness = store.canonical?.businessName ?? store.name
+  const words = approvedBusiness.trim().split(/\s+/)
   if (words.length > 3) return words.slice(0, 2).join(' ')
-  return store.name
+  return approvedBusiness
 }
 
 const SectionFade = ({ children }: { children: React.ReactNode }) => (
@@ -176,10 +176,12 @@ function renderSection(
 interface CanvasProps { store: StoreData; storeSlug: string; minHeightClass?: string; themeKey?: string }
 
 export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[560px]', themeKey = 'minimal-light' }: CanvasProps) {
-  const manifest = store.storefrontCode ? extractManifest(store.storefrontCode, store) : deriveManifest(store)
+  const manifest = store.manifest ?? deriveManifest(store)
   const { palette, typography } = manifest
   const displayName = resolveDisplayName(store)
   const industry = store.storeDNA?.industry
+  const heroSection = manifest.sections.find(isHeroSection) ?? deriveManifest(store).sections.find(isHeroSection)!
+  const bodySections = manifest.sections.filter((section) => !isHeroSection(section))
 
   const products: StoreProduct[] = (store.products ?? []).map((p) => ({
     id: p.id ?? '', name: p.name ?? '', description: p.description,
@@ -243,83 +245,55 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
     onViewDetail: (p: StoreProduct) => setDetailProduct(p),
     industry,
   }
+  const heroFallback = <HeroSection section={heroSection} products={products} features={features} storeName={displayName} />
+  const heroProps = {
+    store: {
+      id: store.id,
+      name: displayName,
+      displayName,
+      businessType: store.businessType,
+      targetAudience: store.targetAudience,
+      brandName: store.brandName ?? store.canonical?.brandName,
+    },
+    products,
+    features,
+    onShopNow: () => scrollToSection('product-grid'),
+    onOpenCart: () => setCartOpen(true),
+  }
+  const navFallback = (
+    <DefaultNav
+      displayName={displayName}
+      businessType={store.businessType}
+      categories={categories}
+      cartCount={cartCount}
+      onOpenCart={() => setCartOpen(true)}
+      onCategoryClick={() => scrollToSection('product-grid')}
+      onLogoClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      mounted={mounted}
+    />
+  )
+  const navProps = {
+    displayName,
+    businessType: store.businessType,
+    categories,
+    cartCount,
+    CartIcon: ShoppingBag,
+    onOpenCart: () => setCartOpen(true),
+    onCategoryClick: () => scrollToSection('product-grid'),
+    onLogoClick: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+  }
 
   return (
     <div className={`seltra-storefront relative w-full overflow-x-hidden ${minHeightClass}`}>
       <StyleInjector fontParam={fontParam} themeVars={buildThemeVars(palette, typography, themeKey)} />
-      {/* ── Sticky nav ─────────────────────────────────────────────── */}
-      <nav
-        className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b px-5 py-3 backdrop-blur-xl"
-        style={{ background: `color-mix(in srgb, var(--store-bg) 92%, transparent)`, borderColor: 'var(--store-border)' }}
-      >
-        {/* Brand — shows brandName */}
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
-            style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)', fontFamily: `'${typography.headingFont}', serif` }}
-          >
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <div
-              className="store-heading truncate text-base font-bold leading-none"
-              style={{ fontFamily: `'${typography.headingFont}', serif` }}
-            >
-              {displayName}
-            </div>
-            {store.businessType && (
-              <div className="store-eyebrow mt-0.5 truncate">{store.businessType}</div>
-            )}
-          </div>
-        </div>
+      <MicroComponentRenderer source={store.navSource} componentName="StorefrontNav" props={navProps} fallback={navFallback} />
 
-        {/* Category nav — smooth scrolls to product-grid section */}
-        {categories.length > 0 && (
-          <div className="hidden items-center gap-5 md:flex">
-            {categories.slice(0, 4).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => scrollToSection('product-grid')}
-                className="text-xs font-medium transition-colors"
-                style={{ color: 'var(--store-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--store-text)')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--store-muted)')}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Cart */}
-        <button
-          onClick={() => setCartOpen(true)}
-          className="store-btn-outline relative flex shrink-0 items-center gap-2 px-3 py-1.5 text-xs"
-          style={{ borderRadius: 'var(--store-radius-full)' }}
-        >
-          <ShoppingBag className="h-3.5 w-3.5" style={{ color: 'var(--store-accent)' }} />
-          Cart
-       {mounted && (
-            <AnimatePresence mode="wait">
-              {cartCount > 0 && (
-                <motion.span
-                  key={cartCount}
-                  initial={{ scale: 0.5, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.5, opacity: 0 }}
-                  className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
-                  style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)' }}
-                >
-                  {cartCount}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          )}
-        </button>
-      </nav>
+      <div data-section="hero">
+        <MicroComponentRenderer source={store.heroSource} componentName="StorefrontHero" props={heroProps} fallback={heroFallback} />
+      </div>
 
       {/* ── Sections — each gets a data-section attribute for scroll targeting ── */}
-      {manifest.sections.map((section, i) => (
+      {bodySections.map((section, i) => (
         <div key={i} data-section={section.type}>
           {renderSection(section, i, sectionProps)}
         </div>
@@ -378,4 +352,133 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
       <CartDrawer open={cartOpen} items={cart} currency={currency} storeSlug={storeSlug} storeId={store.id} onClose={() => setCartOpen(false)} onUpdateQty={updateQty} />
     </div>
   )
+}
+
+type DefaultNavProps = {
+  displayName: string
+  businessType?: string
+  categories: string[]
+  cartCount: number
+  onOpenCart: () => void
+  onCategoryClick: (category: string) => void
+  onLogoClick: () => void
+  mounted?: boolean
+}
+
+function DefaultNav({
+  displayName,
+  businessType,
+  categories,
+  cartCount,
+  onOpenCart,
+  onCategoryClick,
+  onLogoClick,
+  mounted = true,
+}: DefaultNavProps) {
+  return (
+    <nav
+      className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b px-5 py-3 backdrop-blur-xl"
+      style={{ background: `color-mix(in srgb, var(--store-bg) 92%, transparent)`, borderColor: 'var(--store-border)' }}
+    >
+      <button onClick={onLogoClick} className="flex min-w-0 items-center gap-3 border-0 bg-transparent p-0 text-left">
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+          style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)', fontFamily: 'var(--store-heading-font)' }}
+        >
+          {displayName.charAt(0).toUpperCase()}
+        </span>
+        <span className="min-w-0">
+          <span className="store-heading block truncate text-base font-bold leading-none" style={{ fontFamily: 'var(--store-heading-font)' }}>
+            {displayName}
+          </span>
+          {businessType && <span className="store-eyebrow mt-0.5 block truncate">{businessType}</span>}
+        </span>
+      </button>
+
+      {categories.length > 0 && (
+        <div className="hidden items-center gap-5 md:flex">
+          {categories.slice(0, 4).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => onCategoryClick(cat)}
+              className="border-0 bg-transparent text-xs font-medium transition-colors"
+              style={{ color: 'var(--store-muted)', cursor: 'pointer' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--store-text)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--store-muted)')}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={onOpenCart}
+        className="store-btn-outline relative flex shrink-0 items-center gap-2 px-3 py-1.5 text-xs"
+        style={{ borderRadius: 'var(--store-radius-full)' }}
+      >
+        <ShoppingBag className="h-3.5 w-3.5" style={{ color: 'var(--store-accent)' }} />
+        Cart
+        {mounted && (
+          <AnimatePresence mode="wait">
+            {cartCount > 0 && (
+              <motion.span
+                key={cartCount}
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.5, opacity: 0 }}
+                className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
+                style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)' }}
+              >
+                {cartCount}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        )}
+      </button>
+    </nav>
+  )
+}
+
+class MicroErrorBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(error: unknown) { console.warn('[StorefrontCanvas] Micro component failed:', error) }
+  render() { return this.state.failed ? this.props.fallback : this.props.children }
+}
+
+function MicroComponentRenderer({
+  source,
+  componentName,
+  props,
+  fallback,
+}: {
+  source?: string | null
+  componentName: 'StorefrontHero' | 'StorefrontNav'
+  props: Record<string, unknown>
+  fallback: React.ReactNode
+}) {
+  const Component = useMemo(() => {
+    if (!source) return null
+    try {
+      if (componentName === 'StorefrontHero' && !source.includes('props.store.displayName')) return null
+      if (componentName === 'StorefrontNav' && !source.includes('props.CartIcon')) return null
+      const factory = new Function('React', `${source}; return typeof ${componentName} === "function" ? ${componentName} : null;`)
+      return factory(React) as React.ComponentType<Record<string, unknown>> | null
+    } catch (error) {
+      console.warn(`[StorefrontCanvas] Could not construct ${componentName}:`, error)
+      return null
+    }
+  }, [source, componentName])
+
+  if (!Component) return <>{fallback}</>
+  return (
+    <MicroErrorBoundary fallback={fallback}>
+      <Component {...props} />
+    </MicroErrorBoundary>
+  )
+}
+
+function isHeroSection(section: ManifestSection) {
+  return section.type === 'hero-centered' || section.type === 'hero-split' || section.type === 'hero-editorial' || section.type === 'hero-fullbleed' || section.type === 'hero-minimal'
 }

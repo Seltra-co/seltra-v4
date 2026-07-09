@@ -5,6 +5,7 @@ import {
 import { JwtService } from '@nestjs/jwt'
 import { prisma } from '../db'
 import { UnauthorizedException, NotFoundException } from '@nestjs/common'
+import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 
 class UpsertProductDto {
   name!: string
@@ -17,7 +18,10 @@ class UpsertProductDto {
 
 @Controller('seltra/store/:storeId/products')
 export class ProductsController {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly tenantEvents: TenantEventsService,
+  ) {}
 
  @Get()
   async list(@Param('storeId') storeId: string, @Headers('authorization') auth?: string) {
@@ -36,7 +40,7 @@ export class ProductsController {
     @Headers('authorization') auth?: string,
   ) {
     const tenant = await this.assertOwner(storeId, auth)
-    return prisma.product.create({
+    const product = await prisma.product.create({
       data: {
         tenantId: tenant.id,
         name: body.name,
@@ -50,6 +54,8 @@ export class ProductsController {
       },
       include: { images: true, variants: true },
     })
+    void this.tenantEvents.recordForTenant(tenant.id, 'product_added', { productId: product.id, name: product.name })
+    return product
   }
 
   @Patch(':productId')

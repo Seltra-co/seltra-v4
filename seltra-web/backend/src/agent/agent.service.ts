@@ -112,7 +112,7 @@ export class AgentService {
               layoutVariant: canonical.layoutVariant,
               productCategories: canonical.productCategories,
               paymentGateways: tech?.paymentGateways,
-              hasStorefrontCode: Boolean((store as { storefrontCode?: string }).storefrontCode),
+              hasStorefrontCode: Boolean((store as { storefrontCode?: string; manifest?: unknown }).storefrontCode || (store as { manifest?: unknown }).manifest),
               products: store.products?.map((p) => ({
                 id: p.id,
                 name: p.name,

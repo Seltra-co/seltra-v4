@@ -1,7 +1,7 @@
 export type ApplicationDto = {
   full_name: string
   phone: string
-  email?: string
+  email: string
   business_name: string
   business_type: string
   store_name: string
@@ -20,8 +20,7 @@ export function normalizeApplicationDto(data: ApplicationDto) {
   return {
     fullName: data.full_name.trim(),
     phone: data.phone.trim(),
-    email: data.email?.trim() || null,
-    businessName: data.business_name.trim(),
+    email: data.email.trim().toLowerCase(),    businessName: data.business_name.trim(),
     businessType: data.business_type,
     storeName: data.store_name.trim(),
     whatYouSell: data.what_you_sell.trim(),

@@ -25,6 +25,7 @@ import { Linkedin } from "lucide-react";
 import { SiX } from "@icons-pack/react-simple-icons";
 import { Input } from '@/components/ui/input'
 import { toast } from '@/hooks/use-toast'
+import { TypewriterPlaceholder } from '@/components/marketing/TypewriterPlaceholder'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
 
@@ -46,11 +47,20 @@ async function listStores() {
   }
 }
 
-const examples = [
-  'Launch a skincare brand for Gen Z women in San Francisco',
-  'Start a print-on-demand streetwear store',
-  'Open a B2B coffee wholesale shop',
-  'Build a handmade jewelry boutique',
+const composerPrompts = [
+  'Ask Seltra to launch a premium coffee brand for...',
+  'Ask Seltra to open a bakery selling artisan pastries that...',
+  'Ask Seltra to start an organic grocery delivery store...',
+  'Ask Seltra to launch a luxury streetwear brand for...',
+  'Ask Seltra to start a handmade jewelry boutique selling...',
+  'Ask Seltra to open a fashion store selling...',
+  'Ask Seltra to launch a skincare brand that...',
+  'Ask Seltra to create a premium haircare store for...',
+  'Ask Seltra to sell natural cosmetics across...',
+  'Ask Seltra to build an online gadget store...',
+  'Ask Seltra to sell authentic Ghanaian products worldwide...',
+  'Ask Seltra to start a fresh farm produce storefront that...',
+  'Ask Seltra to launch a digital agency storefront that...',
 ]
 
 // ─── Merchant logos ────────────────────────────────────────────────────────
@@ -279,9 +289,17 @@ function Hero() {
             Launch a full storefront today. Our agents handle operations, marketing, payments, and fulfillment.
           </p>
 
-          <div className="mx-auto max-w-[720px] pt-3">
-            <div className="group overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#1f2220] text-left shadow-[0_18px_60px_-36px_hsl(var(--primary)/0.55)] transition-colors focus-within:border-primary/45 sm:rounded-[1.5rem]">
-              <div className="px-4 pb-1 pt-4 sm:px-5 sm:pb-2">
+          <div className="mx-auto max-w-[860px] pt-3">
+            <div className="group overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#1c1f1d] text-left shadow-[0_24px_70px_-42px_hsl(var(--primary)/0.65)] transition-colors focus-within:border-primary/45 sm:rounded-[1.5rem]">
+              <div className="relative px-6 pb-0 pt-5 sm:px-8 sm:pt-5">
+                <TypewriterPlaceholder
+                  prompts={composerPrompts}
+                  typingSpeed={35}
+                  deleteSpeed={18}
+                  pauseDuration={1600}
+                  active={chatInput.length === 0}
+                  className="pointer-events-none absolute inset-x-6 top-5 text-base leading-relaxed sm:inset-x-8 sm:top-5 sm:text-lg"
+                />
                 <textarea
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
@@ -291,13 +309,14 @@ function Hero() {
                       void handleRun()
                     }
                   }}
-                  placeholder="Describe your business and what you want to sell..."
-                  className="h-[58px] w-full resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-white/45 focus:outline-none sm:h-[68px] sm:text-base lg:h-[76px]"
+                  aria-label="Describe your business and what you want to sell"
+                  placeholder=""
+                  className="relative z-10 h-[52px] w-full resize-none bg-transparent text-base leading-relaxed text-foreground focus:outline-none sm:h-[60px] sm:text-lg"
                   rows={2}
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-3 px-3 pb-3 sm:px-4">
+              <div className="flex items-center justify-between gap-3 px-4 pb-4 sm:px-5 sm:pb-4">
                 <button type="button" className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/55 transition-colors hover:border-primary/40 hover:text-primary sm:h-9 sm:w-9" title="Attach files">
                   <Plus className="h-4 w-4" />
                 </button>
@@ -324,14 +343,6 @@ function Hero() {
                   </button>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap justify-center gap-1.5 sm:mt-4 sm:gap-2">
-              {examples.map((example) => (
-                <button key={example} onClick={() => setChatInput(example)} className="rounded-full border border-white/10 bg-card/50 px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary sm:px-3 sm:text-[11px]">
-                  {'->'} {example}
-                </button>
-              ))}
             </div>
 
             <div className="mt-5 flex flex-col items-center justify-center gap-2 sm:flex-row">
