@@ -580,7 +580,7 @@ function Showcase() {
         {/* Real numbers only — pre-launch, so no traffic/GMV claims until we have them */}
         <div className="mt-12 grid grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card/40 sm:mt-16 sm:grid-cols-3">
           {[
-            { v: '15+', l: 'Merchants onboarded' },
+            { v: '15+', l: 'Merchants' },
             { v: '15 min', l: 'Avg. time from prompt to live store' },
             { v: '100%', l: 'Storefronts generated with zero manual design' },
           ].map((stat, index, arr) => (
