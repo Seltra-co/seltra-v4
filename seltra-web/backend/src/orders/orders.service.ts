@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt'
 import { createHmac } from 'crypto'
 import { prisma } from '../db'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
+import { OrderAgentService } from './order-agent.service'
 
 interface VerifyOrderPayload {
   reference: string
@@ -23,6 +24,7 @@ export class OrdersService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly tenantEvents: TenantEventsService,
+    private readonly orderAgent: OrderAgentService,
   ) {}
 
   async initialize(payload: VerifyOrderPayload) {
@@ -137,7 +139,10 @@ export class OrdersService {
         orderId: order.id,
         reference: payload.reference,
         amount: order.totalAmount.toString(),
+        customerEmail: order.customerEmail,
+        customerName: order.customerName,
       })
+      void this.orderAgent.onOrderCreated(order, 'paystack').catch(() => null)
 
       return {
         success: true,
@@ -206,6 +211,7 @@ export class OrdersService {
     const perPage = Math.min(100, Math.max(1, opts.perPage))
     const where = {
       tenantId,
+      merchantAmount: { not: null },
       ...(opts.status ? { status: opts.status } : {}),
     }
     const [orders, total] = await Promise.all([
@@ -261,7 +267,23 @@ export class OrdersService {
     const tenantId = await this.resolveTenantId(authorization, requestedTenantId)
     const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } })
     if (!order) throw new NotFoundException('Order not found')
-    return prisma.order.update({ where: { id: orderId }, data: { status } })
+    const timeline = Array.isArray(order.timeline) ? order.timeline : []
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status,
+        timeline: [...timeline, { status, at: new Date().toISOString(), by: 'merchant' }],
+        fulfilledBy: status === 'delivered' ? 'merchant' : order.fulfilledBy,
+      },
+    })
+    void this.tenantEvents.recordForTenant(updated.tenantId, 'order_status_updated', {
+      orderId: updated.id,
+      status,
+      customerEmail: updated.customerEmail,
+      customerName: updated.customerName,
+    })
+    void this.orderAgent.onStatusUpdated(updated).catch(() => null)
+    return updated
   }
 
   private parseItems(items: unknown) {

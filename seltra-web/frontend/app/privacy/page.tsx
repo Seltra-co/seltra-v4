@@ -10,7 +10,7 @@ export default function PrivacyPage() {
           <h2 className="text-foreground text-lg font-semibold mt-6">How we use it</h2>
           <p>To operate your storefront, process orders, and improve the platform. We never sell your data.</p>
           <h2 className="text-foreground text-lg font-semibold mt-6">Third parties</h2>
-          <p>Moorle and Paystack processes payments. No advertising networks have access to your data.</p>
+          <p>Moolre processes payments. No advertising networks have access to your data.</p>
           <h2 className="text-foreground text-lg font-semibold mt-6">Contact</h2>
           <p>hello@seltra.co</p>
         </div>

@@ -578,11 +578,13 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { Prisma } from '@prisma/client'
-import { createHmac, randomBytes } from 'crypto'
+import { createHash, createHmac, randomBytes, randomInt } from 'crypto'
 import { prisma } from '../db'
 import { PaystackService } from './paystack.service'
 import { MoolreService, type MoolreWebhookBody } from './moolre.service'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
+import { OrderAgentService } from '../orders/order-agent.service'
+import { ResendService } from '../resend/resend.service'
 
 type CheckoutItem = {
   productId?: string
@@ -627,6 +629,28 @@ type WebhookMetadata = NonNullable<NonNullable<WebhookPayload['data']>['metadata
 
 export type { WebhookPayload }
 
+type PayoutMethod = 'mobile_money' | 'bank'
+
+const GHANA_TELCOS = new Map([
+  ['mtn', { label: 'MTN Mobile Money', code: '1' }],
+  ['telecel', { label: 'Telecel Cash', code: '6' }],
+  ['at', { label: 'AT Money', code: '7' }],
+])
+
+const GHANA_BANKS = new Map([
+  ['gcb', { label: 'GCB Bank', code: 'gcb' }],
+  ['ecobank', { label: 'Ecobank Ghana', code: 'ecobank' }],
+  ['absa', { label: 'Absa Bank Ghana', code: 'absa' }],
+  ['stanbic', { label: 'Stanbic Bank Ghana', code: 'stanbic' }],
+  ['standard-chartered', { label: 'Standard Chartered Bank Ghana', code: 'standard-chartered' }],
+  ['fidelity', { label: 'Fidelity Bank Ghana', code: 'fidelity' }],
+  ['calbank', { label: 'CalBank', code: 'calbank' }],
+  ['republic', { label: 'Republic Bank Ghana', code: 'republic' }],
+  ['access', { label: 'Access Bank Ghana', code: 'access' }],
+  ['zenith', { label: 'Zenith Bank Ghana', code: 'zenith' }],
+  ['uba', { label: 'United Bank for Africa Ghana', code: 'uba' }],
+])
+
 // ── Determines which provider is active ──────────────────────────────────────
 function activeProvider(): 'moolre' | 'paystack' {
   return (process.env.PAYMENT_PROVIDER || 'moolre') === 'paystack' ? 'paystack' : 'moolre'
@@ -643,6 +667,8 @@ export class PaymentService {
     private readonly moolreService: MoolreService,
     private readonly jwtService: JwtService,
     private readonly tenantEvents: TenantEventsService,
+    private readonly orderAgent: OrderAgentService,
+    private readonly resendService: ResendService,
   ) {}
 
   generateReference(tenantSlug: string) {
@@ -713,6 +739,7 @@ export class PaymentService {
         items: normalizedItems as unknown as Prisma.InputJsonValue,
       },
     })
+    void this.orderAgent.onOrderCreated(order, 'moolre').catch(() => null)
 
     // const result = await this.moolreService.generatePaymentLink({
     //   amount: totalAmount,
@@ -797,6 +824,7 @@ private async initializePaymentPaystack(
       items: normalizedItems as unknown as Prisma.InputJsonValue,
     },
   })
+  void this.orderAgent.onOrderCreated(order, 'paystack').catch(() => null)
 
   return {
     authorization_url: authorization.authorization_url,
@@ -841,7 +869,7 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
 
     const grossAmount = new Prisma.Decimal(body.data?.amount || existingOrder.totalAmount)
 
-    await prisma.order.update({
+    const paidOrder = await prisma.order.update({
       where: { id: existingOrder.id },
       data: {
         totalAmount: grossAmount,
@@ -854,9 +882,13 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     void this.tenantEvents.recordForTenant(existingOrder.tenantId, 'payment_received', {
       orderId: existingOrder.id,
       reference: externalref,
-      amount: grossAmount.toString(),
+      amount: Number(grossAmount).toFixed(2),
+      currency: 'GHS',
+      customerName: existingOrder.customerName,
+      customerEmail: existingOrder.customerEmail,
       provider: 'moolre',
     })
+    void this.orderAgent.onPaymentConfirmed(paidOrder, 'moolre').catch(() => null)
 
     console.log(`[Moolre] Ledger credited for order ${existingOrder.id}, amount: ${grossAmount}`)
     return { received: true }
@@ -885,6 +917,7 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
         const grossAmount = new Prisma.Decimal(statusResult.amount || existingOrder.totalAmount)
         await this.creditMerchantLedger(existingOrder.tenantId, existingOrder.id, grossAmount, reference)
         const refreshed = await prisma.order.findUnique({ where: { id: existingOrder.id } })
+        if (refreshed) void this.orderAgent.onPaymentConfirmed(refreshed, 'moolre').catch(() => null)
         return {
           success: true,
           source: 'polled',
@@ -943,11 +976,12 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
       })
       if (!tenant) throw new NotFoundException('Tenant for Paystack reference not found')
 
-      const items = this.normalizeItems(payload.data.metadata?.items || payload.data.metadata?.cart || [])
+      const metadata = payload.data.metadata
+      const items = this.normalizeItems(metadata?.items || metadata?.cart || [])
       const existingOrder = await prisma.order.findFirst({ where: { paystackRef: reference } })
       const customerEmail = payload.data.customer?.email || existingOrder?.customerEmail || ''
-      const customerName = payload.data.metadata?.customerName || this.customerNameFromPayload(payload)
-      const customerDetails = this.customerDetailsFromMetadata(payload.data.metadata)
+      const customerName = metadata?.customerName || this.customerNameFromPayload(payload)
+      const customerDetails = this.customerDetailsFromMetadata(metadata)
       const customer = customerEmail
         ? await this.upsertCustomer(tenant.id, customerEmail, customerName, customerDetails)
         : null
@@ -992,22 +1026,29 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
       void this.tenantEvents.recordForTenant(tenant.id, 'payment_received', {
         orderId: order.id,
         reference,
-        amount: grossAmount.toString(),
+        amount: Number(grossAmount).toFixed(2),
+        currency: 'GHS',
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
         provider: 'paystack',
       })
+      void this.orderAgent.onPaymentConfirmed(order, 'paystack').catch(() => null)
     }
 
     return { received: true }
   }
 
   async verifyPayment(reference: string) {
-    // Route to Moolre verify if active provider
+    if (!reference) throw new BadRequestException('Missing payment reference')
+
     if (activeProvider() === 'moolre') {
       return this.verifyMoolrePayment(reference)
     }
 
-    if (!reference) throw new BadRequestException('Missing payment reference')
+    return this.verifyPaystackPayment(reference)
+  }
 
+  private async verifyPaystackPayment(reference: string) {
     const verification = await this.paystackService.verifyTransaction(reference)
     if (!verification.status || verification.data?.status !== 'success') {
       return {
@@ -1037,6 +1078,7 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     const grossAmount = new Prisma.Decimal((verification.data.amount || 0) / 100)
     const currency = verification.data.currency || existingOrder?.currency || 'GHS'
     const items = this.checkoutItemsFromMetadata(metadata, existingOrder?.items)
+    const wasAlreadyCredited = existingOrder?.merchantAmount !== null && existingOrder?.merchantAmount !== undefined
 
     const order = existingOrder
       ? await prisma.order.update({
@@ -1101,12 +1143,18 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     })
 
     await this.creditMerchantLedger(tenant.id, order.id, grossAmount, reference)
-    void this.tenantEvents.recordForTenant(tenant.id, 'payment_received', {
-      orderId: order.id,
-      reference,
-      amount: grossAmount.toString(),
-      provider: 'paystack',
-    })
+    if (!wasAlreadyCredited) {
+      void this.tenantEvents.recordForTenant(tenant.id, 'payment_received', {
+        orderId: order.id,
+        reference,
+        amount: Number(grossAmount).toFixed(2),
+        currency: 'GHS',
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        provider: 'paystack',
+      })
+      void this.orderAgent.onPaymentConfirmed(order, 'paystack').catch(() => null)
+    }
     const refreshedOrder = await prisma.order.findUnique({ where: { id: order.id } })
 
     return {
@@ -1146,7 +1194,7 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
         type: 'credit',
         amount: merchantAmount,
         currency: 'GHS',
-        description: `Order payment credited${reference ? ` (${reference})` : ''}`,
+        description: 'Order payment credited',
         meta: { grossAmount, seltraFee, reference } as unknown as Prisma.InputJsonValue,
       },
     })
@@ -1166,15 +1214,240 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
 
   // ── Unchanged methods below ───────────────────────────────────────────────
 
-  async getMerchantLedger(authorization?: string, tenantId?: string) {
+  async getMerchantLedger(authorization?: string, tenantId?: string, pageInput = 1, perPageInput = 10) {
     const resolvedTenantId = await this.resolveTenantId(authorization, tenantId)
+    const page = Math.max(1, pageInput)
+    const perPage = Math.min(50, Math.max(1, perPageInput))
     const ledger = await prisma.merchantLedger.upsert({
       where: { tenantId: resolvedTenantId },
       update: {},
       create: { tenantId: resolvedTenantId, balance: 0, currency: 'GHS' },
-      include: { transactions: { orderBy: { createdAt: 'desc' }, take: 50 } },
     })
-    return ledger
+    const [transactions, total] = await Promise.all([
+      prisma.ledgerTransaction.findMany({
+        where: { ledgerId: ledger.id },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * perPage,
+        take: perPage,
+      }),
+      prisma.ledgerTransaction.count({ where: { ledgerId: ledger.id } }),
+    ])
+    return { ...ledger, transactions, total, page, perPage }
+  }
+
+  getPayoutOptions() {
+    return {
+      country: 'Ghana',
+      mobileMoney: Array.from(GHANA_TELCOS.values()),
+      banks: Array.from(GHANA_BANKS.values()),
+    }
+  }
+
+  async validatePayoutAccount(
+    authorization: string | undefined,
+    body: { tenantId?: string; method?: string; providerCode?: string; account?: string },
+  ) {
+    const tenantId = await this.resolveTenantId(authorization, body.tenantId)
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } })
+    if (!tenant) throw new NotFoundException('Store not found')
+
+    const method = this.normalizePayoutMethod(body.method)
+    const provider = this.resolvePayoutProvider(method, body.providerCode)
+    const account = this.normalizeAccount(body.account)
+    const result = await this.moolreService.validateReceiverName({ method, providerCode: provider.code, account })
+    if (!result.success || !result.accountName) {
+      throw new BadRequestException(result.error || 'Could not validate payout account')
+    }
+
+    const updated = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        payoutMethod: method,
+        payoutProvider: provider.label,
+        payoutProviderCode: provider.code,
+        payoutAccount: account,
+        payoutAccountName: result.accountName,
+        payoutValidatedAt: new Date(),
+      },
+    })
+
+    return {
+      success: true,
+      accountName: result.accountName,
+      payout: this.payoutFromTenant(updated),
+    }
+  }
+
+  async requestDisbursement(authorization: string | undefined, tenantId?: string, amountInput?: string | number) {
+    const resolvedTenantId = await this.resolveTenantId(authorization, tenantId)
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: resolvedTenantId },
+      include: { owner: { include: { application: true } } },
+    })
+    if (!tenant) throw new NotFoundException('Store not found')
+    if (!tenant.payoutMethod || !tenant.payoutProviderCode || !tenant.payoutAccount) {
+      throw new BadRequestException('Add and validate payout details before requesting disbursement')
+    }
+    const merchantPhone = this.merchantPhoneFromTenant(tenant)
+    if (!merchantPhone) {
+      throw new BadRequestException('Add a merchant phone number before requesting disbursement OTP')
+    }
+
+    const ledger = await prisma.merchantLedger.upsert({
+      where: { tenantId: resolvedTenantId },
+      update: {},
+      create: { tenantId: resolvedTenantId, balance: 0, currency: 'GHS' },
+    })
+    const balance = new Prisma.Decimal(ledger.balance)
+    const requestedAmount = new Prisma.Decimal(amountInput ?? 0)
+    const minimumReserve = new Prisma.Decimal(50)
+    if (balance.lte(0)) {
+      throw new BadRequestException('No balance available for disbursement')
+    }
+    if (requestedAmount.lte(0)) {
+      throw new BadRequestException('Enter the amount you want to disburse')
+    }
+    if (requestedAmount.gt(balance)) {
+      throw new BadRequestException('Disbursement amount is higher than your available balance')
+    }
+    if (balance.minus(requestedAmount).lt(minimumReserve)) {
+      throw new BadRequestException('At least GHS 50.00 must remain in your Seltra balance')
+    }
+
+    const otp = String(randomInt(100000, 999999))
+    const externalRef = `seltra_disb_${resolvedTenantId.slice(0, 8)}_${Date.now()}`
+    const disbursement = await prisma.disbursement.create({
+      data: {
+        tenantId: resolvedTenantId,
+        ledgerId: ledger.id,
+        amount: requestedAmount,
+        currency: ledger.currency,
+        status: 'pending_otp',
+        provider: tenant.payoutProvider,
+        providerCode: tenant.payoutProviderCode,
+        account: tenant.payoutAccount,
+        accountName: tenant.payoutAccountName,
+        externalRef,
+        otpHash: this.hashOtp(otp),
+        otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    })
+
+    const otpSms = await this.moolreService.sendSms({
+      to: merchantPhone,
+      message: `Seltra payout OTP: ${otp}. Confirm ${ledger.currency} ${requestedAmount.toFixed(2)} to ${tenant.payoutAccountName || tenant.payoutProvider || 'your payout account'}. Expires in 10 minutes.`,
+    })
+    if (!otpSms.success) {
+      await prisma.disbursement.delete({ where: { id: disbursement.id } }).catch(() => null)
+      throw new BadRequestException('Could not send disbursement OTP to merchant phone')
+    }
+    void this.tenantEvents.recordForTenant(resolvedTenantId, 'disbursement_requested', {
+      disbursementId: disbursement.id,
+      amount: requestedAmount.toString(),
+      currency: ledger.currency,
+    })
+
+    return {
+      success: true,
+      disbursementId: disbursement.id,
+      expiresAt: disbursement.otpExpiresAt,
+    }
+  }
+
+  async confirmDisbursement(
+    authorization: string | undefined,
+    body: { tenantId?: string; disbursementId?: string; otp?: string },
+  ) {
+    const tenantId = await this.resolveTenantId(authorization, body.tenantId)
+    if (!body.disbursementId || !body.otp) throw new BadRequestException('Missing disbursement OTP details')
+
+    const disbursement = await prisma.disbursement.findFirst({
+      where: { id: body.disbursementId, tenantId },
+      include: { tenant: { include: { owner: { include: { application: true } } } }, ledger: true },
+    })
+    if (!disbursement) throw new NotFoundException('Disbursement request not found')
+    if (disbursement.status !== 'pending_otp') throw new BadRequestException('Disbursement is not awaiting OTP')
+    if (!disbursement.otpExpiresAt || disbursement.otpExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Disbursement OTP has expired')
+    }
+    if (disbursement.otpHash !== this.hashOtp(body.otp)) throw new BadRequestException('Invalid disbursement OTP')
+
+    const amount = new Prisma.Decimal(disbursement.amount)
+    const ledger = await prisma.merchantLedger.findUnique({ where: { id: disbursement.ledgerId } })
+    if (!ledger || new Prisma.Decimal(ledger.balance).lt(amount)) {
+      throw new BadRequestException('Ledger balance is no longer enough for this disbursement')
+    }
+
+    const method = this.normalizePayoutMethod(disbursement.tenant.payoutMethod || disbursement.status)
+    const transfer = await this.moolreService.initiateTransfer({
+      method,
+      providerCode: disbursement.providerCode || '',
+      amount: amount.toFixed(2),
+      account: disbursement.account,
+      externalRef: disbursement.externalRef,
+      reference: `Seltra payout ${disbursement.tenant.name}`,
+      receiverName: disbursement.accountName || undefined,
+    })
+    if (!transfer.success) throw new BadRequestException(transfer.error || 'Disbursement transfer failed')
+
+    const [, tx] = await prisma.$transaction([
+      prisma.merchantLedger.update({
+        where: { id: disbursement.ledgerId },
+        data: { balance: { decrement: amount } },
+      }),
+      prisma.ledgerTransaction.create({
+        data: {
+          ledgerId: disbursement.ledgerId,
+          type: 'debit',
+          amount,
+          currency: disbursement.currency,
+          description: 'Payout sent',
+          meta: {
+            disbursementId: disbursement.id,
+            provider: disbursement.provider,
+            account: disbursement.account,
+            accountName: disbursement.accountName,
+            transactionid: transfer.transactionid,
+            testMode: transfer.testMode,
+          } as unknown as Prisma.InputJsonValue,
+        },
+      }),
+      prisma.disbursement.update({
+        where: { id: disbursement.id },
+        data: {
+          status: 'paid',
+          transactionId: transfer.transactionid,
+          rawResponse: transfer.raw as Prisma.InputJsonValue,
+          confirmedAt: new Date(),
+          otpHash: null,
+        },
+      }),
+    ])
+
+    await this.markOrdersDisbursed(tenantId)
+    void this.tenantEvents.recordForTenant(tenantId, 'disbursement_paid', {
+      disbursementId: disbursement.id,
+      amount: amount.toString(),
+      currency: disbursement.currency,
+      transactionid: transfer.transactionid,
+      testMode: transfer.testMode,
+    })
+    void this.resendService.sendMerchantReceipt({
+      to: disbursement.tenant.owner?.email || '',
+      merchantName: disbursement.tenant.owner?.name,
+      storeName: disbursement.tenant.name,
+      amount: amount.toFixed(2),
+      currency: disbursement.currency,
+      account: disbursement.account,
+      provider: disbursement.provider,
+      reference: disbursement.externalRef,
+    }).catch(() => null)
+    void this.moolreService.sendSms({
+      to: this.merchantPhoneFromTenant(disbursement.tenant),
+      message: `Seltra payout sent: ${disbursement.currency} ${amount.toFixed(2)} to ${disbursement.provider || 'your payout account'}.`,
+    })
+
+    return { success: true, transaction: tx, disbursementId: disbursement.id, testMode: transfer.testMode }
   }
 
   async getMerchantSales(authorization: string | undefined, page = 1, perPage = 20, tenantId?: string) {
@@ -1191,17 +1464,23 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     }
   }
 
-  async getMerchantCustomers(authorization?: string, tenantId?: string) {
+  async getMerchantCustomers(authorization?: string, tenantId?: string, pageInput = 1, perPageInput = 10) {
     const resolvedTenantId = await this.resolveTenantId(authorization, tenantId)
+    const page = Math.max(1, pageInput)
+    const perPage = Math.min(50, Math.max(1, perPageInput))
+    const where = { tenantId: resolvedTenantId }
     const customers = await prisma.customer.findMany({
-      where: { tenantId: resolvedTenantId },
+      where,
       include: {
         orders: { where: { merchantAmount: { not: null } }, orderBy: { createdAt: 'desc' } },
       },
       orderBy: { updatedAt: 'desc' },
+      skip: (page - 1) * perPage,
+      take: perPage,
     })
+    const total = await prisma.customer.count({ where })
 
-    return customers.map((customer) => {
+    const data = customers.map((customer) => {
       const totalSpent = customer.orders.reduce((sum, order) => sum.add(order.totalAmount), new Prisma.Decimal(0))
       const lastOrder = customer.orders[0]
       return {
@@ -1212,6 +1491,7 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
         isRecurring: customer.orders.length > 1, createdAt: customer.createdAt, updatedAt: customer.updatedAt,
       }
     })
+    return { data, total, page, perPage }
   }
 
   async resolveTenantId(authorization?: string, requestedTenantId?: string) {
@@ -1305,6 +1585,62 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     } catch {
       throw new UnauthorizedException('Invalid bearer token')
     }
+  }
+
+  private normalizePayoutMethod(method?: string): PayoutMethod {
+    const value = (method || '').toLowerCase().replace(/[\s-]+/g, '_')
+    if (value === 'bank' || value === 'bank_transfer') return 'bank'
+    if (value === 'mobile_money' || value === 'momo') return 'mobile_money'
+    throw new BadRequestException('Unsupported payout method')
+  }
+
+  private resolvePayoutProvider(method: PayoutMethod, providerCode?: string) {
+    const key = (providerCode || '').toLowerCase()
+    const direct = method === 'bank' ? GHANA_BANKS.get(key) : GHANA_TELCOS.get(key)
+    const byCode = Array.from(method === 'bank' ? GHANA_BANKS.values() : GHANA_TELCOS.values())
+      .find((provider) => provider.code.toLowerCase() === key)
+    const provider = direct || byCode
+    if (!provider) throw new BadRequestException('Unsupported payout provider for Ghana')
+    return provider
+  }
+
+  private normalizeAccount(account?: string) {
+    const cleaned = (account || '').replace(/[^\d]/g, '')
+    if (cleaned.length < 8) throw new BadRequestException('Enter a valid payout account number')
+    return cleaned
+  }
+
+  private payoutFromTenant(tenant: {
+    payoutMethod?: string | null
+    payoutProvider?: string | null
+    payoutProviderCode?: string | null
+    payoutAccount?: string | null
+    payoutAccountName?: string | null
+    payoutValidatedAt?: Date | null
+  }) {
+    return {
+      method: tenant.payoutMethod,
+      provider: tenant.payoutProvider,
+      providerCode: tenant.payoutProviderCode,
+      account: tenant.payoutAccount,
+      accountName: tenant.payoutAccountName,
+      validatedAt: tenant.payoutValidatedAt,
+    }
+  }
+
+  private hashOtp(otp: string) {
+    return createHash('sha256').update(`${process.env.JWT_SECRET || 'change-me'}:${otp}`).digest('hex')
+  }
+
+  private merchantPhoneFromTenant(tenant: { owner?: { application?: { phone?: string | null } | null } | null }) {
+    return tenant.owner?.application?.phone
+  }
+
+  private async markOrdersDisbursed(tenantId: string) {
+    await prisma.order.updateMany({
+      where: { tenantId, merchantAmount: { not: null }, disbursed: false },
+      data: { disbursed: true, disbursedAt: new Date() },
+    })
   }
 
   private customerNameFromPayload(payload: WebhookPayload) {

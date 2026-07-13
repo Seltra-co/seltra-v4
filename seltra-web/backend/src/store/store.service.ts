@@ -387,7 +387,18 @@ export class StoreService {
 
   async update(
     id: string,
-    data: { name?: string; businessType?: string; targetAudience?: string },
+    data: {
+      name?: string
+      businessType?: string
+      targetAudience?: string
+      region?: string
+      country?: string
+      language?: string
+      payoutMethod?: string
+      payoutProvider?: string
+      payoutProviderCode?: string
+      payoutAccount?: string
+    },
     authorization?: string,
   ) {
     const ownerId = await this.getUserIdFromAuth(authorization, true)
@@ -395,12 +406,29 @@ export class StoreService {
     if (!tenant || (tenant.ownerId && tenant.ownerId !== ownerId)) {
       throw new NotFoundException(`Store "${id}" not found`)
     }
+    const preferences = {
+      ...((tenant.preferences as Record<string, unknown> | null) ?? {}),
+      ...(data.region ? { region: data.region } : {}),
+      ...(data.language ? { language: data.language } : {}),
+    }
+    const updateData = {
+      name: data.name,
+      businessType: data.businessType,
+      targetAudience: data.targetAudience,
+      country: data.country,
+      preferences,
+      payoutMethod: data.payoutMethod,
+      payoutProvider: data.payoutProvider,
+      payoutProviderCode: data.payoutProviderCode,
+      payoutAccount: data.payoutAccount,
+      ownerId: tenant.ownerId ?? ownerId,
+    }
     const updated = await prisma.tenant.update({
       where: { id },
-      data: { ...data, ownerId: tenant.ownerId ?? ownerId },
+      data: updateData,
       include: this.storeInclude(),
     })
-    void this.tenantEvents.recordForTenant(id, 'settings_changed', data)
+    void this.tenantEvents.recordForTenant(id, 'settings_changed', updateData)
     return updated
   }
 

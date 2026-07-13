@@ -1,9 +1,13 @@
 //backend/src/agent/agent.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { chat } from '../ai'
 import { prisma } from '../db'
 import { StoreService } from '../store/store.service'
 import { loadMerchantContext, updateMerchantContext } from '../ai/agents/merchants-context'
+import { ContextEngine } from '../ai/context-engine.service'
+import { AgentEventsService } from './agent-events.service'
+import { MoolreService } from '../payment/moolre.service'
 
 export type AgentAction =
   | { action: 'ADD_PRODUCT'; payload: { id?: string; name: string; price: number | string; currency: string; description?: string; category?: string } }
@@ -15,6 +19,9 @@ export type AgentAction =
   | { action: 'PATCH_STOREFRONT'; payload: { instruction: string } }
   | { action: 'REGENERATE_STOREFRONT'; payload: { reason?: string } }
   | { action: 'UPDATE_STORE_META'; payload: { name?: string; businessType?: string; targetAudience?: string } }
+  | { action: 'UPDATE_PRODUCTS'; payload: { operation: 'increase_prices_percent' | 'premium_names' | 'create_bundles' | 'dark_image_direction'; percent?: number; count?: number; theme?: string } }
+  | { action: 'CREATE_INVOICE'; payload: { customerName: string; customerEmail: string; items: Array<{ description: string; quantity: number; unitPrice: number | string }> } }
+  | { action: 'SEND_SMS'; payload: { to: string; message: string } }
 
 export const SELTRA_SYSTEM_PROMPT = `You are the Seltra commerce agent. You help merchants build and manage their African e-commerce stores.
 
@@ -29,6 +36,9 @@ Emit structured JSON actions after your reply, separated by ---ACTIONS---:
   { "action": "UPDATE_PRODUCT", "payload": { "id": string, "name"?: string, "price"?: number, "description"?: string, "category"?: string } },
   { "action": "DELETE_PRODUCT", "payload": { "id": string, "name"?: string } },
   { "action": "UPDATE_STORE_META", "payload": { "name"?: string, "businessType"?: string, "targetAudience"?: string } },
+  { "action": "UPDATE_PRODUCTS", "payload": { "operation": "increase_prices_percent"|"premium_names"|"create_bundles"|"dark_image_direction", "percent"?: number, "count"?: number, "theme"?: string } },
+  { "action": "CREATE_INVOICE", "payload": { "customerName": string, "customerEmail": string, "items": [{ "description": string, "quantity": number, "unitPrice": number }] } },
+  { "action": "SEND_SMS", "payload": { "to": string, "message": string } },
   { "action": "UPDATE_THEME", "payload": { "primaryColor"?: string, "font"?: string } },
   { "action": "SET_POLICY", "payload": { "type": "shipping"|"returns", "content": string } },
   { "action": "PATCH_STOREFRONT", "payload": { "instruction": string } },
@@ -37,6 +47,7 @@ Emit structured JSON actions after your reply, separated by ---ACTIONS---:
 
 Rules:
 - For product price updates, emit UPDATE_PRODUCT with the product id and new price.
+- For all-product price, naming, bundle, and image styling requests, emit UPDATE_PRODUCTS.
 - For UI/visual changes, emit PATCH_STOREFRONT with a precise instruction.
 - For complete look overhauls, emit REGENERATE_STOREFRONT.
 - If no action is needed, omit ---ACTIONS--- entirely.
@@ -69,9 +80,48 @@ Merchant context:
 ${context.lastAction ? `- Last action: ${context.lastAction} at ${context.lastActionAt}` : ''}`.trim()
 }
 
+function inferredActionsFromMessage(message: string): AgentAction[] {
+  const lower = message.toLowerCase()
+  const actions: AgentAction[] = []
+  const percent = lower.match(/(\d+(?:\.\d+)?)\s*%/)?.[1]
+
+  if (/increase|raise|bump/.test(lower) && /price|prices/.test(lower) && /all|every/.test(lower)) {
+    actions.push({ action: 'UPDATE_PRODUCTS', payload: { operation: 'increase_prices_percent', percent: percent ? Number(percent) : 10 } })
+  }
+  if (/rename|name/.test(lower) && /product|products/.test(lower) && /premium|luxury|signature/.test(lower)) {
+    actions.push({ action: 'UPDATE_PRODUCTS', payload: { operation: 'premium_names' } })
+  }
+  if (/bundle|bundles|gift set|gift sets/.test(lower) && /create|make|add|mother|mothers|mother's/.test(lower)) {
+    const count = Number(lower.match(/(?:create|make|add)\s+(\d+)/)?.[1] ?? 3)
+    actions.push({ action: 'UPDATE_PRODUCTS', payload: { operation: 'create_bundles', count: Math.min(Math.max(count, 1), 8), theme: lower.includes('mother') ? "Mother's Day" : 'Commerce' } })
+  }
+  if (/image|images|photo|photos|asset|assets/.test(lower) && /dark|black|moody|background/.test(lower)) {
+    actions.push({ action: 'UPDATE_PRODUCTS', payload: { operation: 'dark_image_direction', theme: 'dark studio background' } })
+  }
+  if (/hero|button|font|faq|testimonial|newsletter|countdown|bestseller|best seller|storefront|layout|move|hide|show|dark mode/.test(lower)) {
+    actions.push({ action: 'PATCH_STOREFRONT', payload: { instruction: message } })
+  }
+  return actions
+}
+
+function mergeActions(modelActions: AgentAction[], inferred: AgentAction[]) {
+  const seen = new Set<string>()
+  return [...modelActions, ...inferred].filter((action) => {
+    const key = `${action.action}:${JSON.stringify(action.payload)}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 @Injectable()
 export class AgentService {
-  constructor(private readonly storeService: StoreService) {}
+  constructor(
+    private readonly storeService: StoreService,
+    private readonly contextEngine: ContextEngine,
+    private readonly agentEvents: AgentEventsService,
+    private readonly moolre: MoolreService,
+  ) {}
 
   async buildStore(prompt: string) {
     const { tenant, blueprint, provider, layoutVariant } = await this.storeService.createFromPrompt(prompt)
@@ -94,6 +144,7 @@ export class AgentService {
 
     // Load merchant context
     const context = await loadMerchantContext(store.id)
+    const promptContext = await this.contextEngine.build(store.id, message)
 
     let result
     try {
@@ -103,6 +154,7 @@ export class AgentService {
           role: 'user',
           content: [
             buildContextBlock(context),
+            promptContext,
             `Store context:`,
             JSON.stringify({
               id: store.id,
@@ -134,7 +186,15 @@ export class AgentService {
     }
 
     const parsed = parseActions(result.content)
-    const persistedActions = await this.executeActions(store, parsed.actions)
+    const actions = mergeActions(parsed.actions, inferredActionsFromMessage(message))
+    const persistedActions = await this.executeActions(store, actions)
+    void this.agentEvents.emit({
+      tenantId: store.id,
+      agent: 'CommerceAgent',
+      type: 'reply',
+      action: persistedActions.map((action) => action.action).join(',') || undefined,
+      payload: { message, actions: persistedActions } as object,
+    }).catch(() => null)
 
     // Update merchant context in background
     const industry = (store as { storeDNA?: { industry?: string } }).storeDNA?.industry ?? 'general'
@@ -254,8 +314,12 @@ export class AgentService {
 
       // ── PATCH STOREFRONT ───────────────────────────────────────────────
       if (action.action === 'PATCH_STOREFRONT') {
-        const existing = (store as { storefrontCode?: string }).storefrontCode
-        if (existing) {
+        const manifestPatched = await this.patchStorefrontManifest(store.id, action.payload.instruction, store as unknown as { manifest?: unknown })
+        if (manifestPatched) {
+          persisted.push(action)
+        } else {
+          const existing = (store as { storefrontCode?: string }).storefrontCode
+          if (existing) {
           try {
             const patched = await this.patchStorefrontHtml(existing, action.payload.instruction, store.name)
             if (patched) { await this.storeService.patchStorefrontCode(store.id, patched); persisted.push(action) }
@@ -263,11 +327,92 @@ export class AgentService {
             await this.storeService.regenerateStorefrontCode(store.id)
             persisted.push({ action: 'REGENERATE_STOREFRONT', payload: { reason: 'patch failed' } })
           }
-        } else {
-          await this.storeService.regenerateStorefrontCode(store.id)
-          persisted.push({ action: 'REGENERATE_STOREFRONT', payload: { reason: 'no existing code' } })
+          } else {
+            await this.storeService.regenerateStorefrontCode(store.id)
+            persisted.push({ action: 'REGENERATE_STOREFRONT', payload: { reason: 'no existing manifest or code' } })
+          }
         }
         needsStorefrontRefetch = true
+      }
+
+      if (action.action === 'UPDATE_PRODUCTS') {
+        const operation = action.payload.operation
+        if (operation === 'increase_prices_percent') {
+          const percent = Number(action.payload.percent ?? 10)
+          for (const product of store.products ?? []) {
+            const nextPrice = Number(product.price) * (1 + percent / 100)
+            await prisma.product.update({ where: { id: product.id }, data: { price: nextPrice.toFixed(2) } })
+          }
+          persisted.push(action)
+          needsStorefrontRefetch = true
+        }
+        if (operation === 'premium_names') {
+          for (const product of store.products ?? []) {
+            if (/premium|signature|reserve/i.test(product.name)) continue
+            await prisma.product.update({ where: { id: product.id }, data: { name: `Signature ${product.name}` } })
+          }
+          persisted.push(action)
+          needsStorefrontRefetch = true
+        }
+        if (operation === 'create_bundles') {
+          const count = Math.min(Math.max(Number(action.payload.count ?? 3), 1), 8)
+          const baseProducts = (store.products ?? []).slice(0, Math.max(1, Math.min(3, store.products?.length ?? 1)))
+          const theme = action.payload.theme || 'Commerce'
+          const average = baseProducts.length
+            ? baseProducts.reduce((sum, product) => sum + Number(product.price || 0), 0) / baseProducts.length
+            : 75
+          for (let i = 0; i < count; i += 1) {
+            await prisma.product.create({
+              data: {
+                tenantId: store.id,
+                name: `${theme} Bundle ${i + 1}`,
+                description: `Curated ${theme.toLowerCase()} set featuring ${baseProducts.map((product) => product.name).join(', ') || 'best-selling items'}.`,
+                price: (average * (1.8 + i * 0.15)).toFixed(2),
+                currency: baseProducts[0]?.currency || 'GHS',
+                category: 'Bundles',
+                tags: ['agent-created', 'bundle'],
+                status: 'active',
+              },
+            })
+          }
+          persisted.push(action)
+          needsStorefrontRefetch = true
+        }
+        if (operation === 'dark_image_direction') {
+          for (const product of store.products ?? []) {
+            const tags = Array.isArray(product.tags) ? product.tags.map(String) : []
+            await prisma.product.update({
+              where: { id: product.id },
+              data: { tags: Array.from(new Set([...tags, 'image-style:dark-studio', 'agent-image-direction'])) },
+            })
+          }
+          persisted.push(action)
+          needsStorefrontRefetch = true
+        }
+      }
+
+      if (action.action === 'CREATE_INVOICE') {
+        const invoice = await this.createInvoiceFromAgent(store.id, action.payload)
+        persisted.push({
+          action: 'CREATE_INVOICE',
+          payload: {
+            ...action.payload,
+            invoiceId: invoice.id,
+            number: invoice.number,
+          } as AgentAction['payload'] & { invoiceId: string; number: string },
+        } as AgentAction)
+      }
+
+      if (action.action === 'SEND_SMS') {
+        await this.moolre.sendSms(action.payload)
+        await this.agentEvents.emit({
+          tenantId: store.id,
+          agent: 'CommerceAgent',
+          type: 'sms.sent',
+          action: 'SEND_SMS',
+          payload: action.payload as Prisma.InputJsonValue,
+        }).catch(() => null)
+        persisted.push(action)
       }
 
       // ── REGENERATE STOREFRONT ──────────────────────────────────────────
@@ -298,5 +443,88 @@ export class AgentService {
     const raw = result.content.trim()
     if (!raw.toLowerCase().startsWith('<!doctype html')) return null
     return raw
+  }
+
+  private async patchStorefrontManifest(storeId: string, instruction: string, store: { manifest?: unknown }) {
+    const manifest = store.manifest as { palette?: Record<string, string>; typography?: Record<string, string>; sections?: Array<Record<string, unknown>> } | null
+    if (!manifest || !Array.isArray(manifest.sections)) return false
+
+    const lower = instruction.toLowerCase()
+    const next = JSON.parse(JSON.stringify(manifest)) as NonNullable<typeof manifest>
+    next.palette = { ...(next.palette ?? {}) }
+    next.typography = { ...(next.typography ?? {}) }
+    next.sections = Array.isArray(next.sections) ? next.sections : []
+
+    if (/dark mode|dark theme|black/.test(lower)) {
+      next.palette = { ...next.palette, bg: '#050505', surface: '#111111', text: '#f8fafc', muted: '#a1a1aa', accent: next.palette.accent ?? '#22c55e' }
+    }
+    if (/button|buttons/.test(lower) && /larger|bigger|large/.test(lower)) {
+      next.sections = next.sections.map((section) => ({ ...section, buttonSize: 'large' }))
+    }
+    if (/font/.test(lower)) {
+      const font = lower.includes('serif') ? 'Playfair Display' : lower.includes('mono') ? 'JetBrains Mono' : 'Inter'
+      next.typography = { ...next.typography, headingFont: font, bodyFont: font === 'Playfair Display' ? 'Inter' : font }
+    }
+    if (/hide/.test(lower) && /newsletter/.test(lower)) {
+      next.sections = next.sections.filter((section) => section.type !== 'newsletter')
+    }
+    if (/faq/.test(lower) && !next.sections.some((section) => section.type === 'faq')) {
+      next.sections.push({ type: 'faq', headline: 'Questions customers ask', items: [] })
+    }
+    if (/countdown/.test(lower) && !next.sections.some((section) => section.type === 'countdown')) {
+      next.sections.unshift({ type: 'countdown', label: 'Limited offer', endsInHours: 72 })
+    }
+    if (/bestseller|best seller|featured first/.test(lower)) {
+      next.sections = next.sections.map((section) => section.type === 'product-grid' ? { ...section, style: 'featured-first' } : section)
+    }
+    if (/move/.test(lower) && /hero/.test(lower)) {
+      next.sections = next.sections.sort((a, b) => a.type === 'hero' ? -1 : b.type === 'hero' ? 1 : 0)
+    }
+
+    await prisma.tenant.update({
+      where: { id: storeId },
+      data: { manifest: next as Prisma.InputJsonValue, updatedAt: new Date() },
+    })
+    return true
+  }
+
+  private async createInvoiceFromAgent(
+    tenantId: string,
+    payload: Extract<AgentAction, { action: 'CREATE_INVOICE' }>['payload'],
+  ) {
+    const items = (payload.items || []).filter((item) => item.description && Number(item.quantity) > 0)
+    const subtotal = items.reduce((sum, item) => sum + Number(item.unitPrice) * Number(item.quantity), 0)
+    const invoiceCount = await prisma.invoice.count({ where: { tenantId } })
+    const number = `INV-${String(invoiceCount + 1).padStart(5, '0')}`
+
+    const invoice = await prisma.invoice.create({
+      data: {
+        tenantId,
+        number,
+        customerName: payload.customerName,
+        customerEmail: payload.customerEmail,
+        subtotal: new Prisma.Decimal(subtotal),
+        total: new Prisma.Decimal(subtotal),
+        pdfUrl: `/api/v1/invoices/${number}/pdf`,
+        items: {
+          create: items.map((item) => ({
+            description: item.description,
+            quantity: Number(item.quantity),
+            unitPrice: new Prisma.Decimal(item.unitPrice),
+            total: new Prisma.Decimal(Number(item.unitPrice) * Number(item.quantity)),
+          })),
+        },
+      },
+    })
+
+    await this.agentEvents.emit({
+      tenantId,
+      agent: 'InvoiceAgent',
+      type: 'invoice.created',
+      action: 'CREATE_INVOICE',
+      payload: { invoiceId: invoice.id, number } as Prisma.InputJsonValue,
+    }).catch(() => null)
+
+    return invoice
   }
 }

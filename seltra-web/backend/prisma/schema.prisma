@@ -45,6 +45,16 @@ model Tenant {
   navGeneratedAt        DateTime?
   storeDNA              Json?
   merchantContext   Json?   // stores MerchantContext object
+  merchantMemory         Json?
+  brandVoice             Json?
+  preferences            Json?
+  payoutMethod           String?
+  payoutProvider         String?
+  payoutProviderCode     String?
+  payoutAccount          String?
+  payoutAccountName      String?
+  payoutValidatedAt      DateTime?
+  agentSettings          Json?
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
   categories            Category[]
@@ -55,6 +65,11 @@ model Tenant {
   products              Product[]
   shippingZones         ShippingZone[]
   events                TenantEvent[]
+  invoices              Invoice[]
+  agentEvents           AgentEvent[]
+  disbursements         Disbursement[]
+  marketingMessages     MarketingMessage[]
+  marketingTemplates    MarketingTemplate[]
 
   @@index([ownerId])
 }
@@ -194,6 +209,10 @@ model Order {
   disbursedAt     DateTime?
   seltraFee       Decimal?            @db.Decimal(10, 2)
   merchantAmount  Decimal?            @db.Decimal(10, 2)
+  lastReminderAt  DateTime?
+  fulfilledBy     String?
+  trackingNumber  String?
+  timeline        Json?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   ledgerTx        LedgerTransaction[]
@@ -218,6 +237,10 @@ model Customer {
   updatedAt      DateTime @updatedAt
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders         Order[]
+  lastContactedAt DateTime?
+  lifetimeValue   Decimal? @db.Decimal(12, 2)
+  preferredChannel String?
+  notes            String?
 
   @@unique([tenantId, email])
   @@index([tenantId, updatedAt])
@@ -231,6 +254,7 @@ model MerchantLedger {
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   transactions LedgerTransaction[]
+  disbursements Disbursement[]
   tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
@@ -246,6 +270,117 @@ model LedgerTransaction {
   createdAt   DateTime       @default(now())
   ledger      MerchantLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
   order       Order?         @relation(fields: [orderId], references: [id])
+}
+
+model Disbursement {
+  id             String   @id @default(uuid())
+  tenantId       String
+  ledgerId       String
+  amount         Decimal  @db.Decimal(12, 2)
+  currency       String   @default("GHS")
+  status         String   @default("pending_otp")
+  provider       String?
+  providerCode   String?
+  account        String
+  accountName    String?
+  externalRef    String   @unique
+  transactionId  String?
+  rawResponse    Json?
+  otpHash        String?
+  otpExpiresAt   DateTime?
+  confirmedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ledger         MerchantLedger @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([status])
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  tenantId      String
+  number        String
+  customerName  String
+  customerEmail String
+  subtotal      Decimal       @db.Decimal(12, 2)
+  tax           Decimal       @default(0) @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(12, 2)
+  total         Decimal       @db.Decimal(12, 2)
+  currency      String        @default("GHS")
+  status        String        @default("draft")
+  dueDate       DateTime?
+  pdfUrl        String?
+  sentAt        DateTime?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items         InvoiceItem[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, createdAt])
+  @@index([status, dueDate])
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  total       Decimal  @db.Decimal(12, 2)
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model AgentEvent {
+  id        String   @id @default(uuid())
+  tenantId  String?
+  agent     String
+  type      String
+  action    String?
+  payload   Json?
+  status    String   @default("recorded")
+  createdAt DateTime @default(now())
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([agent, createdAt])
+}
+
+model MarketingMessage {
+  id             String   @id @default(uuid())
+  tenantId       String
+  channel        String
+  audience       String
+  subject        String?
+  message        String
+  recipientCount Int      @default(0)
+  sent           Int      @default(0)
+  failed         Int      @default(0)
+  status         String   @default("sent")
+  customerId     String?
+  customerName   String?
+  createdAt      DateTime @default(now())
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([channel, status])
+}
+
+model MarketingTemplate {
+  id        String   @id @default(uuid())
+  tenantId  String
+  channel   String
+  name      String
+  subject   String?
+  message   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, updatedAt])
 }
 
 model PaystackEvent {
@@ -320,11 +455,19 @@ enum MerchantStatus {
 enum TenantEventType {
   product_added
   order_placed
+  order_status_updated
   payment_received
+  invoice_created
+  invoice_paid
+  invoice_sent
+  order_reminder
+  sales_summary
   login
   settings_changed
   theme_updated
   ai_invocation
   merchant_onboarded
+  disbursement_requested
+  disbursement_paid
 }
 

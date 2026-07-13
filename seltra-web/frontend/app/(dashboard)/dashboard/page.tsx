@@ -9,7 +9,8 @@ import {
   Settings, ChevronLeft, ChevronRight,
   TrendingUp, Wallet, Menu, X, Trash2, Copy, CalendarDays,
   MessageSquare, Sparkles, ArrowRight, Palette, Megaphone,
-  Zap, ShoppingCart,
+  Zap, ShoppingCart, Bell, CreditCard, ShieldCheck, CheckCheck,
+  FileText, Bot, UserCircle, HelpCircle, Globe2, Building2, LockKeyhole,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -41,7 +42,9 @@ const money = (value: string | number | null | undefined, currency = 'GHS') =>
   `${currency} ${Number(value ?? 0).toFixed(2)}`
 
 const statusClass = (status: string) => {
-  if (/paid|delivered|complete/i.test(status)) return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+  if (/paid|delivered|complete|sent/i.test(status)) return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+  if (/credit/i.test(status)) return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
+  if (/debit/i.test(status)) return 'border-orange-500/30 bg-orange-500/10 text-orange-400'
   if (/cancel|failed|refund/i.test(status)) return 'border-red-500/30 bg-red-500/10 text-red-500'
   return 'border-yellow-500/30 bg-yellow-500/10 text-yellow-500'
 }
@@ -122,16 +125,17 @@ async function uploadImageToCloudinary(file: File, storeId: string): Promise<str
 }
 
 const NAV_TABS = [
-  { id: 'home',      label: 'Home',      icon: Home       },
+  { id: 'mission',   label: 'Home',      icon: Home       },
   { id: 'store',     label: 'Store',     icon: StoreIcon  },
   { id: 'orders',    label: 'Orders',    icon: ShoppingBag },
+  { id: 'products',  label: 'Products',  icon: Package    },
+  { id: 'invoices',  label: 'Invoices',  icon: FileText   },
   { id: 'sales',     label: 'Sales',     icon: TrendingUp },
   { id: 'payments',  label: 'Payments',  icon: Wallet     },
-  { id: 'products',  label: 'Products',  icon: Package    },
   { id: 'customers', label: 'Customers', icon: Users      },
   { id: 'analytics', label: 'Analytics', icon: BarChart3  },
-  { id: 'emails',    label: 'Emails',    icon: Mail       },
-  { id: 'settings',  label: 'Settings',  icon: Settings   },
+  { id: 'marketing', label: 'Marketing', icon: Megaphone  },
+  { id: 'home',      label: 'Agent',     icon: Bot        },
 ]
 
 type Msg = { role: 'user' | 'assistant'; content: string }
@@ -149,8 +153,83 @@ type CustomerRecord = {
   city?: string | null; country?: string | null; marketingOptIn: boolean; orderCount: number
   totalSpent: string | number; currency: string; lastOrderAt?: string | null; isRecurring: boolean
 }
-type LedgerTransaction = { id: string; type: string; amount: string | number; currency: string; description?: string; createdAt: string }
-type Ledger = { balance: string | number; currency: string; transactions: LedgerTransaction[] }
+type LedgerTransaction = {
+  id: string
+  type: string
+  amount: string | number
+  currency: string
+  description?: string
+  createdAt: string
+  meta?: { provider?: string; account?: string; accountName?: string; reference?: string; [key: string]: unknown } | null
+}
+type Ledger = { balance: string | number; currency: string; transactions: LedgerTransaction[]; total?: number; page?: number; perPage?: number }
+type PayoutOption = { label: string; code: string }
+type InvoiceRecord = {
+  id: string; number: string; customerName: string; customerEmail: string
+  subtotal: string | number; tax: string | number; discount: string | number; total: string | number
+  currency: string; status: string; dueDate?: string | null; pdfUrl?: string | null; createdAt: string
+  items: Array<{ id: string; description: string; quantity: number; unitPrice: string | number; total: string | number }>
+}
+type NotificationRecord = {
+  id: string
+  type: 'order' | 'payment' | 'security' | 'announcement'
+  title: string
+  body: string
+  createdAt: string
+  meta?: Record<string, unknown>
+}
+type Paginated<T> = { data: T[]; total: number; page: number; perPage: number }
+type MarketingHistoryRecord = {
+  id: string
+  channel: 'email' | 'sms'
+  audience: 'single' | 'bulk'
+  subject?: string
+  message?: string
+  recipientCount?: number
+  sent?: number
+  failed?: number
+  status?: string
+  customerName?: string
+  createdAt: string
+}
+type MarketingTemplateRecord = {
+  id: string
+  channel: 'email' | 'sms'
+  name: string
+  subject?: string | null
+  message: string
+  createdAt: string
+  updatedAt: string
+}
+type ProductRecord = {
+  id: string
+  name: string
+  description?: string | null
+  price: string | number
+  currency: string
+  category?: string | null
+  images?: { url: string; isPrimary: boolean }[]
+}
+
+const GHANA_TELCOS: PayoutOption[] = [
+  { label: 'MTN Mobile Money', code: '1' },
+  { label: 'Telecel Cash', code: '6' },
+  { label: 'AT Money', code: '7' },
+]
+
+const GHANA_BANKS: PayoutOption[] = [
+  { label: 'GCB Bank', code: 'gcb' },
+  { label: 'Ecobank Ghana', code: 'ecobank' },
+  { label: 'Absa Bank Ghana', code: 'absa' },
+  { label: 'Stanbic Bank Ghana', code: 'stanbic' },
+  { label: 'Standard Chartered Bank Ghana', code: 'standard-chartered' },
+  { label: 'Fidelity Bank Ghana', code: 'fidelity' },
+  { label: 'CalBank', code: 'calbank' },
+  { label: 'Republic Bank Ghana', code: 'republic' },
+  { label: 'Access Bank Ghana', code: 'access' },
+  { label: 'Zenith Bank Ghana', code: 'zenith' },
+  { label: 'United Bank for Africa Ghana', code: 'uba' },
+]
 
 function buildFeedback(store: StoreData): string {
   const c = (store as unknown as { canonical: Record<string, unknown> }).canonical ?? {}
@@ -457,11 +536,12 @@ const handleAgentAttach = async (f: File) => {
     return (
       <div className="flex h-screen overflow-hidden bg-background text-foreground">
         <SidebarDesktop {...sidebarProps} />
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <MobileHeader storeName={activeStore?.name} onMenuOpen={() => setMobileSidebar(true)} onSignOut={signOut} />
+          <DashboardNotifications activeStore={activeStore} />
           <TabContent
             tab={tab} activeStore={activeStore} stores={stores}
-            onSelectStore={(s) => { setActiveStore(s); setTab('home'); setRev((v) => v + 1) }}
+            onSelectStore={(s) => { setActiveStore(s); setTab('mission'); setRev((v) => v + 1) }}
             onStoreDeleted={(id) => {
               const next = stores.filter((s) => s.id !== id && s.slug !== id)
               setStores(next)
@@ -496,8 +576,9 @@ const handleAgentAttach = async (f: File) => {
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <SidebarDesktop {...sidebarProps} />
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <MobileHeader storeName={activeStore?.name} onMenuOpen={() => setMobileSidebar(true)} onSignOut={signOut} />
+        <DashboardNotifications activeStore={activeStore} />
         {!hasStore ? (
           <EmptyState
             input={input} setInput={setInput} send={send} sending={sending} name={user?.name ?? ''}
@@ -590,11 +671,110 @@ const handleAgentAttach = async (f: File) => {
   )
 }
 
+function DashboardNotifications({ activeStore }: { activeStore: StoreData | null }) {
+  const [open, setOpen] = useState(false)
+  const [items, setItems] = useState<NotificationRecord[]>([])
+  const [readIds, setReadIds] = useState<string[]>([])
+  const tenantId = storeIdOf(activeStore)
+
+  useEffect(() => {
+    try {
+      setReadIds(JSON.parse(localStorage.getItem('seltra:read_notifications') || '[]'))
+    } catch {
+      setReadIds([])
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      const path = `/api/v1/notifications${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`
+      const { data } = await apiFetch<NotificationRecord[]>(path)
+      if (!cancelled) setItems(data ?? [])
+    }
+    void load()
+    const timer = window.setInterval(() => void load(), 45_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [tenantId])
+
+  const unreadCount = items.filter((item) => !readIds.includes(item.id)).length
+  const markAllRead = () => {
+    const next = Array.from(new Set([...readIds, ...items.map((item) => item.id)]))
+    setReadIds(next)
+    localStorage.setItem('seltra:read_notifications', JSON.stringify(next))
+  }
+
+  return (
+    <div className="absolute right-4 top-4 z-30 lg:right-6">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="relative grid h-10 w-10 place-items-center rounded-xl border border-border bg-background/90 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
+        aria-label="Open notifications"
+      >
+        <Bell className="h-4 w-4" />
+        {unreadCount > 0 && (
+          <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-mono text-[10px] font-semibold text-primary-foreground">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="mt-2 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <div>
+              <div className="text-sm font-semibold">Notifications</div>
+              <div className="font-mono text-[10px] text-muted-foreground">{unreadCount} unread</div>
+            </div>
+            <Button type="button" variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={markAllRead}>
+              <CheckCheck className="h-3.5 w-3.5" /> Read
+            </Button>
+          </div>
+          <div className="max-h-[420px] divide-y divide-border overflow-y-auto">
+            {items.length === 0 ? (
+              <div className="p-6 text-sm text-muted-foreground">Orders, payments, logins, security alerts, and announcements will appear here.</div>
+            ) : items.map((item) => {
+              const Icon = item.type === 'order' ? ShoppingBag : item.type === 'payment' ? CreditCard : item.type === 'security' ? ShieldCheck : Megaphone
+              const unread = !readIds.includes(item.id)
+              return (
+                <div key={item.id} className={`flex gap-3 px-4 py-3 text-sm ${unread ? 'bg-primary/5' : ''}`}>
+                  <div className="mt-0.5 grid h-8 w-8 flex-shrink-0 place-items-center rounded-xl border border-border bg-background text-primary">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="truncate font-medium">{item.title}</div>
+                      {unread && <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />}
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{item.body}</p>
+                    <div className="mt-1 font-mono text-[10px] text-muted-foreground/70">{new Date(item.createdAt).toLocaleString()}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Sidebar (desktop) ──────────────────────────────────────────────────────────
 function SidebarDesktop({
   user, tab, setTab, onSignOut, onNewStore, open, onToggle,
   conversations, activeConversationId, onLoadConversation, onDeleteConversation,
 }: SidebarSharedProps) {
+  const [profileOpen, setProfileOpen] = useState(false)
+  const profileItems = [
+    { id: 'account', label: 'Account', icon: UserCircle },
+    { id: 'billing', label: 'Billing', icon: CreditCard },
+    { id: 'domains', label: 'Domains', icon: Globe2 },
+    { id: 'help', label: 'Get Help', icon: HelpCircle },
+  ]
+
   return (
     <motion.aside
       animate={{ width: open ? 260 : 68 }}
@@ -689,18 +869,56 @@ function SidebarDesktop({
         </div>
       </div>
 
+      {profileOpen && user && (
+        <div className={`fixed bottom-[78px] z-50 w-[min(320px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl ${open ? 'left-4' : 'left-[78px]'}`}>
+          <div className="border-b border-border px-4 py-3">
+            <div className="truncate text-sm font-semibold">{user.name || 'Merchant'}</div>
+            <div className="truncate font-mono text-[11px] text-muted-foreground">{user.email}</div>
+          </div>
+          <div className="p-2">
+            {profileItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => { setTab(item.id); setProfileOpen(false) }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              >
+                <item.icon className="h-4 w-4" />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="border-t border-border p-2">
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {user && (
         <div className={`flex flex-shrink-0 items-center gap-2.5 border-t border-border px-4 py-3.5 ${!open ? 'justify-center' : ''}`}>
-          <Image src={user.avatar} alt={user.name} width={32} height={32} className="flex-shrink-0 rounded-full border border-border" unoptimized />
-          <AnimatePresence>
-            {open && (
-              <motion.div initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }} exit={{ opacity: 0, width: 0 }} className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                <div className="min-w-0 flex-1">
+          <button type="button" onClick={() => setProfileOpen((current) => !current)} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl text-left outline-none transition-opacity hover:opacity-90">
+            <Image src={user.avatar} alt={user.name} width={32} height={32} className="flex-shrink-0 rounded-full border border-border" unoptimized />
+            <AnimatePresence>
+              {open && (
+                <motion.div initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }} exit={{ opacity: 0, width: 0 }} className="min-w-0 flex-1 overflow-hidden">
                   {user.name && <div className="truncate text-xs font-medium">{user.name}</div>}
                   <div className="truncate font-mono text-[10px] text-muted-foreground">{user.email}</div>
-                </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-xl" onClick={onSignOut}>
-                  <LogOut className="h-3.5 w-3.5" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </button>
+          <AnimatePresence>
+            {open && (
+              <motion.div initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }} exit={{ opacity: 0, width: 0 }} className="overflow-hidden">
+                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-xl" onClick={() => setProfileOpen((current) => !current)}>
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${profileOpen ? 'rotate-90' : ''}`} />
                 </Button>
               </motion.div>
             )}
@@ -1043,13 +1261,17 @@ function TabContent({
   user: { email: string; name: string; avatar: string; joinedAt?: string } | null
 }) {
   if (tab === 'store') return <StoreTab stores={stores} activeStore={activeStore} onSelectStore={onSelectStore} onStoreDeleted={onStoreDeleted} reloadStores={reloadStores} />
+  if (tab === 'mission') return <MissionControlTab activeStore={activeStore} />
   if (tab === 'orders') return <OrdersTab activeStore={activeStore} />
   if (tab === 'sales') return <SalesTab activeStore={activeStore} />
   if (tab === 'payments') return <PaymentsTab activeStore={activeStore} />
   if (tab === 'products') return <ProductsTab activeStore={activeStore} />
-  if (tab === 'customers' || tab === 'emails') return <CustomersTab activeStore={activeStore} mode={tab} />
+  if (tab === 'invoices') return <InvoicesTab activeStore={activeStore} />
+  if (tab === 'customers' || tab === 'marketing') return <CustomersTab activeStore={activeStore} mode={tab} />
   if (tab === 'analytics') return <AnalyticsTab activeStore={activeStore} />
-  if (tab === 'settings') return <SettingsTab activeStore={activeStore} user={user} storesCount={stores.length} onStoreUpdated={onStoreUpdated} />
+  if (['account', 'billing', 'domains', 'help'].includes(tab)) {
+    return <ProfileCenterTab mode={tab as 'account' | 'billing' | 'domains' | 'help'} activeStore={activeStore} user={user} stores={stores} onStoreUpdated={onStoreUpdated} />
+  }
   return null
 }
 
@@ -1089,6 +1311,24 @@ function EmptyRows({ text }: { text: string }) {
   return <div className="p-10 text-center text-sm text-muted-foreground">{text}</div>
 }
 
+function PaginationControls({ page, total, pageSize, onPage }: { page: number; total: number; pageSize: number; onPage: (page: number) => void }) {
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  if (total <= pageSize) return null
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+      <span>Page {page} of {pages}</span>
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" className="h-8 rounded-full" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+          <ChevronLeft className="h-3.5 w-3.5" /> Prev
+        </Button>
+        <Button size="sm" variant="outline" className="h-8 rounded-full" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+          Next <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function OrderList({ rows, amountField }: { rows: OrderRecord[]; amountField?: 'merchant' | 'total' }) {
   return (
     <>
@@ -1109,6 +1349,283 @@ function OrderList({ rows, amountField }: { rows: OrderRecord[]; amountField?: '
 }
 
 // ── Tab components ─────────────────────────────────────────────────────────────
+function MissionControlTab({ activeStore }: { activeStore: StoreData | null }) {
+  const [orders, setOrders] = useState<OrderRecord[]>([])
+  const [customers, setCustomers] = useState<CustomerRecord[]>([])
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      const tenantId = storeIdOf(activeStore)
+      if (!tenantId) { setOrders([]); setCustomers([]); setInvoices([]); return }
+      const search = new URLSearchParams({ page: '1', perPage: '100', tenantId })
+      const [o, c, i] = await Promise.all([
+        apiFetch<Paginated<OrderRecord>>(`/api/v1/orders?${search.toString()}`),
+        apiFetch<Paginated<CustomerRecord>>(`/api/v1/payment/customers?tenantId=${encodeURIComponent(tenantId)}&page=1&perPage=100`),
+        apiFetch<Paginated<InvoiceRecord>>(`/api/v1/invoices?tenantId=${encodeURIComponent(tenantId)}&page=1&perPage=100`),
+      ])
+      if (cancelled) return
+      setOrders(o.data?.data ?? [])
+      setCustomers(c.data?.data ?? [])
+      setInvoices(i.data?.data ?? [])
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [activeStore])
+
+  const paid = orders.filter(hasConfirmedPayment)
+  const pending = orders.filter((order) => order.status === 'pending')
+  const revenue = paid.reduce((s, o) => s + Number(o.merchantAmount ?? o.totalAmount ?? 0), 0)
+  const dueInvoices = invoices.filter((invoice) => !/paid/i.test(invoice.status))
+  const topProduct = useMemo(() => {
+    const counts = new Map<string, number>()
+    orders.forEach((order) => order.items?.forEach((item) => {
+      const name = item.productName || item.productId || 'Product'
+      counts.set(name, (counts.get(name) ?? 0) + Number(item.quantity || 1))
+    }))
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'No sales yet'
+  }, [orders])
+  const optedIn = customers.filter((c) => c.marketingOptIn).length
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-6xl px-6 py-10">
+        <PageHeader tab="home" title="Mission Control" subtitle="Revenue, fulfillment, invoices, customer signals, and agent recommendations." />
+        <div className="grid gap-3 md:grid-cols-4">
+          <MetricCard label="today revenue" value={money(revenue)} />
+          <MetricCard label="pending orders" value={String(pending.length)} />
+          <MetricCard label="customers" value={String(customers.length)} />
+          <MetricCard label="invoices due" value={String(dueInvoices.length)} />
+        </div>
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
+          <section className="overflow-hidden rounded-2xl border border-border bg-card/30">
+            <div className="border-b border-border px-5 py-4"><h2 className="text-sm font-semibold">Latest orders</h2></div>
+            {orders.length === 0 ? <EmptyRows text={activeStore ? 'Orders will appear here after checkout.' : 'Select or create a store first.'} /> : <OrderList rows={orders.slice(0, 5)} />}
+          </section>
+          <section className="rounded-2xl border border-border bg-card/30 p-5">
+            <h2 className="text-sm font-semibold">Agent suggestions</h2>
+            <div className="mt-4 space-y-3">
+              {[pending.length ? `${pending.length} pending orders need fulfillment.` : 'No pending orders right now.', dueInvoices.length ? `${dueInvoices.length} invoices are still open.` : 'Invoices are clear.', optedIn ? `${optedIn} customers can receive marketing updates.` : 'Collect opt-ins at checkout before bulk marketing.'].map((item) => (
+                <div key={item} className="flex items-start gap-3 rounded-xl border border-border bg-background/60 p-3 text-sm">
+                  <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" /><span className="leading-relaxed">{item}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 rounded-xl border border-border bg-background/60 p-3 text-sm">
+              <div className="font-mono text-[10px] uppercase text-muted-foreground">top product signal</div>
+              <div className="mt-1 font-medium">{topProduct}</div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function InvoicesTab({ activeStore }: { activeStore: StoreData | null }) {
+  const [rows, setRows] = useState<InvoiceRecord[]>([])
+  const [saving, setSaving] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [form, setForm] = useState({
+    customerName: '',
+    customerEmail: '',
+    dueDate: '',
+    tax: '',
+    discount: '',
+    items: [{ description: '', quantity: '1', unitPrice: '' }],
+  })
+  const tenantId = storeIdOf(activeStore)
+  const pageSize = 6
+  const visibleRows = rows
+
+  const load = useCallback(async () => {
+    if (!tenantId) { setRows([]); setTotal(0); return }
+    const { data, error } = await apiFetch<Paginated<InvoiceRecord>>(`/api/v1/invoices?tenantId=${encodeURIComponent(tenantId)}&page=${page}&perPage=${pageSize}`)
+    if (error) { toast.error(error); return }
+    setRows(data?.data ?? [])
+    setTotal(data?.total ?? 0)
+  }, [tenantId, page])
+
+  useEffect(() => { void load() }, [load])
+  useEffect(() => { setPage(1) }, [tenantId])
+
+  const create = async () => {
+    if (!tenantId || saving) return
+    const items = form.items
+      .map((item) => ({ description: item.description || 'Invoice item', quantity: Number(item.quantity || 1), unitPrice: Number(item.unitPrice || 0) }))
+      .filter((item) => item.unitPrice > 0 && item.quantity > 0)
+    if (!form.customerName.trim() || !form.customerEmail.trim() || items.length === 0) {
+      toast.error('Customer name, email, and at least one priced item are required')
+      return
+    }
+    setSaving(true)
+    const { error } = await apiFetch<InvoiceRecord>('/api/v1/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenantId,
+        customerName: form.customerName,
+        customerEmail: form.customerEmail,
+        dueDate: form.dueDate || undefined,
+        tax: Number(form.tax || 0),
+        discount: Number(form.discount || 0),
+        items,
+      }),
+    })
+    setSaving(false)
+    if (error) { toast.error(error); return }
+    setForm({ customerName: '', customerEmail: '', dueDate: '', tax: '', discount: '', items: [{ description: '', quantity: '1', unitPrice: '' }] })
+    setModalOpen(false)
+    toast.success('Invoice created')
+    setPage(1)
+    void load()
+  }
+
+  const updateItem = (index: number, key: 'description' | 'quantity' | 'unitPrice', value: string) => {
+    setForm((current) => ({
+      ...current,
+      items: current.items.map((item, idx) => idx === index ? { ...item, [key]: value } : item),
+    }))
+  }
+
+  const addItem = () => setForm((current) => ({ ...current, items: [...current.items, { description: '', quantity: '1', unitPrice: '' }] }))
+  const removeItem = (index: number) => setForm((current) => ({ ...current, items: current.items.filter((_, idx) => idx !== index) }))
+
+  const runInvoiceAction = async (id: string, action: 'send' | 'paid') => {
+    const path = action === 'send' ? `/api/v1/invoices/${encodeURIComponent(id)}/send` : `/api/v1/invoices/${encodeURIComponent(id)}/paid`
+    const { error } = await apiFetch<InvoiceRecord>(path, { method: action === 'send' ? 'POST' : 'PATCH', body: JSON.stringify({ tenantId }) })
+    if (error) { toast.error(error); return }
+    toast.success(action === 'send' ? 'Invoice sent' : 'Invoice marked paid')
+    void load()
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-6xl px-6 py-10">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <PageHeader tab="invoices" title="Invoices" subtitle="Create, send, download, and mark invoices as paid." />
+          <Button onClick={() => setModalOpen(true)} disabled={!tenantId} className="rounded-full"><Plus className="h-4 w-4" /> Create invoice</Button>
+        </div>
+        <section className="overflow-hidden rounded-2xl border border-border bg-card/30">
+          <div className="hidden md:block">
+            <GridHeader cols="grid-cols-[.8fr_1.3fr_.8fr_.7fr_.8fr_1fr]" items={['number', 'customer', 'total', 'status', 'due', 'actions']} />
+          </div>
+          {rows.length === 0 ? <EmptyRows text={activeStore ? 'No invoices yet.' : 'Select or create a store first.'} /> : (
+            <div className="divide-y divide-border">
+              {visibleRows.map((invoice) => (
+                <div key={invoice.id} className="grid gap-3 px-4 py-4 text-sm md:grid-cols-[.8fr_1.3fr_.8fr_.7fr_.8fr_1fr] md:px-5">
+                  <div className="flex items-center justify-between gap-3 md:block">
+                    <span className="font-mono text-[10px] uppercase text-muted-foreground md:hidden">number</span>
+                    <span className="font-mono text-xs">{invoice.number}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{invoice.customerName}</div>
+                    <div className="truncate font-mono text-[11px] text-muted-foreground">{invoice.customerEmail}</div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 md:block">
+                    <span className="font-mono text-[10px] uppercase text-muted-foreground md:hidden">total</span>
+                    <span className="font-semibold">{money(invoice.total, invoice.currency)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 md:block">
+                    <span className="font-mono text-[10px] uppercase text-muted-foreground md:hidden">status</span>
+                    <StatusBadge status={invoice.status} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-muted-foreground md:block">
+                    <span className="font-mono text-[10px] uppercase md:hidden">due</span>
+                    <span>{invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'On receipt'}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap">
+                    <Button size="sm" variant="outline" className="h-8 rounded-full px-2" onClick={() => window.open(`${API_BASE}${invoice.pdfUrl || `/api/v1/invoices/${invoice.number}/pdf`}`, '_blank')}>PDF</Button>
+                    <Button size="sm" variant="outline" className="h-8 rounded-full px-2" onClick={() => void runInvoiceAction(invoice.id, 'send')}>Send</Button>
+                    <Button size="sm" className="h-8 rounded-full px-2" onClick={() => void runInvoiceAction(invoice.id, 'paid')}>Paid</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <PaginationControls page={page} total={total} pageSize={pageSize} onPage={setPage} />
+        </section>
+      </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm">
+          <div className="flex min-h-full items-start justify-center p-4 sm:items-center">
+            <div className="my-8 w-full max-w-xl overflow-x-hidden rounded-2xl border border-border bg-card p-4 shadow-2xl sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-semibold">Create invoice</h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Add one or more invoice items, then send or download it from the list.</p>
+                </div>
+                <button type="button" onClick={() => setModalOpen(false)} className="rounded-xl p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+              </div>
+
+              <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">Customer name
+                  <input value={form.customerName} onChange={(e) => setForm((current) => ({ ...current, customerName: e.target.value }))} className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">Customer email
+                  <input type="email" value={form.customerEmail} onChange={(e) => setForm((current) => ({ ...current, customerEmail: e.target.value }))} className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                </label>
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">Due date
+                  <input type="date" value={form.dueDate} onChange={(e) => setForm((current) => ({ ...current, dueDate: e.target.value }))} className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">Tax
+                  <div className="relative">
+                    <input type="number" min="0" value={form.tax} onChange={(e) => setForm((current) => ({ ...current, tax: e.target.value }))} className="w-full rounded-lg border border-border bg-background py-1.5 pl-2.5 pr-6 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-muted-foreground">Discount
+                  <div className="relative">
+                    <input type="number" min="0" value={form.discount} onChange={(e) => setForm((current) => ({ ...current, discount: e.target.value }))} className="w-full rounded-lg border border-border bg-background py-1.5 pl-2.5 pr-6 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="mt-5 flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Line items</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+
+              <div className="mt-2.5 space-y-2">
+                {form.items.map((item, index) => (
+                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_3.5rem_5.5rem_1.75rem] items-end gap-1.5">
+                    <label className="grid gap-1 text-[11px] text-muted-foreground">
+                      {index === 0 && 'Item'}
+                      <input value={item.description} onChange={(e) => updateItem(index, 'description', e.target.value)} className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                    </label>
+                    <label className="grid gap-1 text-[11px] text-muted-foreground">
+                      {index === 0 && 'Qty'}
+                      <input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                    </label>
+                    <label className="grid gap-1 text-[11px] text-muted-foreground">
+                      {index === 0 && 'Unit price'}
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">₵</span>
+                        <input type="number" min="0" value={item.unitPrice} onChange={(e) => updateItem(index, 'unitPrice', e.target.value)} className="w-full rounded-lg border border-border bg-background py-1.5 pl-5 pr-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                      </div>
+                    </label>
+                    <Button type="button" variant="outline" size="sm" className="h-8 w-8 rounded-lg p-0" disabled={form.items.length === 1} onClick={() => removeItem(index)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={addItem}><Plus className="h-3.5 w-3.5" /> Add item</Button>
+              </div>
+
+              <Button onClick={() => void create()} disabled={!tenantId || saving} className="mt-5 w-full rounded-full">{saving ? 'Creating...' : 'Create invoice'}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function StoreTab({ stores, activeStore, onSelectStore, onStoreDeleted, reloadStores }: {
   stores: StoreData[]; activeStore: StoreData | null
   onSelectStore: (s: StoreData) => void; onStoreDeleted: (id: string) => void; reloadStores: () => Promise<void>
@@ -1116,8 +1633,13 @@ function StoreTab({ stores, activeStore, onSelectStore, onStoreDeleted, reloadSt
   const [storeToDelete, setStoreToDelete] = useState<StoreData | null>(null)
   const [confirmName, setConfirmName] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [storePage, setStorePage] = useState(1)
+  const storePageSize = 6
   const canDelete = confirmName.trim() === storeToDelete?.name
   const visibleStores = activeStore && !stores.some((s) => s.id === activeStore.id || s.slug === activeStore.slug) ? [activeStore, ...stores] : stores
+  const paginatedStores = visibleStores.slice((storePage - 1) * storePageSize, storePage * storePageSize)
+
+  useEffect(() => { setStorePage(1) }, [activeStore, stores.length])
 
   const confirmDelete = async () => {
     if (!storeToDelete || !canDelete || deleting) return
@@ -1143,7 +1665,7 @@ function StoreTab({ stores, activeStore, onSelectStore, onStoreDeleted, reloadSt
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {visibleStores.map((store) => {
+            {paginatedStores.map((store) => {
               const providers = (store as StoreData & { paymentProviders?: { provider: string }[] }).paymentProviders?.map((p) => p.provider).join(' / ') || 'Moolre'
               const active = activeStore?.id === store.id || activeStore?.slug === store.slug
               return (
@@ -1179,6 +1701,7 @@ function StoreTab({ stores, activeStore, onSelectStore, onStoreDeleted, reloadSt
             })}
           </div>
         )}
+        <PaginationControls page={storePage} total={visibleStores.length} pageSize={storePageSize} onPage={setStorePage} />
       </div>
       {storeToDelete && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
@@ -1205,20 +1728,25 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
   const [rows, setRows] = useState<OrderRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const pageSize = 8
+  const visibleRows = rows
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       setLoading(true)
-      const search = new URLSearchParams({ page: '1', perPage: '50' })
+      const search = new URLSearchParams({ page: String(page), perPage: String(pageSize) })
       const tenantId = storeIdOf(activeStore)
       if (tenantId) search.set('tenantId', tenantId)
-      const { data } = await apiFetch<{ data: OrderRecord[] }>(`/api/v1/orders?${search.toString()}`)
-      if (!cancelled) { setRows(data?.data ?? []); setLoading(false) }
+      const { data } = await apiFetch<Paginated<OrderRecord>>(`/api/v1/orders?${search.toString()}`)
+      if (!cancelled) { setRows(data?.data ?? []); setTotal(data?.total ?? 0); setLoading(false) }
     }
     void load()
     return () => { cancelled = true }
-  }, [activeStore])
+  }, [activeStore, page])
+  useEffect(() => { setPage(1) }, [activeStore])
 
   const updateOrderStatus = async (order: OrderRecord, status: string) => {
     setUpdatingId(order.id)
@@ -1241,7 +1769,7 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
             <EmptyRows text={activeStore ? 'Orders appear after your first sale.' : 'Select or create a store first.'} />
           ) : (
             <div className="divide-y divide-border">
-              {rows.map((order) => (
+              {visibleRows.map((order) => (
                 <div key={order.id} className="grid grid-cols-[1.2fr_1.4fr_.8fr_.8fr_.7fr_1fr] gap-3 px-5 py-4 text-sm">
                   <div className="truncate font-mono text-xs">{order.paystackRef ?? order.id}</div>
                   <div className="min-w-0">
@@ -1261,6 +1789,7 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
               ))}
             </div>
           )}
+          <PaginationControls page={page} total={total} pageSize={pageSize} onPage={setPage} />
         </section>
       </div>
     </div>
@@ -1271,24 +1800,29 @@ function SalesTab({ activeStore }: { activeStore: StoreData | null }) {
   const [range, setRange] = useState('Last 7 days')
   const [rows, setRows] = useState<OrderRecord[]>([])
   const [ledgerBalance, setLedgerBalance] = useState(0)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const pageSize = 8
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       const tenantId = storeIdOf(activeStore)
-      const search = new URLSearchParams({ page: '1', perPage: '50' })
+      const search = new URLSearchParams({ page: String(page), perPage: String(pageSize) })
       if (tenantId) search.set('tenantId', tenantId)
       const [s, l] = await Promise.all([
-        apiFetch<{ data: OrderRecord[] }>(`/api/v1/orders?${search.toString()}`),
+        apiFetch<Paginated<OrderRecord>>(`/api/v1/payment/sales?${search.toString()}`),
         apiFetch<Ledger>(`/api/v1/payment/ledger${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
       ])
       if (cancelled) return
-      setRows((s.data?.data ?? []).filter(hasConfirmedPayment))
+      setRows(s.data?.data ?? [])
+      setTotal(s.data?.total ?? 0)
       setLedgerBalance(Number(l.data?.balance ?? 0))
     }
     void load()
     return () => { cancelled = true }
-  }, [activeStore])
+  }, [activeStore, page])
+  useEffect(() => { setPage(1) }, [activeStore])
 
   const filteredRows = useMemo(() => {
     if (range === 'All time') return rows
@@ -1333,6 +1867,7 @@ function SalesTab({ activeStore }: { activeStore: StoreData | null }) {
               </div>
             </div>
           ) : <OrderList rows={filteredRows} amountField="merchant" />}
+          <PaginationControls page={page} total={total} pageSize={pageSize} onPage={setPage} />
         </section>
       </div>
     </div>
@@ -1343,18 +1878,79 @@ function PaymentsTab({ activeStore }: { activeStore: StoreData | null }) {
   const [balance, setBalance] = useState(0)
   const [currency, setCurrency] = useState('GHS')
   const [transactions, setTransactions] = useState<LedgerTransaction[]>([])
+  const [modalOpen, setModalOpen] = useState(false)
+  const [step, setStep] = useState<'amount' | 'otp'>('amount')
+  const [amount, setAmount] = useState('')
+  const [disbursementId, setDisbursementId] = useState('')
+  const [otp, setOtp] = useState('')
+  const [processing, setProcessing] = useState(false)
+  const [txPage, setTxPage] = useState(1)
+  const [txTotal, setTxTotal] = useState(0)
+  const txPageSize = 8
+
+  const loadLedger = useCallback(async () => {
+      const tenantId = storeIdOf(activeStore)
+      const search = new URLSearchParams({ page: String(txPage), perPage: String(txPageSize) })
+      if (tenantId) search.set('tenantId', tenantId)
+      const { data } = await apiFetch<Ledger>(`/api/v1/payment/ledger?${search.toString()}`)
+      if (!data) return
+      setBalance(Number(data.balance ?? 0)); setCurrency(data.currency ?? 'GHS'); setTransactions(data.transactions ?? []); setTxTotal(data.total ?? 0)
+  }, [activeStore, txPage])
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const tenantId = storeIdOf(activeStore)
-      const { data } = await apiFetch<Ledger>(`/api/v1/payment/ledger${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`)
-      if (cancelled || !data) return
-      setBalance(Number(data.balance ?? 0)); setCurrency(data.currency ?? 'GHS'); setTransactions(data.transactions ?? [])
+      await loadLedger()
+      if (cancelled) return
     }
     void load()
     return () => { cancelled = true }
-  }, [activeStore])
+  }, [loadLedger])
+  useEffect(() => { setTxPage(1) }, [activeStore])
+
+  const requestDisbursement = async () => {
+    const tenantId = storeIdOf(activeStore)
+    if (!tenantId || processing) return
+    const numericAmount = Number(amount)
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) { toast.error('Enter the amount you want to disburse'); return }
+    if (balance - numericAmount < 50) { toast.error('At least GHS 50.00 must remain in your Seltra balance'); return }
+    setProcessing(true)
+    const { data, error } = await apiFetch<{ success: boolean; disbursementId: string }>('/api/v1/payment/disbursement/request', {
+      method: 'POST',
+      body: JSON.stringify({ tenantId, amount: numericAmount.toFixed(2) }),
+    })
+    setProcessing(false)
+    if (error || !data?.disbursementId) { toast.error(error || 'Could not request disbursement'); return }
+    setDisbursementId(data.disbursementId)
+    setStep('otp')
+    toast.success('Disbursement OTP sent')
+  }
+
+  const confirmDisbursement = async () => {
+    const tenantId = storeIdOf(activeStore)
+    if (!tenantId || !disbursementId || !otp || processing) return
+    setProcessing(true)
+    const { error } = await apiFetch('/api/v1/payment/disbursement/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ tenantId, disbursementId, otp }),
+    })
+    setProcessing(false)
+    if (error) { toast.error(error); return }
+    setModalOpen(false); setDisbursementId(''); setOtp(''); setAmount(''); setStep('amount')
+    await loadLedger()
+    toast.success('Disbursement sent and ledger debited')
+  }
+
+  const openDisbursementModal = () => {
+    const max = Math.max(0, balance - 50)
+    setAmount(max > 0 ? max.toFixed(2) : '')
+    setOtp('')
+    setDisbursementId('')
+    setStep('amount')
+    setModalOpen(true)
+  }
+
+  const visibleTransactions = transactions
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -1367,54 +1963,115 @@ function PaymentsTab({ activeStore }: { activeStore: StoreData | null }) {
               <div className="mt-2 font-mono text-3xl font-semibold text-emerald-400">{money(balance, currency)}</div>
               <div className="mt-1 text-xs text-zinc-500">subsidiary account</div>
             </div>
-            <Button disabled className="rounded-full">Request Disbursement →</Button>
+            <Button disabled={!activeStore || balance <= 50 || processing} onClick={openDisbursementModal} className="rounded-full">
+              {processing ? 'Working...' : 'Request Disbursement'} <ArrowRight className="h-4 w-4" />
+            </Button>
           </div>
         </section>
         <section className="mt-6 overflow-hidden rounded-2xl border border-border bg-card/30">
-          <GridHeader cols="grid-cols-[.8fr_.7fr_1.8fr_.8fr_.8fr]" items={['date', 'type', 'description', 'amount', 'balance']} />
+          <GridHeader cols="grid-cols-[.75fr_.65fr_1.2fr_1.35fr_.85fr_.8fr]" items={['date', 'type', 'description', 'payout to', 'amount', 'balance']} />
           {transactions.length === 0 ? <EmptyRows text="No ledger transactions yet." /> : (
             <div className="divide-y divide-border">
-              {transactions.map((tx) => (
-                <div key={tx.id} className="grid grid-cols-[.8fr_.7fr_1.8fr_.8fr_.8fr] gap-3 px-5 py-4 text-sm">
-                  <div>{new Date(tx.createdAt).toLocaleDateString()}</div>
-                  <StatusBadge status={tx.type} />
-                  <div>{tx.description ?? 'Ledger transaction'}</div>
-                  <div className={tx.type === 'credit' ? 'text-emerald-500' : 'text-red-500'}>{tx.type === 'credit' ? '+' : '-'}{money(tx.amount, tx.currency)}</div>
-                  <div className="font-mono">{money(balance, currency)}</div>
-                </div>
-              ))}
+              {visibleTransactions.map((tx) => {
+                const meta = (tx as { meta?: { accountName?: string; provider?: string; account?: string; reference?: string; disbursementId?: string } | null }).meta
+                const payoutLabel = tx.type === 'debit' && meta
+                  ? [meta.accountName, meta.provider, meta.account].filter(Boolean).join(' · ')
+                  : '—'
+                const reference = String(meta?.reference || meta?.disbursementId || '')
+                const description = tx.type === 'debit'
+                  ? 'Disbursement paid'
+                  : tx.description?.replace(/\s*\(.+\)\s*$/, '') || 'Order payment credited'
+                return (
+                  <div key={tx.id} className="grid grid-cols-[.75fr_.65fr_1.2fr_1.35fr_.85fr_.8fr] gap-3 px-5 py-4 text-sm">
+                    <div>{new Date(tx.createdAt).toLocaleDateString()}</div>
+                    <StatusBadge status={tx.type} />
+                    <div className="min-w-0">
+                      <div className="truncate">{description}</div>
+                      {reference && <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={reference}>{reference}</div>}
+                    </div>
+                    <div className="min-w-0 truncate text-muted-foreground" title={payoutLabel}>{payoutLabel}</div>
+                    <div className={tx.type === 'credit' ? 'text-emerald-500' : 'text-red-500'}>{tx.type === 'credit' ? '+' : '-'}{money(tx.amount, tx.currency)}</div>
+                    <div className="font-mono">{money(balance, currency)}</div>
+                  </div>
+                )
+              })}
             </div>
           )}
+          <PaginationControls page={txPage} total={txTotal} pageSize={txPageSize} onPage={setTxPage} />
         </section>
       </div>
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">{step === 'amount' ? 'Request disbursement' : 'Confirm disbursement'}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {step === 'amount' ? `Choose an amount. ${money(50, currency)} must remain in your balance.` : `Enter the OTP sent by SMS to release ${money(Number(amount || 0), currency)}.`}
+                </p>
+              </div>
+              <button type="button" onClick={() => { setModalOpen(false); setStep('amount') }} className="rounded-xl p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            {step === 'amount' ? (
+              <>
+                <label className="mt-4 grid gap-1.5 text-sm">Amount to disburse
+                  <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
+                    inputMode="decimal" className="rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </label>
+                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Available: {money(balance, currency)}</span>
+                  <span>Maximum: {money(Math.max(0, balance - 50), currency)}</span>
+                </div>
+                <Button onClick={() => void requestDisbursement()} disabled={processing || !amount} className="mt-5 w-full rounded-full">
+                  {processing ? 'Sending OTP...' : 'Send OTP'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <label className="mt-4 grid gap-1.5 text-sm">Disbursement OTP
+                  <input value={otp} onChange={(e) => setOtp(e.target.value.replace(/[^\d]/g, '').slice(0, 6))}
+                    className="rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </label>
+                <Button onClick={() => void confirmDisbursement()} disabled={processing || otp.length < 6} className="mt-5 w-full rounded-full">
+                  {processing ? 'Sending...' : 'Confirm and send money'}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 function ProductsTab({ activeStore }: { activeStore: StoreData | null }) {
-  type Product = { id: string; name: string; description?: string | null; price: string | number; currency: string; category?: string | null; images?: { url: string; isPrimary: boolean }[] }
-  const [products, setProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<ProductRecord[]>([])
   const [loading, setLoading]   = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editBuf, setEditBuf]   = useState<Partial<Product>>({})
+  const [editBuf, setEditBuf]   = useState<Partial<ProductRecord>>({})
   const [saving, setSaving]     = useState(false)
   const [uploading, setUploading] = useState(false)
   const [adding, setAdding]     = useState(false)
   const [newProduct, setNewProduct] = useState({ name: '', price: '', description: '', category: '' })
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const pageSize = 9
 
   const storeId = storeIdOf(activeStore)
 
   const load = async () => {
-    if (!storeId) return
+    if (!storeId) { setProducts([]); setTotal(0); return }
     setLoading(true)
-    const { data } = await apiFetch<Product[]>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products`)
+    const { data } = await apiFetch<Paginated<ProductRecord>>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products?page=${page}&perPage=${pageSize}`)
     setLoading(false)
-    setProducts(data ?? [])
+    setProducts(data?.data ?? [])
+    setTotal(data?.total ?? 0)
   }
 
-  useEffect(() => { void load() }, [activeStore])
+  useEffect(() => { void load() }, [activeStore, page])
+  useEffect(() => { setPage(1) }, [activeStore])
 
-  const startEdit = (p: Product) => {
+  const startEdit = (p: ProductRecord) => {
     setEditingId(p.id)
     setEditBuf({ name: p.name, price: p.price, description: p.description ?? '', category: p.category ?? '' })
   }
@@ -1423,7 +2080,7 @@ function ProductsTab({ activeStore }: { activeStore: StoreData | null }) {
   const saveEdit = async (id: string) => {
     if (!storeId) return
     setSaving(true)
-    const { error } = await apiFetch<Product>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products/${encodeURIComponent(id)}`, {
+    const { error } = await apiFetch<ProductRecord>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify({ name: editBuf.name, price: String(editBuf.price), description: editBuf.description, category: editBuf.category }),
     })
@@ -1467,13 +2124,14 @@ const uploadImage = async (productId: string, file: File) => {
   const addProduct = async () => {
     if (!storeId || !newProduct.name || !newProduct.price) { toast.error('Name and price are required'); return }
     setSaving(true)
-    const { data, error } = await apiFetch<Product>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products`, {
+    const { data, error } = await apiFetch<ProductRecord>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products`, {
       method: 'POST',
       body: JSON.stringify({ name: newProduct.name, price: newProduct.price, description: newProduct.description, category: newProduct.category, currency: 'GHS' }),
     })
     setSaving(false)
     if (error || !data) { toast.error(error || 'Could not add product'); return }
     setProducts(prev => [data, ...prev])
+    setTotal((current) => current + 1)
     setNewProduct({ name: '', price: '', description: '', category: '' })
     setAdding(false)
     toast.success('Product added')
@@ -1521,6 +2179,7 @@ const uploadImage = async (productId: string, file: File) => {
             No products yet. Ask your agent to generate them or add one above.
           </div>
         ) : (
+          <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {products.map((product) => {
               const image = product.images?.find(i => i.isPrimary)?.url ?? product.images?.[0]?.url
@@ -1598,6 +2257,8 @@ const uploadImage = async (productId: string, file: File) => {
               )
             })}
           </div>
+          <PaginationControls page={page} total={total} pageSize={pageSize} onPage={setPage} />
+          </>
         )}
       </div>
     </div>
@@ -1607,48 +2268,216 @@ const uploadImage = async (productId: string, file: File) => {
 function CustomersTab({ activeStore, mode }: { activeStore: StoreData | null; mode: string }) {
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [history, setHistory] = useState<MarketingHistoryRecord[]>([])
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyPage, setHistoryPage] = useState(1)
+  const [templates, setTemplates] = useState<MarketingTemplateRecord[]>([])
+  const [templatesTotal, setTemplatesTotal] = useState(0)
+  const [templatesPage, setTemplatesPage] = useState(1)
+  const [marketingView, setMarketingView] = useState<'customers' | 'history' | 'templates'>('customers')
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [compose, setCompose] = useState({
+    channel: 'email' as 'email' | 'sms',
+    audience: 'single' as 'single' | 'bulk',
+    customerId: '',
+    marketingOnly: true,
+    subject: '',
+    message: '',
+    saveAsTemplate: false,
+    templateName: '',
+  })
+  const pageSize = 8
+  const historyPageSize = 8
+  const templatesPageSize = 9
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       const tenantId = storeIdOf(activeStore)
-      if (!tenantId) { setCustomers([]); return }
+      if (!tenantId) { setCustomers([]); setTotal(0); return }
       setLoading(true)
-      const { data, error } = await apiFetch<CustomerRecord[]>(`/api/v1/payment/customers?tenantId=${encodeURIComponent(tenantId)}`)
+      const { data, error } = await apiFetch<Paginated<CustomerRecord>>(`/api/v1/payment/customers?tenantId=${encodeURIComponent(tenantId)}&page=${page}&perPage=${pageSize}`)
       if (cancelled) return
       setLoading(false)
       if (error) { toast.error(error); return }
-      setCustomers(data ?? [])
+      setCustomers(data?.data ?? [])
+      setTotal(data?.total ?? 0)
     }
     void load()
     return () => { cancelled = true }
-  }, [activeStore])
+  }, [activeStore, page])
+
+  const loadMarketing = useCallback(async () => {
+    const tenantId = storeIdOf(activeStore)
+    if (!tenantId || mode !== 'marketing') return
+    const [h, t] = await Promise.all([
+      apiFetch<Paginated<MarketingHistoryRecord>>(`/api/v1/marketing/history?tenantId=${encodeURIComponent(tenantId)}&page=${historyPage}&perPage=${historyPageSize}`),
+      apiFetch<Paginated<MarketingTemplateRecord>>(`/api/v1/marketing/templates?tenantId=${encodeURIComponent(tenantId)}&page=${templatesPage}&perPage=${templatesPageSize}`),
+    ])
+    if (h.error) toast.error(h.error)
+    if (t.error) toast.error(t.error)
+    setHistory(h.data?.data ?? [])
+    setHistoryTotal(h.data?.total ?? 0)
+    setTemplates(t.data?.data ?? [])
+    setTemplatesTotal(t.data?.total ?? 0)
+  }, [activeStore, mode, historyPage, templatesPage])
+
+  useEffect(() => { void loadMarketing() }, [loadMarketing])
+  useEffect(() => { setPage(1); setHistoryPage(1); setTemplatesPage(1); setSelectedIds([]) }, [activeStore, mode])
 
   const totalRevenue = customers.reduce((s, c) => s + Number(c.totalSpent || 0), 0)
   const currency = customers[0]?.currency || 'GHS'
+  const selectedCustomers = customers.filter((customer) => selectedIds.includes(customer.id))
+  const selectedCount = selectedCustomers.length
+  const searchableCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase()
+    if (!q) return customers
+    return customers.filter((customer) =>
+      [customer.name, customer.email, customer.phone].filter(Boolean).some((value) => String(value).toLowerCase().includes(q)),
+    )
+  }, [customers, customerSearch])
+
+  const openCompose = (patch: Partial<typeof compose> = {}) => {
+    const firstSelected = selectedCustomers[0]
+    setCompose((current) => ({
+      ...current,
+      customerId: firstSelected?.id || current.customerId || customers[0]?.id || '',
+      audience: selectedCount > 1 ? 'bulk' : 'single',
+      ...patch,
+    }))
+    setComposeOpen(true)
+  }
+
+  const useTemplate = (template: Pick<MarketingTemplateRecord, 'channel' | 'subject' | 'message' | 'name'>) => {
+    openCompose({
+      channel: template.channel,
+      subject: template.subject || '',
+      message: template.message,
+      templateName: template.name,
+      saveAsTemplate: false,
+    })
+  }
+
+  const sendMarketingMessage = async () => {
+    const tenantId = storeIdOf(activeStore)
+    if (!tenantId || sendingMessage) return
+    if (compose.channel === 'email' && !compose.subject.trim()) { toast.error('Email subject is required'); return }
+    if (!compose.message.trim()) { toast.error('Message is required'); return }
+    setSendingMessage(true)
+    const selectedCustomer = selectedCustomers[0]
+    const { error } = await apiFetch('/api/v1/marketing/send', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenantId,
+        channel: compose.channel,
+        audience: compose.audience,
+        customerId: compose.audience === 'single' ? (compose.customerId || selectedCustomer?.id) : undefined,
+        marketingOnly: compose.marketingOnly,
+        subject: compose.subject,
+        message: compose.message,
+        saveAsTemplate: compose.saveAsTemplate,
+        templateName: compose.templateName,
+      }),
+    })
+    setSendingMessage(false)
+    if (error) { toast.error(error); return }
+    setComposeOpen(false)
+    setMarketingView('history')
+    toast.success('Message sent')
+    void loadMarketing()
+  }
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <PageHeader
-          tab={mode === 'emails' ? 'emails' : 'customers'}
-          title={mode === 'emails' ? 'Customer Contacts' : 'Customers'}
-          subtitle={mode === 'emails' ? 'Opted-in emails and phone contacts for transactional and marketing work.' : 'Know who bought, what they paid, and when they last ordered.'}
-        />
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <PageHeader
+            tab={mode === 'marketing' ? 'marketing' : 'customers'}
+            title={mode === 'marketing' ? 'Messaging' : 'Customers'}
+            subtitle={mode === 'marketing' ? 'Email and SMS-ready customer contacts for transactional and marketing work.' : 'Know who bought, what they paid, and when they last ordered.'}
+          />
+          {mode === 'marketing' && (
+            <div className="flex flex-wrap gap-2">
+              {selectedCount > 0 && <Button variant="outline" className="rounded-full" onClick={() => openCompose({ audience: selectedCount > 1 ? 'bulk' : 'single' })}><Mail className="h-4 w-4" /> Message selected</Button>}
+              <Button className="rounded-full" disabled={!activeStore} onClick={() => openCompose({ audience: 'bulk' })}><Plus className="h-4 w-4" /> New message</Button>
+            </div>
+          )}
+        </div>
         <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label="customers" value={String(customers.length)} />
+          <MetricCard label="customers" value={String(total || customers.length)} />
           <MetricCard label="revenue" value={money(totalRevenue, currency)} />
           <MetricCard label="email contacts" value={String(customers.filter((c) => c.email).length)} />
           <MetricCard label="phone contacts" value={String(customers.filter((c) => c.phone).length)} />
         </div>
+        {mode === 'marketing' && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {(['customers', 'history', 'templates'] as const).map((view) => (
+              <Button key={view} size="sm" variant={marketingView === view ? 'default' : 'outline'} className="rounded-full capitalize" onClick={() => setMarketingView(view)}>{view}</Button>
+            ))}
+          </div>
+        )}
+        {mode === 'marketing' && marketingView === 'history' ? (
+          <section className="overflow-hidden rounded-2xl border border-border bg-card/40">
+            <GridHeader cols="grid-cols-[.65fr_.9fr_1.35fr_1fr_.65fr_1fr]" items={['channel', 'audience', 'message', 'sent', 'status', 'action']} />
+            {history.length === 0 ? <EmptyRows text="Sent campaigns and transactional messages will appear here." /> : (
+              <div className="divide-y divide-border">
+                {history.map((item) => (
+                  <div key={item.id} className="grid grid-cols-[.65fr_.9fr_1.35fr_1fr_.65fr_1fr] gap-3 px-5 py-4 text-sm">
+                    <StatusBadge status={item.channel} />
+                    <div>{item.audience === 'bulk' ? `Bulk - ${item.recipientCount ?? 0} recipients` : item.customerName || 'Single customer'}</div>
+                    <div className="min-w-0">
+                      {item.subject && <div className="truncate font-medium">{item.subject}</div>}
+                      <div className="truncate text-muted-foreground">{item.message}</div>
+                    </div>
+                    <div className="text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</div>
+                    <StatusBadge status={item.status || (item.failed ? 'partial' : 'sent')} />
+                    <Button size="sm" variant="outline" className="h-8 rounded-full px-3" onClick={() => useTemplate({ channel: item.channel, subject: item.subject, message: item.message || '', name: item.subject || 'Previous message' })}>Use as template</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <PaginationControls page={historyPage} total={historyTotal} pageSize={historyPageSize} onPage={setHistoryPage} />
+          </section>
+        ) : mode === 'marketing' && marketingView === 'templates' ? (
+          <section>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {templates.length === 0 ? (
+              <div className="rounded-2xl border border-border bg-card/40 p-8 text-sm text-muted-foreground">Saved templates will appear here.</div>
+            ) : templates.map((template) => (
+              <button key={template.id} type="button" onClick={() => useTemplate(template)} className="rounded-2xl border border-border bg-card/40 p-4 text-left transition hover:border-primary/50">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="truncate text-sm font-semibold">{template.name}</h2>
+                  <StatusBadge status={template.channel} />
+                </div>
+                {template.subject && <p className="mt-3 truncate text-sm">{template.subject}</p>}
+                <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{template.message}</p>
+              </button>
+            ))}
+            </div>
+            <PaginationControls page={templatesPage} total={templatesTotal} pageSize={templatesPageSize} onPage={setTemplatesPage} />
+          </section>
+        ) : (
         <section className="overflow-hidden rounded-2xl border border-border bg-card/40">
-          <GridHeader cols="grid-cols-[1.4fr_.7fr_.7fr_.8fr_1fr]" items={['customer', 'spent', 'orders', 'last bought', 'contact']} />
+          <GridHeader cols={mode === 'marketing' ? "grid-cols-[.25fr_1.35fr_.7fr_.7fr_.8fr_1fr]" : "grid-cols-[1.4fr_.7fr_.7fr_.8fr_1fr]"} items={mode === 'marketing' ? ['', 'customer', 'spent', 'orders', 'last bought', 'contact'] : ['customer', 'spent', 'orders', 'last bought', 'contact']} />
           {loading ? <EmptyRows text="Loading customers…" /> : customers.length === 0 ? (
             <EmptyRows text={activeStore ? 'Checkout customers will appear here after their first order.' : 'Select or create a store first.'} />
           ) : (
             <div className="divide-y divide-border">
               {customers.map((customer) => (
-                <div key={customer.id} className="grid grid-cols-[1.4fr_.7fr_.7fr_.8fr_1fr] gap-3 px-5 py-4 text-sm">
+                <div key={customer.id} className={`grid ${mode === 'marketing' ? 'grid-cols-[.25fr_1.35fr_.7fr_.7fr_.8fr_1fr]' : 'grid-cols-[1.4fr_.7fr_.7fr_.8fr_1fr]'} gap-3 px-5 py-4 text-sm`}>
+                  {mode === 'marketing' && (
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(customer.id)}
+                      onChange={(e) => setSelectedIds((current) => e.target.checked ? [...current, customer.id] : current.filter((id) => id !== customer.id))}
+                      className="mt-1 h-4 w-4 accent-primary"
+                    />
+                  )}
                   <div className="min-w-0">
                     <div className="truncate font-medium">{customer.name || customer.email}</div>
                     <div className="truncate font-mono text-[11px] text-muted-foreground">{customer.email}</div>
@@ -1665,7 +2494,66 @@ function CustomersTab({ activeStore, mode }: { activeStore: StoreData | null; mo
               ))}
             </div>
           )}
+          <PaginationControls page={page} total={total} pageSize={pageSize} onPage={setPage} />
         </section>
+        )}
+        {composeOpen && (
+          <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">New message</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Compose an email or SMS for one customer or a bulk audience.</p>
+                </div>
+                <button type="button" onClick={() => setComposeOpen(false)} className="rounded-xl p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-sm">Channel
+                  <select value={compose.channel} onChange={(e) => setCompose((current) => ({ ...current, channel: e.target.value as 'email' | 'sms' }))} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                    <option value="email">Email</option>
+                    <option value="sms">SMS</option>
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm">Audience
+                  <select value={compose.audience} onChange={(e) => setCompose((current) => ({ ...current, audience: e.target.value as 'single' | 'bulk' }))} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                    <option value="single">Single customer</option>
+                    <option value="bulk">Bulk</option>
+                  </select>
+                </label>
+                {compose.audience === 'single' ? (
+                  <label className="grid gap-1.5 text-sm sm:col-span-2">Customer
+                    <input value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} placeholder="Search by name, email, or phone" className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                    <select value={compose.customerId} onChange={(e) => setCompose((current) => ({ ...current, customerId: e.target.value }))} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                      {searchableCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name || customer.email}</option>)}
+                    </select>
+                    {searchableCustomers.length === 0 && <span className="text-xs text-muted-foreground">No matching customers on this page.</span>}
+                  </label>
+                ) : (
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                    <input type="checkbox" checked={compose.marketingOnly} onChange={(e) => setCompose((current) => ({ ...current, marketingOnly: e.target.checked }))} className="h-4 w-4 accent-primary" />
+                    Send only to marketing opt-in contacts
+                  </label>
+                )}
+                {compose.channel === 'email' && (
+                  <label className="grid gap-1.5 text-sm sm:col-span-2">Subject
+                    <input value={compose.subject} onChange={(e) => setCompose((current) => ({ ...current, subject: e.target.value }))} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                  </label>
+                )}
+                <label className="grid gap-1.5 text-sm sm:col-span-2">Message
+                  <textarea value={compose.message} onChange={(e) => setCompose((current) => ({ ...current, message: e.target.value }))} rows={6} className="resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={compose.saveAsTemplate} onChange={(e) => setCompose((current) => ({ ...current, saveAsTemplate: e.target.checked }))} className="h-4 w-4 accent-primary" />
+                  Save as template
+                </label>
+                {compose.saveAsTemplate && (
+                  <input value={compose.templateName} onChange={(e) => setCompose((current) => ({ ...current, templateName: e.target.value }))} placeholder="Template name" className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                )}
+              </div>
+              <Button onClick={() => void sendMarketingMessage()} disabled={sendingMessage || !activeStore} className="mt-5 w-full rounded-full">{sendingMessage ? 'Sending...' : 'Send message'}</Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1682,11 +2570,11 @@ function AnalyticsTab({ activeStore }: { activeStore: StoreData | null }) {
       const search = new URLSearchParams({ page: '1', perPage: '100' })
       if (tenantId) search.set('tenantId', tenantId)
       const [o, c] = await Promise.all([
-        apiFetch<{ data: OrderRecord[] }>(`/api/v1/orders?${search.toString()}`),
-        tenantId ? apiFetch<CustomerRecord[]>(`/api/v1/payment/customers?tenantId=${encodeURIComponent(tenantId)}`) : Promise.resolve({ data: [] as CustomerRecord[], error: null }),
+        apiFetch<Paginated<OrderRecord>>(`/api/v1/orders?${search.toString()}`),
+        tenantId ? apiFetch<Paginated<CustomerRecord>>(`/api/v1/payment/customers?tenantId=${encodeURIComponent(tenantId)}&page=1&perPage=100`) : Promise.resolve({ data: { data: [], total: 0, page: 1, perPage: 100 } as Paginated<CustomerRecord>, error: null }),
       ])
       if (cancelled) return
-      setOrders(o.data?.data ?? []); setCustomers(c.data ?? [])
+      setOrders(o.data?.data ?? []); setCustomers(c.data?.data ?? [])
     }
     void load()
     return () => { cancelled = true }
@@ -1717,6 +2605,279 @@ function AnalyticsTab({ activeStore }: { activeStore: StoreData | null }) {
           <p className="mt-3 text-xs text-muted-foreground">This becomes more accurate as storefront visits and checkout events accumulate.</p>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ProfileCenterTab({ mode, activeStore, user, stores, onStoreUpdated }: {
+  mode: 'account' | 'billing' | 'domains' | 'help'
+  activeStore: StoreData | null
+  user: { email: string; name: string; avatar: string; joinedAt?: string } | null
+  stores: StoreData[]
+  onStoreUpdated: (s: StoreData) => void
+}) {
+  const [name, setName] = useState(activeStore?.name ?? '')
+  const [businessType, setBusinessType] = useState(activeStore?.businessType ?? '')
+  const [targetAudience, setTargetAudience] = useState(activeStore?.targetAudience ?? '')
+  const [region, setRegion] = useState('Africa')
+  const [country, setCountry] = useState('Ghana')
+  const [language, setLanguage] = useState('English')
+  const [payout, setPayout] = useState({ method: 'mobile_money', account: '', providerCode: '1', accountName: '' })
+  const [saving, setSaving] = useState(false)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [payoutError, setPayoutError] = useState('')
+  const [accountStoresPage, setAccountStoresPage] = useState(1)
+  const accountStoresPageSize = 4
+
+  useEffect(() => {
+    setName(activeStore?.name ?? '')
+    setBusinessType(activeStore?.businessType ?? '')
+    setTargetAudience(activeStore?.targetAudience ?? '')
+    setRegion(activeStore?.preferences?.region ?? 'Africa')
+    setCountry(activeStore?.country ?? 'Ghana')
+    setLanguage(activeStore?.preferences?.language ?? 'English')
+    setPayout({
+      method: activeStore?.payoutMethod ?? 'mobile_money',
+      account: activeStore?.payoutAccount ?? '',
+      providerCode: activeStore?.payoutProviderCode ?? '1',
+      accountName: activeStore?.payoutAccountName ?? '',
+    })
+    setPayoutError('')
+  }, [activeStore])
+
+  const plan = stores.length > 1 ? 'premium' : 'free trial'
+  const storeLimit = plan === 'premium' ? 3 : 1
+  const payoutOptions = payout.method === 'bank' ? GHANA_BANKS : GHANA_TELCOS
+  const accountStores = stores.slice((accountStoresPage - 1) * accountStoresPageSize, accountStoresPage * accountStoresPageSize)
+  useEffect(() => { setAccountStoresPage(1) }, [stores.length])
+  const saveAccount = async () => {
+    const id = storeIdOf(activeStore)
+    if (!id || saving) return
+    setSaving(true)
+    let accountName = payout.accountName
+    if (payout.account) {
+      setPayoutError('')
+      const validation = await apiFetch<{ accountName?: string }>(`/api/v1/payment/payout/validate`, {
+        method: 'POST',
+        body: JSON.stringify({ tenantId: id, method: payout.method, providerCode: payout.providerCode, account: payout.account }),
+      })
+      if (validation.error || !validation.data?.accountName) {
+        setSaving(false)
+        const message = validation.error || 'Could not validate payout account'
+        setPayoutError(message)
+        toast.error(message)
+        return
+      }
+      accountName = validation.data.accountName
+      setPayout((current) => ({ ...current, accountName }))
+    }
+    const selectedProvider = payoutOptions.find((item) => item.code === payout.providerCode)
+    const { data, error } = await apiFetch<StoreData>(`/api/v1/seltra/store/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        name, businessType, targetAudience, region, country, language,
+        payoutMethod: payout.method,
+        payoutProvider: selectedProvider?.label,
+        payoutProviderCode: payout.providerCode,
+        payoutAccount: payout.account,
+      }),
+    })
+    setSaving(false)
+    if (error || !data) { toast.error(error || 'Could not save account'); return }
+    onStoreUpdated(data)
+    toast.success(accountName ? `Account updated for ${accountName}` : 'Account updated')
+  }
+
+  const title = mode === 'billing' ? 'Billing' : mode === 'domains' ? 'Domains' : mode === 'help' ? 'Get Help' : 'Account'
+  const subtitle = mode === 'billing'
+    ? 'Plan, credits, and billing controls for your Seltra workspace.'
+    : mode === 'domains'
+      ? 'View and manage domains connected to your Seltra stores.'
+      : mode === 'help'
+        ? 'Support options for launch, payments, domains, and store operations.'
+        : 'Merchant profile, workspace details, stores, region, and payout preferences.'
+
+  return (
+    <div className={mode === 'account' ? 'flex-1 overflow-hidden' : 'flex-1 overflow-y-auto'}>
+      <div className={`mx-auto max-w-6xl px-6 ${mode === 'account' ? 'h-full py-6' : 'py-10'}`}>
+        <PageHeader tab={mode} title={title} subtitle={subtitle} />
+
+        {mode === 'account' && (
+          <div className="grid h-[calc(100%-5.5rem)] min-h-0 gap-5 lg:grid-cols-[.85fr_1.15fr]">
+            <section className="min-h-0 overflow-hidden rounded-2xl border border-border bg-card/40 p-4">
+              <div className="flex items-center gap-4">
+                {user?.avatar && <img src={user.avatar} alt={user.name || 'Merchant'} className="h-14 w-14 rounded-full border border-border bg-muted object-cover" />}
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-semibold">{user?.name || 'Merchant'}</h2>
+                  <p className="truncate font-mono text-xs text-muted-foreground">{user?.email || 'No email'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Joined {user?.joinedAt ? new Date(user.joinedAt).toLocaleDateString() : 'recently'}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <MetricCard label="stores used" value={`${stores.length}/${storeLimit}`} />
+                <MetricCard label="plan" value={plan} />
+              </div>
+              <div className="mt-4 space-y-2">
+                {stores.length === 0 ? <p className="text-sm text-muted-foreground">No stores yet.</p> : accountStores.map((store) => (
+                  <button key={store.id ?? store.slug} type="button" className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-background/60 p-3 text-left">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{store.name}</span>
+                      <span className="block truncate font-mono text-[11px] text-primary">{store.slug}.seltra.co</span>
+                    </span>
+                    <Building2 className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                  </button>
+                ))}
+                <PaginationControls page={accountStoresPage} total={stores.length} pageSize={accountStoresPageSize} onPage={setAccountStoresPage} />
+              </div>
+            </section>
+
+            <section className="min-h-0 overflow-y-auto rounded-2xl border border-border bg-card/40 p-4">
+              <h2 className="text-sm font-semibold">Workspace Details</h2>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-sm">Store name
+                  <input value={name} onChange={(e) => setName(e.target.value)} disabled={!activeStore}
+                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
+                </label>
+                <label className="grid gap-1.5 text-sm">Business type
+                  <input value={businessType} onChange={(e) => setBusinessType(e.target.value)} disabled={!activeStore}
+                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
+                </label>
+                <label className="grid gap-1.5 text-sm">Language
+                  <select value={language} onChange={(e) => setLanguage(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                    {['English', 'French', 'Arabic'].map((item) => <option key={item}>{item}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm">Region
+                  <select value={region} onChange={(e) => setRegion(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                    {['Africa', 'EU', 'USA'].map((item) => <option key={item}>{item}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm">Country
+                  <input value={country} onChange={(e) => setCountry(e.target.value)}
+                    className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                </label>
+                <label className="grid gap-1.5 text-sm">Payout method
+                  <select value={payout.method} onChange={(e) => setPayout((current) => ({ ...current, method: e.target.value, providerCode: e.target.value === 'bank' ? GHANA_BANKS[0].code : GHANA_TELCOS[0].code, accountName: '' }))} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                    <option value="mobile_money">Mobile money</option>
+                    <option value="bank">Bank transfer</option>
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm">Provider / bank
+                  <select value={payout.providerCode} onChange={(e) => setPayout((current) => ({ ...current, providerCode: e.target.value, accountName: '' }))} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+                    {payoutOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+                  </select>
+                  <span className="min-h-4 font-mono text-[11px] text-transparent">verified</span>
+                </label>
+                <label className="grid gap-1.5 text-sm">{payout.method === 'bank' ? 'Bank account number' : 'MoMo number'}
+                  <input value={payout.account} onChange={(e) => setPayout((current) => ({ ...current, account: e.target.value }))}
+                    inputMode="numeric" className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                  <span className={`min-h-4 font-mono text-[11px] ${payoutError ? 'text-red-500' : 'text-primary'}`}>
+                    {payoutError || (payout.accountName ? `VERIFIED ${payout.accountName}` : 'Verify on save')}
+                  </span>
+                </label>
+                <label className="grid gap-1.5 text-sm sm:col-span-2">Target audience
+                  <textarea value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} disabled={!activeStore} rows={3}
+                    className="resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
+                </label>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">Changing payout details will require phone OTP verification before disbursement.</p>
+              <Button onClick={() => void saveAccount()} disabled={!activeStore || saving} className="mt-4 rounded-full">{saving ? 'Saving...' : 'Save account'}</Button>
+            </section>
+          </div>
+        )}
+
+        {mode === 'billing' && (
+          <div className="grid gap-5 lg:grid-cols-[1fr_.9fr]">
+            <section className="rounded-2xl border border-border bg-card/40 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold capitalize">{plan}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Default monthly merchant credit limit for MVP operations.</p>
+                </div>
+                <div className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 font-mono text-xs text-primary">100 credits / month</div>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <MetricCard label="free tier" value="$0/m" />
+                <MetricCard label="premium" value="$10/m" />
+                <MetricCard label="trial" value="30 days" />
+              </div>
+            </section>
+            <section className="rounded-2xl border border-border bg-card/40 p-5">
+              <h2 className="text-sm font-semibold">Premium Unlocks</h2>
+              <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
+                {['3 stores', '100 product upgrades for each store', 'User roles and permissions', 'Custom domains', 'Remove the Seltra badge', 'ChatBot on stores', 'Instant and priority support', 'Unused credits rollover', 'On-demand credit top-ups'].map((item) => (
+                  <div key={item} className="flex items-center gap-2"><CheckCheck className="h-4 w-4 text-primary" /> {item}</div>
+                ))}
+              </div>
+              <Button className="mt-5 w-full rounded-full" onClick={() => setUpgradeOpen(true)}>Upgrade to Premium</Button>
+            </section>
+          </div>
+        )}
+
+        {mode === 'domains' && (
+          <section className="rounded-2xl border border-border bg-card/40 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Domains</h2>
+                <p className="mt-1 text-sm text-muted-foreground">No domains yet. Buy a domain here or transfer one into Seltra.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="rounded-full" onClick={() => setUpgradeOpen(true)}>Transfer in</Button>
+                <Button className="rounded-full" onClick={() => setUpgradeOpen(true)}>Buy a domain</Button>
+              </div>
+            </div>
+            <div className="mt-5 grid min-h-52 place-items-center rounded-2xl border border-dashed border-border bg-background/50 p-8 text-center">
+              <div>
+                <Globe2 className="mx-auto h-8 w-8 text-primary" />
+                <p className="mt-3 text-sm font-medium">Custom domains require Premium.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Your current stores still work on Seltra subdomains.</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {mode === 'help' && (
+          <div className="grid gap-4 md:grid-cols-2">
+            {[
+              ['Launch support', 'Store setup, products, storefront polish, and checkout readiness.'],
+              ['Payments', 'Moolre, Paystack, ledger, payout, and failed payment help.'],
+              ['Domains', 'Buying, connecting, and transferring custom domains.'],
+              ['Security', 'Login, account access, and sensitive business setting changes.'],
+            ].map(([heading, body]) => (
+              <section key={heading} className="rounded-2xl border border-border bg-card/40 p-5">
+                <HelpCircle className="h-5 w-5 text-primary" />
+                <h2 className="mt-3 text-sm font-semibold">{heading}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+                <Button variant="outline" className="mt-4 rounded-full">Contact support</Button>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {upgradeOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15"><LockKeyhole className="h-5 w-5 text-primary" /></div>
+                <div>
+                  <h2 className="text-lg font-semibold">Upgrade to Premium</h2>
+                  <p className="font-mono text-xs text-muted-foreground">$10 due today</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setUpgradeOpen(false)} className="rounded-xl p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mt-5 space-y-2 text-sm text-muted-foreground">
+              {['3 stores', '100 product upgrades for each store', 'User roles and permissions', 'Custom domains', 'Remove the Seltra badge', 'ChatBot on stores for customer assistance', 'Instant and priority support', 'Unused credits rollover', 'On-demand credit top-ups'].map((item) => (
+                <div key={item} className="flex items-center gap-2"><CheckCheck className="h-4 w-4 text-primary" /> {item}</div>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">Your plan will update to $10 / month for 100 credits. Downgrade or cancel at any time. By upgrading you agree to our terms.</p>
+            <Button className="mt-5 w-full rounded-full" onClick={() => { setUpgradeOpen(false); toast.success('Premium checkout coming online for MVP') }}>Upgrade to Premium</Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

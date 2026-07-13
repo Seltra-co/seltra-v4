@@ -8,7 +8,7 @@ Given a user description of a business, design a comprehensive store blueprint.
 Rules:
 1. Always set platform to "Seltra". Never suggest Shopify, WooCommerce, or any other platform.
 2. Return ONLY valid JSON. No markdown, no explanation, no code blocks.
-3. Use Paystack as the default payment gateway for African stores.
+3. Use Moolre as the default payment gateway for African stores.
 4. Fill missing information with smart context-aware defaults.
 5. Keep all string values short. productCategories: max 4 items. storeFeatures: max 4 items. recommendations: max 4 items.
 6. brandName: a SHORT 1–3 word display name for the storefront (e.g. "Glow & Co", "Aura", "Velvet Skin", "Mama's Kitchen"). 
@@ -137,7 +137,7 @@ function fallbackBlueprint(userPrompt: string): CanonicalStore {
     productCategories: ['Featured', 'Essentials', 'Bundles'],
     storeFeatures: ['Fast checkout', 'AI merchandising', 'Mobile storefront', 'Local delivery'],
     recommendedTechStack: {
-      paymentGateways: ['Paystack'],
+      paymentGateways: ['Moolre'],
       shippingIntegration: 'Local courier',
       frontend: 'Next.js with TailwindCSS',
       backend: 'Node.js with NestJS',

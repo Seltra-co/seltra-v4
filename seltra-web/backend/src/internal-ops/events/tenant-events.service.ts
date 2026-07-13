@@ -6,11 +6,19 @@ export type TenantEventType =
   | 'product_added'
   | 'order_placed'
   | 'payment_received'
+  | 'order_status_updated'
+  | 'invoice_created'
+  | 'invoice_paid'
+  | 'invoice_sent'
+  | 'order_reminder'
+  | 'sales_summary'
   | 'login'
   | 'settings_changed'
   | 'theme_updated'
   | 'ai_invocation'
   | 'merchant_onboarded'
+  | 'disbursement_requested'
+  | 'disbursement_paid'
 
 @Injectable()
 export class TenantEventsService {

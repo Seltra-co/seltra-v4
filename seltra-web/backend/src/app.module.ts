@@ -15,6 +15,9 @@ import { PaymentModule } from './payment/payment.module'
 import { ApplicationModule } from './application/application.module'
 import { ResendService } from './resend/resend.service';
 import { InternalOpsModule } from './internal-ops/internal-ops.module'
+import { NotificationsModule } from './notifications/notifications.module'
+import { InvoicesModule } from './invoices/invoices.module'
+import { MarketingModule } from './marketing/marketing.module'
 
 @Module({
   imports: [
@@ -30,6 +33,9 @@ import { InternalOpsModule } from './internal-ops/internal-ops.module'
     OrdersModule,
     ConversationsModule,
     ApplicationModule,
+    NotificationsModule,
+    InvoicesModule,
+    MarketingModule,
     InternalOpsModule,
     HealthModule,
     KeepAliveModule,

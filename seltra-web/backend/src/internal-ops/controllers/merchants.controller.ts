@@ -5,6 +5,7 @@ import type { Response } from 'express'
 import { MerchantPatchDto } from '../dto/merchant-patch.dto'
 import { MerchantsQueryDto } from '../dto/merchants-query.dto'
 import { MerchantDetailResponseDto, MerchantRemovalResponseDto, MerchantsListResponseDto, OpsErrorResponseDto } from '../dto/swagger-response.dto'
+import { MerchantMessagingResponseDto,MerchantsMessagingListResponseDto } from '../dto/merchants-messaging-response.dto'
 import { OpsExceptionFilter } from '../filters/ops-exception.filter'
 import { OpsApiKeyGuard } from '../guards/ops-api-key.guard'
 import { MerchantsService } from '../services/merchants.service'
@@ -38,6 +39,51 @@ export class MerchantsController {
   list(@Query() query: MerchantsQueryDto) {
     return this.merchants.list(query)
   }
+
+
+//Dashboard fetch merchants for bulk messaging (email, sms) endpoint for the internal ops API
+//@req GET /internal/ops/merchants/messaging
+//x-internal-api-key
+//x-ops-actor
+@Get('messaging')
+@ApiOperation({
+  summary: 'List merchants for messaging',
+  description: 'Returns merchant applications (approved or pending) with contact details for bulk email/SMS messaging.',
+})
+@ApiOkResponse({
+  description: 'Fetched merchants for messaging successfully.',
+  type: MerchantsMessagingListResponseDto,
+})
+messaging() {
+  return this.merchants.messaging()
+}
+
+//Dashboard fetch a merchant for single messaging (email, sms) endpoint for the internal ops API
+//@req GET /internal/ops/merchants/:merchantId/messaging
+//x-internal-api-key
+//x-ops-actor
+@Get(':merchantId/messaging')
+@ApiOperation({
+  summary: 'Fetch a single merchant for messaging',
+  description: 'Returns a single merchant application with contact details for single-recipient email/SMS messaging.',
+})
+@ApiParam({
+  name: 'merchantId',
+  description: 'MerchantApplication ID (not a tenant ID).',
+  example: 'b7cf0dc7-7757-4a07-8a5e-c06d0193dc10',
+})
+@ApiOkResponse({
+  description: 'Merchant contact details for messaging.',
+  type: MerchantMessagingResponseDto,
+})
+@ApiNotFoundResponse({
+  description: 'Merchant application was not found.',
+  type: OpsErrorResponseDto,
+})
+singleMessaging(@Param('merchantId') merchantId: string) {
+  return this.merchants.singleMessaging(merchantId)
+}
+
 
   //Dashboard export csv  endpoint
   //@req GET /internal/ops/merchants/export.csv
@@ -135,4 +181,6 @@ export class MerchantsController {
     await this.audit.record(actorLabel, 'merchant.remove', 'tenant', tenantId, { status: 'removed' })
     return result
   }
+ 
+  
 }

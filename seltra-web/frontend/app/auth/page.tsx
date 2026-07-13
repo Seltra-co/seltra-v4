@@ -1,8 +1,8 @@
 'use client'
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState, type InputHTMLAttributes } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Mail, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Eye, EyeOff, Mail, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
@@ -29,6 +29,46 @@ async function apiPost<T>(path: string, body: unknown): Promise<{ data: T | null
 }
 
 type AuthResponse = { access_token?: string; token?: string; user: unknown; otpRequired?: boolean }
+
+function SensitiveInput({
+  value,
+  onChange,
+  placeholder,
+  className,
+  inputMode,
+  maxLength,
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  className?: string
+  inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode']
+  maxLength?: number
+}) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <div className="relative">
+      <Input
+        type={visible ? 'text' : 'password'}
+        inputMode={inputMode}
+        maxLength={maxLength}
+        placeholder={placeholder}
+        required
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${className ?? ''} pr-11`}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((current) => !current)}
+        aria-label={visible ? `Hide ${placeholder}` : `Show ${placeholder}`}
+        className="absolute right-3 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+      >
+        {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  )
+}
 
 function AuthContent() {
   const router = useRouter()
@@ -119,8 +159,12 @@ function AuthContent() {
               <form onSubmit={handleAuth} className="space-y-3">
                 <Input type="email" placeholder="you@store.com" required value={email} onChange={(e) => setEmail(e.target.value)}
                   className="h-12 rounded-xl border-white/10 bg-white/5 text-white placeholder:text-white/40" />
-                <Input placeholder="Merchant ID" required value={merchantId} onChange={(e) => setMerchantId(e.target.value.toUpperCase())}
-                  className="h-12 rounded-xl border-white/10 bg-white/5 font-mono text-white placeholder:font-sans placeholder:text-white/40" />
+                <SensitiveInput
+                  placeholder="Merchant ID"
+                  value={merchantId}
+                  onChange={(value) => setMerchantId(value.toUpperCase())}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 font-mono text-white placeholder:font-sans placeholder:text-white/40"
+                />
                 <Button type="submit" disabled={loading} className="h-12 w-full rounded-full bg-white font-medium text-black hover:bg-white/90">
                   {loading ? '...' : 'Sign in'}
                 </Button>
@@ -141,8 +185,14 @@ function AuthContent() {
                 <p className="mt-1 text-sm text-white/50">A verification code was sent to the phone number on your account.</p>
               </div>
               <form className="space-y-3">
-                <Input inputMode="numeric" maxLength={6} placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value)}
-                  className="h-12 rounded-xl border-white/10 bg-white/5 font-mono text-white placeholder:font-sans placeholder:text-white/40" />
+                <SensitiveInput
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="6-digit code"
+                  value={otp}
+                  onChange={setOtp}
+                  className="h-12 rounded-xl border-white/10 bg-white/5 font-mono text-white placeholder:font-sans placeholder:text-white/40"
+                />
                 <Button type="button" disabled className="h-12 w-full rounded-full bg-white font-medium text-black hover:bg-white/90">
                   Verify code
                 </Button>

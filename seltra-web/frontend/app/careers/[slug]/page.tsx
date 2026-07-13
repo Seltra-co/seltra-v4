@@ -1,8 +1,9 @@
+//seltra-web/frontend/app/careers/[slug]/page.tsx
 'use client'
 
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Briefcase, Coins, MapPin, Sparkles } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Briefcase, Coins, Lock, MapPin, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SiteHeader } from '@/components/marketing/SiteHeader'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
@@ -27,6 +28,8 @@ export default function CareerDetailPage() {
     )
   }
 
+  const isClosed = job.status === 'closed'
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader />
@@ -47,14 +50,32 @@ export default function CareerDetailPage() {
 
           <p className="mb-8 text-base text-muted-foreground sm:text-lg">{job.summary}</p>
 
-          <div className="mb-12 flex flex-col gap-3 sm:flex-row">
-            <Button size="lg" className="rounded-md font-mono text-xs" onClick={() => router.push(`/careers/${job.slug}/apply`)}>
-              Apply for this role <ArrowRight className="h-4 w-4" />
-            </Button>
-            <a href="mailto:williamofosu677@gmail.com" className="inline-flex">
-              <Button size="lg" variant="outline" className="w-full rounded-md font-mono text-xs sm:w-auto">Ask a question</Button>
-            </a>
-          </div>
+          {isClosed ? (
+            <div className="mb-10 flex gap-3 rounded-xl border border-border bg-card/40 p-5 sm:p-6">
+              <Lock className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="mb-1 font-mono text-xs text-muted-foreground">{'// this role is closed'}</p>
+                <p className="text-sm text-foreground">{job.closedNote}</p>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <Button variant="outline" size="lg" className="rounded-md font-mono text-xs" onClick={() => router.push('/careers')}>
+                    See open roles
+                  </Button>
+                  <a href="mailto:williamofosu677@gmail.com?subject=Seltra%20General%20interest" className="inline-flex">
+                    <Button size="lg" className="w-full rounded-md font-mono text-xs sm:w-auto">Register interest</Button>
+                  </a>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-12 flex flex-col gap-3 sm:flex-row">
+              <Button size="lg" className="rounded-md font-mono text-xs" onClick={() => router.push(`/careers/${job.slug}/apply`)}>
+                Apply for this role <ArrowRight className="h-4 w-4" />
+              </Button>
+              <a href="mailto:williamofosu677@gmail.com" className="inline-flex">
+                <Button size="lg" variant="outline" className="w-full rounded-md font-mono text-xs sm:w-auto">Ask a question</Button>
+              </a>
+            </div>
+          )}
 
           <Section title="The mission"><p>{job.mission}</p></Section>
           <Section title="What you will own"><List items={job.responsibilities} /></Section>
@@ -69,11 +90,13 @@ export default function CareerDetailPage() {
             </div>
           </div>
 
-          <div className="mt-12">
-            <Button size="lg" className="rounded-md font-mono text-xs" onClick={() => router.push(`/careers/${job.slug}/apply`)}>
-              Apply for this role <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
+          {!isClosed && (
+            <div className="mt-12">
+              <Button size="lg" className="rounded-md font-mono text-xs" onClick={() => router.push(`/careers/${job.slug}/apply`)}>
+                Apply for this role <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </main>
       <SiteFooter />

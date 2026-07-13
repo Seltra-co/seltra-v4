@@ -6,6 +6,15 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM = process.env.RESEND_FROM ?? 'Seltra <careers@send.seltra.co>'
 const NOTIFY_TO = process.env.RESEND_NOTIFY_TO ?? 'williamofosu677@gmail.com'
 
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 @Injectable()
 export class ResendService {
   private readonly logger = new Logger(ResendService.name)
@@ -30,6 +39,98 @@ export class ResendService {
       to: input.to,
       subject: `Your Seltra account is approved: ${input.storeName}`,
       html: buildMerchantApprovalEmail(input),
+    })
+  }
+
+  async sendInvoice(input: {
+    to: string
+    customerName: string
+    invoiceNumber: string
+    total: string
+    currency: string
+    dueDate?: string
+    pdfUrl?: string
+  }) {
+    await resend.emails.send({
+      from: FROM,
+      to: input.to,
+      subject: `Invoice ${input.invoiceNumber} from Seltra`,
+      html: emailShell(`
+        <tr><td style="background:#18181b;border-left:3px solid #22c55e;padding:20px 40px">
+          <p style="margin:0;font-size:11px;color:#71717a;font-family:monospace;letter-spacing:1px;text-transform:uppercase">// invoice</p>
+          <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#ffffff">${input.invoiceNumber}</p>
+        </td></tr>
+        <tr><td style="background:#ffffff;padding:36px 40px">
+          <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#0a0a0a">Hello ${input.customerName || 'there'},</p>
+          <p style="margin:0 0 20px;font-size:13px;color:#71717a;line-height:1.7">Your invoice is ready.</p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e4e4e7;border-radius:8px;margin-bottom:24px">
+            <tr><td style="padding:20px 24px">
+              ${row('Invoice', input.invoiceNumber)}
+              ${row('Amount', `${input.currency} ${input.total}`)}
+              ${row('Due date', input.dueDate)}
+              ${input.pdfUrl ? row('Download', input.pdfUrl) : ''}
+            </td></tr>
+          </table>
+        </td></tr>
+      `),
+    })
+  }
+
+  async sendMerchantMessage(input: {
+    to: string
+    subject: string
+    message: string
+    storeName?: string | null
+  }) {
+    await resend.emails.send({
+      from: FROM,
+      to: input.to,
+      subject: input.subject,
+      html: emailShell(`
+        <tr><td style="background:#18181b;border-left:3px solid #22c55e;padding:20px 40px">
+          <p style="margin:0;font-size:11px;color:#71717a;font-family:monospace;letter-spacing:1px;text-transform:uppercase">// message via seltra</p>
+          <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#ffffff">${input.storeName || 'Seltra merchant'}</p>
+        </td></tr>
+        <tr><td style="background:#ffffff;padding:36px 40px">
+          <p style="margin:0 0 20px;font-size:14px;color:#18181b;line-height:1.8;white-space:pre-line">${escapeHtml(input.message)}</p>
+          <p style="margin:24px 0 0;font-size:11px;color:#71717a">Sent securely via Seltra Commerce OS.</p>
+        </td></tr>
+      `),
+    })
+  }
+
+  async sendMerchantReceipt(input: {
+    to: string
+    merchantName?: string | null
+    storeName: string
+    amount: string
+    currency: string
+    account: string
+    provider?: string | null
+    reference: string
+  }) {
+    await resend.emails.send({
+      from: FROM,
+      to: input.to,
+      subject: `Seltra disbursement receipt: ${input.currency} ${input.amount}`,
+      html: emailShell(`
+        <tr><td style="background:#18181b;border-left:3px solid #22c55e;padding:20px 40px">
+          <p style="margin:0;font-size:11px;color:#71717a;font-family:monospace;letter-spacing:1px;text-transform:uppercase">// disbursement receipt</p>
+          <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#ffffff">${input.storeName}</p>
+        </td></tr>
+        <tr><td style="background:#ffffff;padding:36px 40px">
+          <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#0a0a0a">Hello ${input.merchantName || 'merchant'},</p>
+          <p style="margin:0 0 20px;font-size:13px;color:#71717a;line-height:1.7">Your Seltra payout has been sent.</p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e4e4e7;border-radius:8px;margin-bottom:24px">
+            <tr><td style="padding:20px 24px">
+              ${row('Amount', `${input.currency} ${input.amount}`)}
+              ${row('Provider', input.provider)}
+              ${row('Account', input.account)}
+              ${row('Reference', input.reference)}
+            </td></tr>
+          </table>
+        </td></tr>
+      `),
     })
   }
 
@@ -92,8 +193,8 @@ function emailShell(content: string): string {
       <tr><td style="background:#0a0a0a;border-radius:12px 12px 0 0;padding:36px 40px;text-align:center">
         <table cellpadding="0" cellspacing="0" style="margin:0 auto 12px">
           <tr>
-            <td style="background:#22c55e;border-radius:12px;width:40px;height:40px;text-align:center;vertical-align:middle">
-              <img src="https://res.cloudinary.com/dfmsaarli/image/upload/v1780037125/Side2_m7uttg.png" width="28" height="28" alt="Seltra" style="display:block;margin:auto" />
+            <td style="background: #ffffff;border-radius:12px;width:40px;height:40px;text-align:center;vertical-align:middle">
+              <img src="https://res.cloudinary.com/dfmsaarli/image/upload/ICON_large_ngiv41.png" width="28" height="28" alt="Seltra" style="display:block;margin:auto" />
             </td>
             <td style="padding-left:10px;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;vertical-align:middle">seltra</td>
             <td style="padding-left:8px;vertical-align:middle">

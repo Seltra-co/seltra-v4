@@ -1,9 +1,10 @@
+//seltra-web/frontend/app/careers/[slug]/apply/page.tsx
 'use client'
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Check, Upload } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Upload } from 'lucide-react'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -48,7 +49,6 @@ export default function RoleApplyPage() {
 
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [done, setDone] = useState(false)
   const [resume, setResume] = useState<File | null>(null)
   const [data, setData] = useState<FormData>({
     full_name: '',
@@ -132,7 +132,11 @@ export default function RoleApplyPage() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.message || 'Submission failed')
-      setDone(true)
+
+      const firstName = parsed.data.full_name.split(' ')[0] ?? ''
+      router.push(
+        `/careers/${slug}/apply/assessment?name=${encodeURIComponent(firstName)}&email=${encodeURIComponent(parsed.data.email)}`
+      )
     } catch {
       toast.error('Submission failed. Please try again or email us directly.')
     } finally {
@@ -155,93 +159,80 @@ export default function RoleApplyPage() {
             <p className="text-sm text-muted-foreground">A few thoughtful answers go a long way. We read every application.</p>
           </div>
 
-          {done ? (
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-8 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-primary/30 bg-primary/10">
-                <Check className="h-6 w-6 text-primary" />
-              </div>
-              <h2 className="mb-2 text-xl font-semibold">Application received</h2>
-              <p className="text-sm text-muted-foreground">
-                Thanks {data.full_name.split(' ')[0]}. We will be in touch at <span className="font-mono text-foreground">{data.email}</span>.
-              </p>
-              <Button className="mt-6 rounded-md" onClick={() => router.push('/careers')}>Back to careers</Button>
+          <div className="rounded-xl border border-border bg-card/40 p-5 sm:p-7">
+            <div className="mb-6 flex items-center gap-2">
+              {STEPS.map((_, index) => (
+                <div key={index} className={`h-1 flex-1 rounded-full transition-colors ${index <= step ? 'bg-primary' : 'bg-border'}`} />
+              ))}
             </div>
-          ) : (
-            <div className="rounded-xl border border-border bg-card/40 p-5 sm:p-7">
-              <div className="mb-6 flex items-center gap-2">
-                {STEPS.map((_, index) => (
-                  <div key={index} className={`h-1 flex-1 rounded-full transition-colors ${index <= step ? 'bg-primary' : 'bg-border'}`} />
-                ))}
-              </div>
-              <div className="mb-5">
-                <p className="font-mono text-[11px] text-muted-foreground">step {step + 1} / {STEPS.length}</p>
-                <h2 className="mt-1 text-lg font-semibold">{STEPS[step]}</h2>
-              </div>
+            <div className="mb-5">
+              <p className="font-mono text-[11px] text-muted-foreground">step {step + 1} / {STEPS.length}</p>
+              <h2 className="mt-1 text-lg font-semibold">{STEPS[step]}</h2>
+            </div>
 
-              {step === 0 && (
-                <div className="space-y-4">
-                  <Field label="Full name *"><Input value={data.full_name} onChange={(event) => set('full_name', event.target.value)} /></Field>
-                  <Field label="Email *"><Input type="email" value={data.email} onChange={(event) => set('email', event.target.value)} /></Field>
-                  <Field label="Phone (WhatsApp preferred) *"><Input value={data.phone} onChange={(event) => set('phone', event.target.value)} inputMode="tel" /></Field>
-                  <Field label="LinkedIn / X / Portfolio"><Input value={data.links} onChange={(event) => set('links', event.target.value)} placeholder="https://" /></Field>
-                  <Field label="Resume / CV * (PDF or DOCX, max 5 MB)">
-                    <label className="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-border px-3 py-2 text-sm hover:border-primary/50">
-                      <Upload className="h-4 w-4 text-muted-foreground" />
-                      <span className={resume ? 'text-foreground' : 'text-muted-foreground'}>{resume ? resume.name : 'Choose a file'}</span>
-                      <input type="file" accept=".pdf,.doc,.docx,application/pdf" className="hidden" onChange={(event) => handleFile(event.target.files?.[0] ?? null)} />
-                    </label>
-                  </Field>
-                </div>
-              )}
-
-              {step === 1 && (
-                <div className="space-y-4">
-                  <Field label="Tell us about yourself *"><NativeTextarea rows={4} value={data.about} onChange={(value) => set('about', value)} /></Field>
-                  <Field label="What interests you about Seltra? *"><NativeTextarea rows={4} value={data.why_seltra} onChange={(value) => set('why_seltra', value)} /></Field>
-                  <Field label="Have you worked with startups, merchants, operations, sales, or communities? *"><NativeTextarea rows={4} value={data.prior_experience} onChange={(value) => set('prior_experience', value)} /></Field>
-                  <Field label="Examples of projects or businesses you have helped grow"><NativeTextarea rows={3} value={data.growth_examples || ''} onChange={(value) => set('growth_examples', value)} /></Field>
-                </div>
-              )}
-
-              {step === 2 && (
-                <div className="space-y-4">
-                  <Field label="Why are you a strong fit for this role? *"><NativeTextarea rows={4} value={data.fit_reason} onChange={(value) => set('fit_reason', value)} /></Field>
-                  <Field label="How would you onboard our first merchants? *"><NativeTextarea rows={4} value={data.onboarding_approach} onChange={(value) => set('onboarding_approach', value)} /></Field>
-                  <Field label="How comfortable are you with talking to customers and gathering feedback? *"><NativeTextarea rows={3} value={data.customer_comfort} onChange={(value) => set('customer_comfort', value)} /></Field>
-                  <Field label="Availability *"><NativeSelect value={data.hours} options={HOURS} placeholder="Hours per week" onChange={(value) => set('hours', value)} /></Field>
-                </div>
-              )}
-
-              {step === 3 && (
-                <div className="space-y-5">
-                  <Field label="Comfortable joining before funding? *"><ChoiceGroup value={data.before_funding} options={YES_NO_MAYBE} onChange={(value) => set('before_funding', value)} /></Field>
-                  <Field label="Open to equity-based compensation? *"><ChoiceGroup value={data.equity_ok} options={YES_NO_MAYBE} onChange={(value) => set('equity_ok', value)} /></Field>
-                  <Field label="Willing to relocate if accelerator / funding opportunities arise? *"><ChoiceGroup value={data.relocate_ok} options={YES_NO_MAYBE} onChange={(value) => set('relocate_ok', value)} /></Field>
-                </div>
-              )}
-
-              {step === 4 && (
-                <Field label="What excites you most about helping build AI-native commerce infrastructure for SMEs? *">
-                  <NativeTextarea rows={6} value={data.excitement} onChange={(value) => set('excitement', value)} />
+            {step === 0 && (
+              <div className="space-y-4">
+                <Field label="Full name *"><Input value={data.full_name} onChange={(event) => set('full_name', event.target.value)} /></Field>
+                <Field label="Email *"><Input type="email" value={data.email} onChange={(event) => set('email', event.target.value)} /></Field>
+                <Field label="Phone (WhatsApp preferred) *"><Input value={data.phone} onChange={(event) => set('phone', event.target.value)} inputMode="tel" /></Field>
+                <Field label="LinkedIn / X / Portfolio"><Input value={data.links} onChange={(event) => set('links', event.target.value)} placeholder="https://" /></Field>
+                <Field label="Resume / CV * (PDF or DOCX, max 5 MB)">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-border px-3 py-2 text-sm hover:border-primary/50">
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                    <span className={resume ? 'text-foreground' : 'text-muted-foreground'}>{resume ? resume.name : 'Choose a file'}</span>
+                    <input type="file" accept=".pdf,.doc,.docx,application/pdf" className="hidden" onChange={(event) => handleFile(event.target.files?.[0] ?? null)} />
+                  </label>
                 </Field>
-              )}
-
-              <div className="mt-7 flex items-center justify-between gap-2 border-t border-border pt-5">
-                <Button variant="ghost" size="sm" disabled={step === 0 || loading} onClick={() => setStep((current) => Math.max(0, current - 1))}>
-                  <ArrowLeft className="h-4 w-4" /> Back
-                </Button>
-                {step < STEPS.length - 1 ? (
-                  <Button size="sm" disabled={!canNext} onClick={() => setStep((current) => current + 1)} className="rounded-md">
-                    Continue <ArrowRight className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button size="sm" disabled={loading || !canNext} onClick={() => void submit()} className="rounded-md">
-                    {loading ? 'Submitting...' : 'Submit application'}
-                  </Button>
-                )}
               </div>
+            )}
+
+            {step === 1 && (
+              <div className="space-y-4">
+                <Field label="Tell us about yourself *"><NativeTextarea rows={4} value={data.about} onChange={(value) => set('about', value)} /></Field>
+                <Field label="What interests you about Seltra? *"><NativeTextarea rows={4} value={data.why_seltra} onChange={(value) => set('why_seltra', value)} /></Field>
+                <Field label="Have you worked with startups, merchants, operations, sales, or communities? *"><NativeTextarea rows={4} value={data.prior_experience} onChange={(value) => set('prior_experience', value)} /></Field>
+                <Field label="Examples of projects or businesses you have helped grow"><NativeTextarea rows={3} value={data.growth_examples || ''} onChange={(value) => set('growth_examples', value)} /></Field>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-4">
+                <Field label="Why are you a strong fit for this role? *"><NativeTextarea rows={4} value={data.fit_reason} onChange={(value) => set('fit_reason', value)} /></Field>
+                <Field label="How would you onboard our first merchants? *"><NativeTextarea rows={4} value={data.onboarding_approach} onChange={(value) => set('onboarding_approach', value)} /></Field>
+                <Field label="How comfortable are you with talking to customers and gathering feedback? *"><NativeTextarea rows={3} value={data.customer_comfort} onChange={(value) => set('customer_comfort', value)} /></Field>
+                <Field label="Availability *"><NativeSelect value={data.hours} options={HOURS} placeholder="Hours per week" onChange={(value) => set('hours', value)} /></Field>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="space-y-5">
+                <Field label="Comfortable joining before funding? *"><ChoiceGroup value={data.before_funding} options={YES_NO_MAYBE} onChange={(value) => set('before_funding', value)} /></Field>
+                <Field label="Open to equity-based compensation? *"><ChoiceGroup value={data.equity_ok} options={YES_NO_MAYBE} onChange={(value) => set('equity_ok', value)} /></Field>
+                <Field label="Willing to relocate if accelerator / funding opportunities arise? *"><ChoiceGroup value={data.relocate_ok} options={YES_NO_MAYBE} onChange={(value) => set('relocate_ok', value)} /></Field>
+              </div>
+            )}
+
+            {step === 4 && (
+              <Field label="What excites you most about helping build AI-native commerce infrastructure for SMEs? *">
+                <NativeTextarea rows={6} value={data.excitement} onChange={(value) => set('excitement', value)} />
+              </Field>
+            )}
+
+            <div className="mt-7 flex items-center justify-between gap-2 border-t border-border pt-5">
+              <Button variant="ghost" size="sm" disabled={step === 0 || loading} onClick={() => setStep((current) => Math.max(0, current - 1))}>
+                <ArrowLeft className="h-4 w-4" /> Back
+              </Button>
+              {step < STEPS.length - 1 ? (
+                <Button size="sm" disabled={!canNext} onClick={() => setStep((current) => current + 1)} className="rounded-md">
+                  Continue <ArrowRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button size="sm" disabled={loading || !canNext} onClick={() => void submit()} className="rounded-md">
+                  {loading ? 'Submitting...' : 'Submit application'}
+                </Button>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </main>
       <SiteFooter />

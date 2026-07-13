@@ -20,6 +20,24 @@ class InitializePaymentDto {
   callbackUrl?: string
 }
 
+class ValidatePayoutDto {
+  tenantId?: string
+  method?: string
+  providerCode?: string
+  account?: string
+}
+
+class RequestDisbursementDto {
+  tenantId?: string
+  amount?: string | number
+}
+
+class ConfirmDisbursementDto {
+  tenantId?: string
+  disbursementId?: string
+  otp?: string
+}
+
 @Controller('payment')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
@@ -43,8 +61,39 @@ export class PaymentController {
   }
 
   @Get('ledger')
-  ledger(@Headers('authorization') authorization?: string, @Query('tenantId') tenantId?: string) {
-    return this.paymentService.getMerchantLedger(authorization, tenantId)
+  ledger(
+    @Headers('authorization') authorization?: string,
+    @Query('tenantId') tenantId?: string,
+    @Query('page') page = '1',
+    @Query('perPage') perPage = '10',
+  ) {
+    return this.paymentService.getMerchantLedger(authorization, tenantId, Number(page) || 1, Number(perPage) || 10)
+  }
+
+  @Get('payout-options')
+  payoutOptions() {
+    return this.paymentService.getPayoutOptions()
+  }
+
+  @Post('payout/validate')
+  validatePayout(@Headers('authorization') authorization: string | undefined, @Body() body: ValidatePayoutDto) {
+    return this.paymentService.validatePayoutAccount(authorization, body)
+  }
+
+  @Post('disbursement/request')
+  requestDisbursement(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: RequestDisbursementDto,
+  ) {
+    return this.paymentService.requestDisbursement(authorization, body.tenantId, body.amount)
+  }
+
+  @Post('disbursement/confirm')
+  confirmDisbursement(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: ConfirmDisbursementDto,
+  ) {
+    return this.paymentService.confirmDisbursement(authorization, body)
   }
 
   @Get('sales')
@@ -81,8 +130,10 @@ export class PaymentController {
   customers(
     @Headers('authorization') authorization: string | undefined,
     @Query('tenantId') tenantId?: string,
+    @Query('page') page = '1',
+    @Query('perPage') perPage = '10',
   ) {
-    return this.paymentService.getMerchantCustomers(authorization, tenantId)
+    return this.paymentService.getMerchantCustomers(authorization, tenantId, Number(page) || 1, Number(perPage) || 10)
   }
 
   @Get('verify')

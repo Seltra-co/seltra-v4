@@ -47,6 +47,16 @@ export type MoolreWebhookBody = {
   }
 }
 
+export type MoolreTransferResponse = {
+  success: boolean
+  transactionid?: string
+  externalref?: string
+  receivername?: string
+  raw?: unknown
+  error?: string
+  testMode?: boolean
+}
+
 @Injectable()
 export class MoolreService {
   private readonly apiUser = process.env.MOOLRE_API_USER || ''
@@ -54,45 +64,54 @@ export class MoolreService {
   private readonly apiPubKey = process.env.MOOLRE_API_PUBKEY || ''
   private readonly accountNumber = process.env.MOOLRE_ACCOUNT_NUMBER || ''
   private readonly businessEmail = process.env.MOOLRE_BUSINESS_EMAIL || process.env.MOOLRE_API_USER || ''
+  private readonly smsSender = process.env.MOOLRE_SMS_SENDER || 'Seltra'
+  private readonly vasKey =
+    process.env.MOOLRE_VAS_KEY ||
+    process.env.MOOLRE_SMS_VAS_KEY ||
+    process.env.MOOLRE_VASKEY ||
+    process.env.VAS_KEY ||
+    ''
 
-  // private publicHeaders() {
-  //   return {
-  //     'X-API-USER': this.apiUser,
-  //     'X-API-PUBKEY': this.apiPubKey,
-  //     'Content-Type': 'application/json',
-  //   }
-  // }
-
-  // private privateHeaders() {
-  //   return {
-  //     'X-API-USER': this.apiUser,
-  //     'X-API-KEY': this.apiKey,
-  //     'Content-Type': 'application/json',
-  //   }
-  // }
+  // NOTE: previously these headers were gated on `MOOLRE_SANDBOX !== 'true'`,
+  // which meant if MOOLRE_SANDBOX wasn't the exact string 'true' (or was unset
+  // in a non-sandbox deployment) AND the key env vars were also missing/blank,
+  // requests silently went out with NO auth headers at all. Moolre then
+  // correctly rejects them with "Authentication Error". Fixed to always send
+  // whatever keys are actually configured, independent of the sandbox flag.
   private publicHeaders() {
-  const headers: Record<string, string> = {
-    'X-API-USER': this.apiUser,
-    'Content-Type': 'application/json',
+    const headers: Record<string, string> = {
+      'X-API-USER': this.apiUser,
+      'Content-Type': 'application/json',
+    }
+    if (this.apiPubKey) headers['X-API-PUBKEY'] = this.apiPubKey
+    return headers
   }
-  // In sandbox, X-API-PUBKEY is not required and can cause errors if wrong
-  if (process.env.MOOLRE_SANDBOX !== 'true' && this.apiPubKey) {
-    headers['X-API-PUBKEY'] = this.apiPubKey
-  }
-  return headers
-}
 
-private privateHeaders() {
-  const headers: Record<string, string> = {
-    'X-API-USER': this.apiUser,
-    'Content-Type': 'application/json',
+  private privateHeaders() {
+    const headers: Record<string, string> = {
+      'X-API-USER': this.apiUser,
+      'Content-Type': 'application/json',
+    }
+    if (this.apiKey) headers['X-API-KEY'] = this.apiKey
+    return headers
   }
-  // In sandbox, X-API-KEY is not required
-  if (process.env.MOOLRE_SANDBOX !== 'true' && this.apiKey) {
-    headers['X-API-KEY'] = this.apiKey
+
+  private smsHeaders() {
+    return {
+      'X-API-VASKEY': this.vasKey,
+      'Content-Type': 'application/json',
+    }
   }
-  return headers
-}
+
+  private logMissingCredentials(context: string) {
+    const missing: string[] = []
+    if (!this.apiUser) missing.push('MOOLRE_API_USER')
+    if (!this.apiKey) missing.push('MOOLRE_API_KEY')
+    if (!this.accountNumber) missing.push('MOOLRE_ACCOUNT_NUMBER')
+    if (missing.length) {
+      console.warn(`[Moolre] ${context} — missing env vars: ${missing.join(', ')}`)
+    }
+  }
 
   /**
    * Generate a hosted Moolre POS payment link.
@@ -130,6 +149,7 @@ private privateHeaders() {
       console.log('[Moolre] generatePaymentLink response:', JSON.stringify(raw))
 
       if (!raw || raw.status !== 1) {
+        this.logMissingCredentials('generatePaymentLink')
         return {
           success: false,
           reference: params.reference,
@@ -185,6 +205,7 @@ private privateHeaders() {
       console.log('[Moolre] checkPaymentStatus response:', JSON.stringify(raw))
 
       if (!raw || raw.status !== 1) {
+        this.logMissingCredentials('checkPaymentStatus')
         return {
           success: false,
           status: 'pending', // treat unknown as pending, not failed
@@ -213,5 +234,179 @@ private privateHeaders() {
         error: err instanceof Error ? err.message : 'Unknown error',
       }
     }
+  }
+
+  async sendSms(params: { to?: string | null; message: string }) {
+    if (!params.to) return { success: false, skipped: true, error: 'Missing phone number' }
+    if (process.env.MOOLRE_SMS_ENABLED === 'false') {
+      console.log('[Moolre] SMS skipped:', JSON.stringify({ to: params.to, message: params.message }))
+      return { success: true, skipped: true }
+    }
+    if (!this.vasKey) return { success: false, skipped: true, error: 'Missing Moolre VAS key' }
+
+    try {
+      const recipient = params.to.replace(/[^\d]/g, '')
+      const res = await fetch(`${MOOLRE_BASE}/open/sms/send`, {
+        method: 'POST',
+        headers: this.smsHeaders(),
+        body: JSON.stringify({
+          type: 1,
+          senderid: this.smsSender,
+          messages: [
+            {
+              recipient,
+              message: params.message,
+            },
+          ],
+        }),
+      })
+      const raw = await res.json().catch(() => null)
+      if (!res.ok || raw?.status === 0) {
+        console.error('[Moolre] sendSms failed:', JSON.stringify(raw))
+      }
+      return { success: Boolean(raw?.status === 1), raw }
+    } catch (err) {
+      console.error('[Moolre] sendSms error:', err)
+      return { success: false, error: err instanceof Error ? err.message : 'SMS failed' }
+    }
+  }
+
+  // async validateReceiverName(params: {
+  //   method: 'mobile_money' | 'bank'
+  //   providerCode: string
+  //   account: string
+  // }): Promise<{ success: boolean; accountName?: string; raw?: unknown; error?: string }> {
+  //   try {
+  //     const body = {
+  //       type: 1,
+  //       channel: params.method === 'bank' ? '2' : params.providerCode,
+  //       receiver: params.account,
+  //       sublistid: params.method === 'bank' ? params.providerCode : undefined,
+  //       accountnumber: this.accountNumber,
+  //     }
+
+  //     console.log('[Moolre] validateReceiverName request:', JSON.stringify(body), 'headers:', Object.keys(this.privateHeaders()))
+
+  //     const res = await fetch(`${MOOLRE_BASE}/open/transact/validate`, {
+  //       method: 'POST',
+  //       headers: this.privateHeaders(),
+  //       body: JSON.stringify(body),
+  //     })
+  //     const raw = await res.json().catch(() => null)
+  //     console.log('[Moolre] validateReceiverName response:', res.status, JSON.stringify(raw))
+
+  //     const accountName = raw?.data?.receivername || raw?.data?.accountname || raw?.data?.name
+  //     if (!res.ok || raw?.status === 0 || !accountName) {
+  //       this.logMissingCredentials('validateReceiverName')
+  //       return { success: false, raw, error: raw?.message || 'Could not validate payout account name' }
+  //     }
+  //     return { success: true, accountName, raw }
+  //   } catch (err) {
+  //     console.error('[Moolre] validateReceiverName error:', err)
+  //     return { success: false, error: err instanceof Error ? err.message : 'Name validation failed' }
+  //   }
+  // }
+  async validateReceiverName(params: {
+  method: 'mobile_money' | 'bank'
+  providerCode: string
+  account: string
+}): Promise<{ success: boolean; accountName?: string; raw?: unknown; error?: string }> {
+  try {
+    const body = {
+      type: 1,
+      channel: params.method === 'bank' ? '2' : params.providerCode,
+      receiver: params.account,
+      sublistid: params.method === 'bank' ? params.providerCode : undefined,
+      currency: 'GHS',
+      accountnumber: this.accountNumber,
+    }
+
+    console.log('[Moolre] validateReceiverName request:', JSON.stringify(body), 'headers:', Object.keys(this.privateHeaders()))
+    console.log('[Moolre] apiKey debug:', JSON.stringify(this.apiKey), 'length:', this.apiKey.length)
+
+    const res = await fetch(`${MOOLRE_BASE}/open/transact/validate`, {
+      method: 'POST',
+      headers: this.privateHeaders(),
+      body: JSON.stringify(body),
+    })
+    const raw = await res.json().catch(() => null)
+    console.log('[Moolre] validateReceiverName response:', res.status, JSON.stringify(raw))
+
+    // Moolre returns the account name as a plain string in `data` on success,
+    // not as data.receivername / data.accountname / data.name
+    const accountName = typeof raw?.data === 'string' ? raw.data : undefined
+
+    if (!res.ok || raw?.status !== 1 || !accountName) {
+      this.logMissingCredentials('validateReceiverName')
+      return {
+        success: false,
+        raw,
+        error: raw?.message || 'Could not validate payout account name',
+      }
+    }
+    return { success: true, accountName, raw }
+  } catch (err) {
+    console.error('[Moolre] validateReceiverName error:', err)
+    return { success: false, error: err instanceof Error ? err.message : 'Name validation failed' }
+  }
+}
+
+  async initiateTransfer(params: {
+    method: 'mobile_money' | 'bank'
+    providerCode: string
+    amount: string
+    account: string
+    externalRef: string
+    reference?: string
+    receiverName?: string
+  }): Promise<MoolreTransferResponse> {
+    if (this.isLocalTransferTest()) {
+      return {
+        success: true,
+        transactionid: `test_${Date.now()}`,
+        externalref: params.externalRef,
+        receivername: params.receiverName,
+        raw: { status: 1, data: { testMode: true, amount: params.amount, receiver: params.account, receivername: params.receiverName } },
+        testMode: true,
+      }
+    }
+
+    try {
+      const body = {
+        type: 1,
+        channel: params.method === 'bank' ? '2' : params.providerCode,
+        currency: 'GHS',
+        amount: params.amount,
+        receiver: params.account,
+        sublistid: params.method === 'bank' ? params.providerCode : undefined,
+        externalref: params.externalRef,
+        reference: params.reference,
+        accountnumber: this.accountNumber,
+        receivername: params.receiverName,
+      }
+      const res = await fetch(`${MOOLRE_BASE}/open/transact/transfer`, {
+        method: 'POST',
+        headers: this.privateHeaders(),
+        body: JSON.stringify(body),
+      })
+      const raw = await res.json().catch(() => null)
+      if (!res.ok || raw?.status === 0 || raw?.status === '0') {
+        this.logMissingCredentials('initiateTransfer')
+        return { success: false, raw, error: raw?.message || 'Moolre transfer failed' }
+      }
+      return {
+        success: true,
+        transactionid: raw?.data?.transactionid,
+        externalref: raw?.data?.externalref || params.externalRef,
+        receivername: raw?.data?.receivername,
+        raw,
+      }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Transfer failed' }
+    }
+  }
+
+  private isLocalTransferTest() {
+    return process.env.MOOLRE_TRANSFER_DRY_RUN === 'true'
   }
 }

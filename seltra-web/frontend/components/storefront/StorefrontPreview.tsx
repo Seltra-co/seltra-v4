@@ -7,6 +7,10 @@ import type { StoreManifest } from './sections/types'
 
 export type StoreData = {
   id?: string; name: string; slug: string; businessType?: string; targetAudience?: string
+  country?: string | null
+  preferences?: { region?: string; language?: string } | null
+  payoutMethod?: string | null; payoutProvider?: string | null; payoutProviderCode?: string | null
+  payoutAccount?: string | null; payoutAccountName?: string | null; payoutValidatedAt?: string | null
   heroTitle?: string; heroSubtitle?: string
   canonical?: { brandName?: string; businessName?: string; storeFeatures?: string[]; productCategories?: string[]; layoutVariant?: string; recommendedTechStack?: { paymentGateways?: string[] } }
   storeDNA?: { brandPersonality?: string; industry?: string }

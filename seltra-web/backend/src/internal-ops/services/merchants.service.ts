@@ -128,6 +128,76 @@ async update(tenantId: string, body: MerchantPatchDto) {
     return [header, ...lines].join('\n')
   }
 
+   //Dashboard fetch merchants for bulk messaging (email, sms) endpoint for the internal ops API
+   //return merchants full name, store name, email, phone number for messaging purposes
+  //@req GET /internal/ops/merchants/messaging
+  //x-internal-api-key
+  //x-ops-actor
+  async messaging() {
+     const merchants = await prisma.merchantApplication.findMany({
+      where: { status: { in: ['approved', 'pending'] } },
+    })
+
+    if (!merchants || merchants.length === 0) { 
+      return {  
+        success: false,
+        message: 'No merchants found for messaging.',
+        data: [],
+      }
+    }
+    
+    const filteredMerchants = merchants.map((merchant) => ({
+      id: merchant.id,
+      fullName: merchant.fullName,
+      storeName: merchant.storeName,
+      email: merchant.email,
+      phoneNumber: merchant.phone,
+    }))
+
+    return {
+      success: true,
+      message: 'Fetched merchants for messaging successfully.',
+      data: filteredMerchants,
+    }
+
+  }
+
+
+ //Dashboard fetch a merchant for single messaging (email, sms) endpoint for the internal ops API
+//@req GET /internal/ops/merchants/:tenantId/messaging
+//x-internal-api-key
+//x-ops-actor
+async singleMessaging(merchantId: string) {
+  const merchant = await prisma.merchantApplication.findUnique({
+    where: { id: merchantId },
+  })
+
+  if (!merchant) {
+    return {
+      success: false,
+      message: 'No merchant found for messaging.',
+      data: null,
+    }
+  }
+
+  const filteredMerchant = {
+    id: merchant.id,
+    fullName: merchant.fullName,
+    storeName: merchant.storeName,
+    email: merchant.email,
+    phoneNumber: merchant.phone,
+  }
+
+  return {
+    success: true,
+    message: 'Fetched merchant for messaging successfully.',
+    data: filteredMerchant,
+  }
+}
+
+
+
+ //METHODS 
   private async filteredRows(query: MerchantsQueryDto) {
     const where: Prisma.TenantWhereInput = {
       ...(query.status ? { status: query.status } : {}),

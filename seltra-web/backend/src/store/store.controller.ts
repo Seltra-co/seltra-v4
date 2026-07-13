@@ -13,6 +13,13 @@ class UpdateStoreDto {
   name?: string
   businessType?: string
   targetAudience?: string
+  region?: string
+  country?: string
+  language?: string
+  payoutMethod?: string
+  payoutProvider?: string
+  payoutProviderCode?: string
+  payoutAccount?: string
 }
 
 @Controller('seltra/store')

@@ -4,6 +4,9 @@ import { JwtModule } from '@nestjs/jwt'
 import { OrdersController } from './orders.controller'
 import { OrdersService } from './orders.service'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
+import { OrderAgentService } from './order-agent.service'
+import { MoolreService } from '../payment/moolre.service'
+import { AgentEventsService } from '../agent/agent-events.service'
 
 @Module({
   imports: [
@@ -12,6 +15,6 @@ import { TenantEventsService } from '../internal-ops/events/tenant-events.servic
     }),
   ],
   controllers: [OrdersController],
-  providers: [OrdersService, TenantEventsService],
+  providers: [OrdersService, TenantEventsService, OrderAgentService, MoolreService, AgentEventsService],
 })
 export class OrdersModule {}

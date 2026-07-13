@@ -260,7 +260,7 @@ function buildSectionsFromLayout(
   const primaryCategory = blueprint.productCategories?.[0]
 
   const faqItems = (bp: typeof blueprint) => [
-    { question: `How do I order from ${displayName}?`, answer: `Browse our products, add to cart, and complete checkout securely via ${(input.paymentGateways ?? ['Paystack'])[0]}. You will receive a confirmation immediately.` },
+    { question: `How do I order from ${displayName}?`, answer: `Browse our products, add to cart, and complete checkout securely via ${(input.paymentGateways ?? ['Moolre'])[0]}. You will receive a confirmation immediately.` },
     { question: 'How long does delivery take?', answer: bp.targetAudience?.includes('digital') || bp.businessType?.toLowerCase().includes('digital') ? 'Your products are delivered instantly after payment. Check your email for download links.' : 'Most orders arrive within 2-5 business days. We will send tracking info once your order is dispatched.' },
     { question: `Can I customise my ${bp.businessType ?? 'order'}?`, answer: 'Yes. Many products can be personalised. Contact us before ordering and we will guide you through the options.' },
     { question: 'What is your refund policy?', answer: bp.businessType?.toLowerCase().includes('digital') ? 'Digital products are non-refundable once downloaded. If you have an issue, contact us and we will make it right.' : 'We accept returns within 14 days for unused items in original condition. Contact us to start the process.' },
@@ -1054,7 +1054,7 @@ window.addEventListener('load', function() { reportHeight(); setTimeout(reportHe
 function buildStorefront(input: StorefrontCodegenInput, manifest: StoreManifest): string {
   const { blueprint } = input
   const displayName = getDisplayName(blueprint)
-  const payments = (input.paymentGateways ?? ['Paystack']).join(' · ')
+  const payments = (input.paymentGateways ?? ['Moolre']).join(' · ')
   const currency = input.products[0]?.currency ?? 'GHS'
   const features = safeArr(blueprint.storeFeatures).slice(0, 5)
   const categories = safeArr(blueprint.productCategories)

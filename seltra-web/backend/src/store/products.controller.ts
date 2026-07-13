@@ -1,6 +1,6 @@
 import {
   Body, Controller, Delete, Get, Headers, HttpCode,
-  Param, Patch, Post,
+  Param, Patch, Post, Query,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { prisma } from '../db'
@@ -16,6 +16,12 @@ class UpsertProductDto {
   sku?: string
 }
 
+class BulkProductActionDto {
+  action!: 'increase_prices_percent' | 'premium_names' | 'set_category'
+  percent?: number
+  category?: string
+}
+
 @Controller('seltra/store/:storeId/products')
 export class ProductsController {
   constructor(
@@ -24,13 +30,27 @@ export class ProductsController {
   ) {}
 
  @Get()
-  async list(@Param('storeId') storeId: string, @Headers('authorization') auth?: string) {
+  async list(
+    @Param('storeId') storeId: string,
+    @Headers('authorization') auth?: string,
+    @Query('page') pageQuery = '1',
+    @Query('perPage') perPageQuery = '12',
+  ) {
     const tenant = await this.assertOwner(storeId, auth)
-    return prisma.product.findMany({
-      where: { tenantId: tenant.id },
-      include: { images: true, variants: true },
-      orderBy: { createdAt: 'desc' },
-    })
+    const page = Math.max(1, Number(pageQuery) || 1)
+    const perPage = Math.min(50, Math.max(1, Number(perPageQuery) || 12))
+    const where = { tenantId: tenant.id }
+    const [data, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        include: { images: true, variants: true },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * perPage,
+        take: perPage,
+      }),
+      prisma.product.count({ where }),
+    ])
+    return { data, total, page, perPage }
   }
 
   @Post()
@@ -56,6 +76,43 @@ export class ProductsController {
     })
     void this.tenantEvents.recordForTenant(tenant.id, 'product_added', { productId: product.id, name: product.name })
     return product
+  }
+
+  @Patch()
+  async bulkUpdate(
+    @Param('storeId') storeId: string,
+    @Body() body: BulkProductActionDto,
+    @Headers('authorization') auth?: string,
+  ) {
+    const tenant = await this.assertOwner(storeId, auth)
+    const products = await prisma.product.findMany({ where: { tenantId: tenant.id }, include: { images: true, variants: true } })
+
+    if (body.action === 'increase_prices_percent') {
+      const percent = Number(body.percent ?? 10)
+      await Promise.all(products.map((product) => prisma.product.update({
+        where: { id: product.id },
+        data: { price: (Number(product.price) * (1 + percent / 100)).toFixed(2) },
+      })))
+    }
+
+    if (body.action === 'premium_names') {
+      await Promise.all(products.map((product) => prisma.product.update({
+        where: { id: product.id },
+        data: { name: /premium|signature|reserve/i.test(product.name) ? product.name : `Signature ${product.name}` },
+      })))
+    }
+
+    if (body.action === 'set_category' && body.category) {
+      await prisma.product.updateMany({ where: { tenantId: tenant.id }, data: { category: body.category } })
+    }
+
+    const updated = await prisma.product.findMany({
+      where: { tenantId: tenant.id },
+      include: { images: true, variants: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    void this.tenantEvents.recordForTenant(tenant.id, 'ai_invocation', { action: `bulk_${body.action}`, count: updated.length })
+    return { data: updated, count: updated.length }
   }
 
   @Patch(':productId')
