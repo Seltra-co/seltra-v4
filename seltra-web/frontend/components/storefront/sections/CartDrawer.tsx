@@ -11,7 +11,16 @@ export interface CartItem { product: StoreProduct; quantity: number }
 
 interface Props { open: boolean; items: CartItem[]; currency: string; storeSlug: string; storeId?: string; onClose: () => void; onUpdateQty: (id: string, delta: number) => void }
 
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.co'
+
+function orderSuccessUrl(storeSlug: string): string {
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return `${window.location.origin}/store/${storeSlug}/order/success`
+  }
+  return `https://${storeSlug}.${ROOT_DOMAIN}/order/success`
+}
 
 export function CartDrawer({ open, items, currency, storeSlug, storeId, onClose, onUpdateQty }: Props) {
   const total     = items.reduce((s, i) => s + Number(i.product.price) * i.quantity, 0)
@@ -36,7 +45,7 @@ export function CartDrawer({ open, items, currency, storeSlug, storeId, onClose,
       const tok = typeof window !== 'undefined' ? localStorage.getItem('seltra:token') : null
       const res = await fetch(`${API_BASE}/api/v1/payment/initialize`, {
         method:'POST', headers:{ 'Content-Type':'application/json', ...(tok?{Authorization:`Bearer ${tok}`}:{}) },
-        body: JSON.stringify({ tenantId:storeId, items:items.map((i) => ({ product:{ id:i.product.id, name:i.product.name, price:i.product.price }, quantity:i.quantity })), customerEmail:email.trim(), customerName:name.trim(), customerPhone:phone.trim(), shippingAddress:address.trim(), shippingCity:city.trim(), marketingOptIn:mkt, callbackUrl:`${window.location.origin}/store/${storeSlug}/order/success` }),
+        body: JSON.stringify({ tenantId:storeId, items:items.map((i) => ({ product:{ id:i.product.id, name:i.product.name, price:i.product.price }, quantity:i.quantity })), customerEmail:email.trim(), customerName:name.trim(), customerPhone:phone.trim(), shippingAddress:address.trim(), shippingCity:city.trim(), marketingOptIn:mkt, callbackUrl: orderSuccessUrl(storeSlug) }),
       })
       const data = await res.json()
       const url  = data?.authorization_url ?? data?.authorizationUrl
