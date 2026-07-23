@@ -139,10 +139,11 @@ export class ApplicationsService {
       to: application.email,
       fullName: application.fullName,
       storeName: application.storeName,
-      loginUrl:
-        process.env.MERCHANT_APP_URL ??
-        process.env.FRONTEND_LOGIN_URL ??
-        'https://www.seltra.co/auth?next=/dashboard',
+      loginUrl: 'https://www.seltra.co/auth?next=/dashboard',
+      // loginUrl:
+      //   process.env.MERCHANT_APP_URL ??
+      //   process.env.FRONTEND_LOGIN_URL ??
+      //   'https://www.seltra.co/auth?next=/dashboard',
       merchantId: result.merchantId,
       merchantEmail: application.email,
     })
