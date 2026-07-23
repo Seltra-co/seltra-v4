@@ -15,11 +15,13 @@ Rules:
    This is NOT the same as businessName. It should feel like a real brand, not a description.
    If the user's prompt already contains a clear short brand name, use it exactly. Otherwise invent one that fits.
 7. businessName: the full descriptive name from the prompt (used for SEO/meta only).
-8. The JSON must follow this exact structure:
+8. brandVoice: a SHORT 3-6 word tone descriptor for how this brand should sound in copy (e.g. "warm, confident, no-fuss", "playful and vibrant", "refined and understated"). Infer this from the business type, audience, and any tone cues in the prompt.
+9. The JSON must follow this exact structure:
 
 {
   "platform": "Seltra",
   "brandName": "string (1-3 words, display name)",
+  "brandVoice": "string (3-6 words, tone descriptor)",
   "businessName": "string",
   "businessType": "string",
   "targetAudience": "string",
@@ -75,31 +77,22 @@ function repairTruncatedJSON(raw: string): string {
   return s
 }
 
-// ── Brand name inference — rule-based fallback when LLM doesn't return one ────
-// Tries to extract a short brand name from the prompt before falling back to
-// a generic. Handles patterns like "I want to build [BrandName]", "[Name]'s Kitchen",
-// or a capitalized word at the start of the prompt.
 function inferBrandName(prompt: string): string {
   const trim = prompt.trim()
 
-  // Pattern 1: explicit brand name in quotes  e.g. "Build me 'Glow Lab'"
   const quoted = trim.match(/['"]([A-Z][^'"]{1,24})['"]/)
   if (quoted) return quoted[1].trim()
 
-  // Pattern 2: possessive  e.g. "Mama's Kitchen", "John's Bakery"
   const possessive = trim.match(/\b([A-Z][a-z]{1,14})'s\s+[A-Z][a-z]+/)
   if (possessive) return `${possessive[1]}'s`
 
-  // Pattern 3: two capitalised words at start  e.g. "Velvet Skin store..."
   const titleCase = trim.match(/^([A-Z][a-z]{1,12}\s[A-Z][a-z]{1,12})/)
   if (titleCase) return titleCase[1].trim()
 
-  // Pattern 4: single capitalised word at start that isn't a common starter
   const starters = /^(I|A|An|The|Build|Create|Launch|Start|Open|Help|Make|My|Our|We)/
   const singleWord = trim.match(/^([A-Z][a-z]{2,14})/)
   if (singleWord && !starters.test(trim)) return singleWord[1]
 
-  // Fallback: derive something short from businessName
   const words = trim
     .replace(/[^a-zA-Z ]/g, ' ')
     .split(/\s+/)
@@ -107,6 +100,18 @@ function inferBrandName(prompt: string): string {
   if (words.length >= 2) return `${words[0]} ${words[1]}`
   if (words.length === 1) return words[0]
   return 'My Store'
+}
+
+// P0.4 — rule-based brand voice fallback, mirrors inferBrandName's approach:
+// cheap, deterministic, only used when the LLM path fails or omits it.
+function inferBrandVoice(prompt: string): string {
+  const lower = prompt.toLowerCase()
+  if (/luxury|premium|refined|elegant|high.end/.test(lower)) return 'refined and understated'
+  if (/street|hype|drop|bold|urban|sneaker/.test(lower)) return 'bold and no-fuss'
+  if (/fun|playful|colorful|vibrant|kids|children/.test(lower)) return 'playful and vibrant'
+  if (/organic|natural|wellness|calm|mindful/.test(lower)) return 'calm and reassuring'
+  if (/professional|corporate|logistics|b2b|enterprise/.test(lower)) return 'clear, direct, dependable'
+  return 'warm, confident, and clear'
 }
 
 function fallbackBlueprint(userPrompt: string): CanonicalStore {
@@ -124,6 +129,7 @@ function fallbackBlueprint(userPrompt: string): CanonicalStore {
       .trim() || 'My Seltra Store'
 
   const brandName = inferBrandName(userPrompt)
+  const brandVoice = inferBrandVoice(userPrompt)
   const storeSlug = generateSlug(businessName) || `seltra-store-${Date.now()}`
 
   return {
@@ -131,6 +137,7 @@ function fallbackBlueprint(userPrompt: string): CanonicalStore {
     prompt: userPrompt,
     platform: 'Seltra',
     brandName,
+    brandVoice,
     businessName,
     businessType: 'Online retail',
     targetAudience: 'customers looking for a focused, polished shopping experience',
@@ -158,11 +165,14 @@ function fallbackBlueprint(userPrompt: string): CanonicalStore {
 function enforceDefaults(parsed: Record<string, unknown>, userPrompt: string): CanonicalStore {
   parsed.platform = 'Seltra'
 
-  // Ensure brandName is always present and short
   if (!parsed.brandName || String(parsed.brandName).split(' ').length > 4) {
     parsed.brandName = inferBrandName(
       (parsed.businessName as string | undefined) ?? userPrompt,
     )
+  }
+
+  if (!parsed.brandVoice || String(parsed.brandVoice).split(' ').length > 8) {
+    parsed.brandVoice = inferBrandVoice(userPrompt)
   }
 
   const stack = (parsed.recommendedTechStack ?? {}) as Record<string, unknown>

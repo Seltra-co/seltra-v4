@@ -23,9 +23,6 @@ export interface CompositionRule {
   includeSections?: string[]
 }
 
-// ── Industry icon sets (SVG path data, 16×16 viewBox) ─────────────────────────
-// Each industry gets 4 icons matched to its trust signals.
-// These replace the generic checkmark in the trust bar.
 export interface IndustryIcons {
   items: Array<{ path: string; label: string }>
 }
@@ -111,6 +108,15 @@ export const INDUSTRY_ICONS: Record<string, IndustryIcons> = {
       { path: 'M4 4H12V12H4V4Z M4 8H12M8 4V12', label: 'Made to order' },
     ],
   },
+  // P0.5 — new industry, additive only.
+  logistics: {
+    items: [
+      { path: 'M2 5H9V11H2V5Z M9 7H12L14 9V11H9V7Z M4 13C4.55 13 5 12.55 5 12C5 11.45 4.55 11 4 11C3.45 11 3 11.45 3 12C3 12.55 3.45 13 4 13Z M11.5 13C12.05 13 12.5 12.55 12.5 12C12.5 11.45 12.05 11 11.5 11C10.95 11 10.5 11.45 10.5 12C10.5 12.55 10.95 13 11.5 13Z', label: 'Real-time tracking' },
+      { path: 'M8 2C5.79 2 4 3.79 4 6C4 9 8 14 8 14C8 14 12 9 12 6C12 3.79 10.21 2 8 2Z M8 7.5C8.83 7.5 9.5 6.83 9.5 6C9.5 5.17 8.83 4.5 8 4.5C7.17 4.5 6.5 5.17 6.5 6C6.5 6.83 7.17 7.5 8 7.5Z', label: 'Nationwide coverage' },
+      { path: 'M8 3C5.24 3 3 5.24 3 8C3 10.76 5.24 13 8 13C10.76 13 13 10.76 13 8C13 5.24 10.76 3 8 3Z M8 5V8L10 9.5', label: 'On-time delivery' },
+      { path: 'M8 2L13 4V8C13 10.76 10.97 13.3 8 14C5.03 13.3 3 10.76 3 8V4L8 2Z', label: 'Insured shipments' },
+    ],
+  },
   general: {
     items: [
       { path: 'M2 8l4 4 8-8', label: 'Secure checkout' },
@@ -190,6 +196,13 @@ export const COMPOSITION_RULES: Record<string, CompositionRule> = {
     layout: 'storytelling',
     includeSections: ['founder-story', 'ingredients-list'],
   },
+  // P0.5 — new industry, additive only.
+  logistics: {
+    theme: 'cool-modern',
+    layout: 'conversion',
+    sectionVariantOverrides: { hero: 'centered' },
+    includeSections: ['trust-bar', 'faq'],
+  },
   general: {
     theme: 'minimal-light',
     layout: 'conversion',
@@ -212,6 +225,9 @@ export function detectIndustry(corpus: string): string {
     ['apparel', 'shirt|trouser|jacket|wear|outfit'],
     ['electronics', 'electronics|gadget|device|phone|laptop|tablet|charger|cable'],
     ['tech', 'tech|software|hardware|accessory|smart'],
+    // P0.5 — new industry, additive only. Placed before 'artisan'/'general'
+    // fallbacks so a logistics-shaped prompt doesn't get misread as generic.
+    ['logistics', 'logistics|courier|shipping|freight|haulage|delivery service|dispatch|fleet|warehousing|cargo|transport|trucking|last.mile'],
     ['artisan', 'handmade|handcrafted|artisan|craft|bespoke|custom'],
   ]
 

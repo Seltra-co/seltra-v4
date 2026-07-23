@@ -1,6 +1,8 @@
 import { chat } from '../client'
 import type { CanonicalStore } from '../../types'
 import { detectIndustry, resolveComposition, type LayoutKey } from './composition-rules'
+import { runCritic, type ManifestForCritic } from './critic.agent'
+import { refineManifest } from './refinement.engine'
 
 export interface StorePalette {
   bg: string; surface: string; border: string; text: string
@@ -8,6 +10,11 @@ export interface StorePalette {
 }
 export interface StoreTypography { headingFont: string; bodyFont: string }
 export interface StoreManifest { sections: ManifestSection[]; palette: StorePalette; typography: StoreTypography }
+
+export interface ManifestBuildHooks {
+  onCritiqueStart?: () => void
+  onCritiqueEnd?: (score: number, fixesApplied: number) => void
+}
 
 type ManifestSection =
   | { type: 'announcement-bar'; message: string }
@@ -23,24 +30,27 @@ type ManifestSection =
 
 type ProductSample = Array<{ name: string; category?: string | null; price?: string | number }>
 
+// Palette values kept in sync with frontend/components/storefront/themes/index.ts.
+// TODO(P1): consolidate — this is duplicated in dna.agent.ts and StorefrontCanvas's
+// local deriveManifest fallback too. Flagging rather than silently drifting further.
 const THEME_PALETTES: Record<string, StorePalette> = {
-  luxury: { bg: '#faf9f7', surface: '#ffffff', border: '#e8e4df', text: '#1a1a1a', muted: '#7a7060', accent: '#b8860b', accentText: '#ffffff', accentSoft: '#fdf5e4' },
-  'bold-dark': { bg: '#0d0d0d', surface: '#141414', border: '#2a2a2a', text: '#f0f0f0', muted: '#888888', accent: '#ff3c00', accentText: '#ffffff', accentSoft: '#1f1008' },
-  'minimal-light': { bg: '#fafafa', surface: '#ffffff', border: '#e5e5e5', text: '#1a1a1a', muted: '#717171', accent: '#2563eb', accentText: '#ffffff', accentSoft: '#eff6ff' },
-  editorial: { bg: '#f8f6f3', surface: '#ffffff', border: '#e0d8ce', text: '#1c1815', muted: '#8c7b6b', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f9ede8' },
-  'warm-earth': { bg: '#faf7f2', surface: '#ffffff', border: '#e8dfd0', text: '#2d2419', muted: '#8a7560', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f5ece6' },
-  'cool-modern': { bg: '#f0f4f8', surface: '#ffffff', border: '#dde3ea', text: '#0f1923', muted: '#627282', accent: '#0070f3', accentText: '#ffffff', accentSoft: '#e8f0fe' },
-  vibrant: { bg: '#0a0a0a', surface: '#111111', border: '#1f1f1f', text: '#ffffff', muted: '#888888', accent: '#00e676', accentText: '#000000', accentSoft: '#00e67615' },
+  luxury:          { bg: '#faf8f5', surface: '#ffffff', border: '#eae3d8', text: '#1a1712', muted: '#7d7263', accent: '#b8863f', accentText: '#ffffff', accentSoft: '#f7ecd9' },
+  'bold-dark':     { bg: '#0a0a0b', surface: '#151517', border: '#26262a', text: '#f5f5f4', muted: '#9a9a9e', accent: '#ff4d1c', accentText: '#ffffff', accentSoft: '#2a140b' },
+  'minimal-light': { bg: '#fbfbfa', surface: '#ffffff', border: '#e7e7e5', text: '#17181a', muted: '#6b6d72', accent: '#3b5bfd', accentText: '#ffffff', accentSoft: '#ecf0ff' },
+  editorial:       { bg: '#f9f6f1', surface: '#ffffff', border: '#e6dccb', text: '#211c15', muted: '#8a7b64', accent: '#c8582c', accentText: '#ffffff', accentSoft: '#fbe9de' },
+  'warm-earth':    { bg: '#faf6ef', surface: '#ffffff', border: '#ecdfc9', text: '#2c2214', muted: '#8d7554', accent: '#d17a3d', accentText: '#ffffff', accentSoft: '#f7e6d5' },
+  'cool-modern':   { bg: '#f2f5fb', surface: '#ffffff', border: '#dde4f2', text: '#0e1526', muted: '#5c6b8a', accent: '#3d6bff', accentText: '#ffffff', accentSoft: '#e6ecff' },
+  vibrant:         { bg: '#08080a', surface: '#121214', border: '#232327', text: '#fbfbfb', muted: '#98989e', accent: '#00e68a', accentText: '#00230f', accentSoft: '#0d2b1d' },
 }
 
 const THEME_TYPOGRAPHY: Record<string, StoreTypography> = {
-  luxury: { headingFont: 'Playfair Display', bodyFont: 'DM Sans' },
-  'bold-dark': { headingFont: 'Bebas Neue', bodyFont: 'Inter' },
-  'minimal-light': { headingFont: 'Syne', bodyFont: 'Inter' },
-  editorial: { headingFont: 'Fraunces', bodyFont: 'DM Sans' },
-  'warm-earth': { headingFont: 'Fraunces', bodyFont: 'DM Sans' },
-  'cool-modern': { headingFont: 'Inter', bodyFont: 'Inter' },
-  vibrant: { headingFont: 'Syne', bodyFont: 'Inter' },
+  luxury:          { headingFont: 'Playfair Display', bodyFont: 'DM Sans' },
+  'bold-dark':     { headingFont: 'Bebas Neue',       bodyFont: 'Inter' },
+  'minimal-light': { headingFont: 'Syne',             bodyFont: 'Inter' },
+  editorial:       { headingFont: 'Fraunces',         bodyFont: 'DM Sans' },
+  'warm-earth':    { headingFont: 'Fraunces',         bodyFont: 'DM Sans' },
+  'cool-modern':   { headingFont: 'Inter',            bodyFont: 'Inter' },
+  vibrant:         { headingFont: 'Syne',             bodyFont: 'Inter' },
 }
 
 function displayName(blueprint: CanonicalStore): string {
@@ -69,14 +79,6 @@ function repairTruncatedJSON(raw: string): string {
   const arrays = (s.match(/\[/g) ?? []).length - (s.match(/\]/g) ?? []).length
   const objects = (s.match(/\{/g) ?? []).length - (s.match(/\}/g) ?? []).length
   return s + ']'.repeat(Math.max(0, arrays)) + '}'.repeat(Math.max(0, objects))
-}
-
-function faqItems(blueprint: CanonicalStore, name: string) {
-  return [
-    { question: `How do I order from ${name}?`, answer: 'Browse products, add to cart, and complete checkout securely.' },
-    { question: 'How long does delivery take?', answer: 'Most orders arrive within 2-5 business days, with confirmation after checkout.' },
-    { question: 'Can I customise my order?', answer: 'Yes. Contact the store before ordering and the team will guide you.' },
-  ]
 }
 
 function sectionsForLayout(layout: LayoutKey, blueprint: CanonicalStore): ManifestSection[] {
@@ -131,6 +133,7 @@ export async function generateManifest(
   blueprint: CanonicalStore,
   dna: unknown,
   products: ProductSample,
+  hooks?: ManifestBuildHooks,
 ): Promise<{ manifest: StoreManifest; provider: string; error: string | null }> {
   const fallback = deriveManifest(blueprint)
   const prompt = `Return ONLY strict JSON for a storefront manifest. Do not include hero or nav sections.
@@ -141,19 +144,39 @@ Blueprint: ${JSON.stringify(blueprint)}
 DNA: ${JSON.stringify(dna)}
 Products: ${JSON.stringify(products.slice(0, 6))}`
 
+  let manifest: StoreManifest
+  let provider: string
+  let error: string | null = null
+
   try {
     const result = await chat([{ role: 'user', content: prompt }], { maxTokens: 650 })
     const cleaned = cleanJSON(result.content)
     try {
-      return { manifest: sanitizeManifest(JSON.parse(cleaned), blueprint), provider: result.provider, error: null }
+      manifest = sanitizeManifest(JSON.parse(cleaned), blueprint)
+      provider = result.provider
     } catch {
-      return { manifest: sanitizeManifest(JSON.parse(repairTruncatedJSON(cleaned)), blueprint), provider: `${result.provider}:json-repaired`, error: null }
+      try {
+        manifest = sanitizeManifest(JSON.parse(repairTruncatedJSON(cleaned)), blueprint)
+        provider = `${result.provider}:json-repaired`
+      } catch {
+        manifest = fallback
+        provider = 'fallback:deriveManifest'
+      }
     }
-  } catch (error) {
-    return {
-      manifest: fallback,
-      provider: 'fallback:deriveManifest',
-      error: error instanceof Error ? error.message : String(error),
-    }
+  } catch (err) {
+    manifest = fallback
+    provider = 'fallback:deriveManifest'
+    error = err instanceof Error ? err.message : String(err)
   }
+
+  // P0.1 — this is the manifest StorefrontCanvas actually renders, so the
+  // critic/refinement loop needs to run here, not in the unused HTML codegen path.
+  hooks?.onCritiqueStart?.()
+  const { manifest: refined, fixesApplied, finalReport } = await refineManifest(
+    manifest as unknown as ManifestForCritic,
+    blueprint,
+  )
+  hooks?.onCritiqueEnd?.(finalReport.score, fixesApplied.length)
+
+  return { manifest: refined as unknown as StoreManifest, provider, error }
 }

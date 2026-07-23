@@ -1,3 +1,4 @@
+import { cfCodegen } from '../../providers/cloudflare'
 import { codegenChat } from '../client'
 import type { CanonicalStore } from '../../types'
 import type { StoreManifest } from './manifest.agent'
@@ -122,30 +123,47 @@ Icons may only be inline svg with circle, rect, line, or ellipse shapes and stro
 function promptFor(role: Role, input: BuildInput): string {
   const base = `${SHARED_RULES}
 Brand data: ${brandContext(input)}`
+
   if (role === 'hero') {
+    const voice = input.blueprint.brandVoice || 'clear, friendly, professional'
     return `${base}
 Write function StorefrontHero(props) for props { store, products, features, onShopNow, onOpenCart }.
 It must be unique, polished, responsive, and only call props.onShopNow() or props.onOpenCart().
 The main brand headline must use props.store.displayName exactly. Do not hardcode the business prompt, audience, location, or a generic store name as the brand headline.
-Use CSS variables var(--store-bg), var(--store-surface), var(--store-text), var(--store-muted), var(--store-accent), var(--store-accent-text), var(--store-border).
+Brand voice: ${voice}. Any supporting copy you write (tagline, subtext, button label) must sound like this voice — not generic e-commerce filler.
+Use CSS variables var(--store-bg), var(--store-surface), var(--store-text), var(--store-muted), var(--store-accent), var(--store-accent-text), var(--store-border), var(--store-radius-card), var(--store-radius-full).
 End with the closing brace of StorefrontHero.`
   }
+
   return `${base}
 Write function StorefrontNav(props) for props { displayName, businessType, categories, cartCount, CartIcon, onOpenCart, onCategoryClick, onLogoClick }.
 It must be a sticky storefront navbar. Category buttons call props.onCategoryClick(category). Logo calls props.onLogoClick(). Cart calls props.onOpenCart().
 The brand text must be exactly props.displayName. The cart button must render React.createElement(props.CartIcon, ...) and must not create its own cart svg or text-only icon.
-Use CSS variables var(--store-bg), var(--store-surface), var(--store-text), var(--store-muted), var(--store-accent), var(--store-accent-text), var(--store-border).
+Use CSS variables var(--store-bg), var(--store-surface), var(--store-text), var(--store-muted), var(--store-accent), var(--store-accent-text), var(--store-border), var(--store-radius-full).
 End with the closing brace of StorefrontNav.`
 }
 
-async function buildOne(role: Role, input: BuildInput): Promise<{ source: string | null; provider: string; error: string | null }> {
+
+async function buildOne(role: Role, input: BuildInput) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await codegenChat([{ role: 'user', content: promptFor(role, input) }], role === 'hero' ? 1800 : 1200, role)
+      // Try Cloudflare first — dedicated capacity, not shared with Groq's TPM budget
+      const result = await cfCodegen(
+        [{ role: 'user', content: promptFor(role, input) }],
+        role === 'hero' ? 1800 : 1200,
+        { role: role === 'hero' ? 'hero' : 'generic' },
+      )
       const source = repairChunk(result.content)
       if (chunkPassesGate(source, role)) return { source, provider: result.provider, error: null }
-    } catch (error) {
-      if (attempt === 1) return { source: null, provider: 'fallback:null', error: error instanceof Error ? error.message : String(error) }
+    } catch (cfErr) {
+      // Fall through to Groq
+      try {
+        const result = await codegenChat([{ role: 'user', content: promptFor(role, input) }], role === 'hero' ? 1800 : 1200)
+        const source = repairChunk(result.content)
+        if (chunkPassesGate(source, role)) return { source, provider: result.provider, error: null }
+      } catch (groqErr) {
+        if (attempt === 1) return { source: null, provider: 'fallback:null', error: String(groqErr) }
+      }
     }
   }
   return { source: null, provider: 'fallback:null', error: `${role} failed validation` }

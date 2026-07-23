@@ -1,9 +1,8 @@
-//seltra-web/backend/src/store/store.service.ts
-
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { generateBlueprint, generateProducts, classifyLayout, generateManifest, generateHeroNavSources } from '../ai'
 import { extractDNA } from '../ai/agents/dna.agent'
+import { buildPlan } from '../ai/agents/plan.agent'
 import { prisma } from '../db'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 import type { CanonicalStore, GeneratedProduct } from '../types'
@@ -41,6 +40,14 @@ export class StoreService {
   }
 
   async createFromPrompt(prompt: string, ownerId?: string, ctx?: BuildContext) {
+      //Free tier for everyone by default (1 store, 50 products)
+      if (ownerId) {
+        const existingCount = await prisma.tenant.count({ where: { ownerId } })
+        if (existingCount >= 1) {
+          throw new Error('Free tier allows 1 store. Upgrade to Premium to launch additional stores.')
+        }
+        console.log("Error: Free tier allows 1 store. Upgrade to Premium to launch additional stores.")
+     }
     ctx?.emit({ type: 'step', step: 'intent', status: 'started', label: 'Business intent' })
     ctx?.emit({ type: 'log', message: 'Reading merchant prompt...' })
     ctx?.emit({ type: 'step', step: 'blueprint', status: 'started', label: 'Blueprint' })
@@ -99,6 +106,11 @@ export class StoreService {
     ctx?.emit({ type: 'file', name: 'Products.json', status: 'started' })
     emitFileChunks(ctx, 'Products.json', JSON.stringify(products, null, 2))
     ctx?.emit({ type: 'file', name: 'Products.json', status: 'completed' })
+
+    // P0.2 — a plan derived from THIS prompt's actual blueprint/DNA/product count,
+    // not a static 10-step list. Zero extra LLM calls — this is data we already have.
+    const plan = buildPlan(blueprint, dna, products.length)
+    ctx?.emit({ type: 'plan', items: plan })
 
     console.log(`[Store] Blueprint ready. Products to create: ${products.length}`)
     console.log(`[Store] StoreDNA: industry=${dna.industry}, personality=${dna.brandPersonality}, hero=${dna.heroStyle}`)
@@ -184,11 +196,21 @@ export class StoreService {
 
     const storeDNA = tenant.storeDNA ?? dna ?? null
 
-    const manifestResult = await generateManifest(
-      blueprint,
-      storeDNA,
-      products,
-    )
+    // P0.1 — the critic/refinement loop now runs inside generateManifest() itself.
+    // These hooks just surface it as its own visible build step instead of it
+    // happening silently between "Manifest" and "Hero".
+    const manifestResult = await generateManifest(blueprint, storeDNA, products, {
+      onCritiqueStart: () => {
+        ctx?.emit({ type: 'step', step: 'critique', status: 'started', label: 'Design review' })
+        ctx?.emit({ type: 'log', message: 'Reviewing layout against the storefront quality bar...' })
+      },
+      onCritiqueEnd: (score, fixesApplied) => {
+        const fixNote = fixesApplied > 0 ? ` — ${fixesApplied} refinement${fixesApplied === 1 ? '' : 's'} applied` : ' — no fixes needed'
+        ctx?.emit({ type: 'log', message: `Design score: ${score}/100${fixNote}` })
+        ctx?.emit({ type: 'step', step: 'critique', status: 'completed', label: 'Design review' })
+      },
+    })
+
     ctx?.emit({ type: 'file', name: 'Manifest.json', status: 'started' })
     emitFileChunks(ctx, 'Manifest.json', JSON.stringify(manifestResult.manifest, null, 2))
     ctx?.emit({ type: 'file', name: 'Manifest.json', status: 'completed' })

@@ -1,11 +1,14 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Loader2, Brain, Package, Palette, CreditCard, Rocket, Zap, FileCode2, AlertCircle } from 'lucide-react'
+import { Check, Loader2, Brain, Package, Palette, CreditCard, Rocket, Zap, FileCode2, AlertCircle, Sparkles } from 'lucide-react'
 import type { StoreData } from './StorefrontPreview'
+
+type PlanItem = { label: string; detail: string }
 
 type BuildEvent =
   | { type: 'step'; step: string; status: 'started' | 'completed' | 'failed'; label?: string }
   | { type: 'log'; message: string }
+  | { type: 'plan'; items: PlanItem[] }
   | { type: 'file'; name: string; status: 'started' | 'completed' | 'failed' }
   | { type: 'chunk'; file: string; content: string }
   | { type: 'preview'; url: string; store?: StoreData }
@@ -24,6 +27,7 @@ const STEP_DEFS = [
   { key: 'products', label: 'Products', icon: Package },
   { key: 'payments', label: 'Payments', icon: CreditCard },
   { key: 'manifest', label: 'Manifest', icon: FileCode2 },
+  { key: 'critique', label: 'Design review', icon: Sparkles },
   { key: 'hero', label: 'Hero', icon: FileCode2 },
   { key: 'nav', label: 'Navigation', icon: FileCode2 },
   { key: 'compile', label: 'Compile', icon: Zap },
@@ -50,6 +54,7 @@ export function AgentBuildStream({
   onError?: (message: string) => void
 }) {
   const [steps, setSteps] = useState<StepState[]>(() => initialSteps())
+  const [plan, setPlan] = useState<PlanItem[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [files, setFiles] = useState<Record<string, FileState>>({})
   const [status, setStatus] = useState<'idle' | 'working' | 'done' | 'error'>('idle')
@@ -59,6 +64,7 @@ export function AgentBuildStream({
   useEffect(() => {
     if (!buildId) return
     setSteps(initialSteps())
+    setPlan([])
     setLogs([])
     setFiles({})
     setPreviewUrl(null)
@@ -71,6 +77,10 @@ export function AgentBuildStream({
 
       if (parsed.type === 'log') {
         setLogs((prev) => [...prev.slice(-80), `> ${parsed.message}`])
+      }
+
+      if (parsed.type === 'plan') {
+        setPlan(parsed.items)
       }
 
       if (parsed.type === 'step') {
@@ -126,7 +136,7 @@ export function AgentBuildStream({
     }
 
     source.onmessage = handle
-    for (const eventName of ['step', 'log', 'file', 'chunk', 'preview', 'done', 'error']) {
+    for (const eventName of ['step', 'log', 'plan', 'file', 'chunk', 'preview', 'done', 'error']) {
       source.addEventListener(eventName, handle as EventListener)
     }
     source.onerror = () => {
@@ -150,7 +160,7 @@ export function AgentBuildStream({
 
   return (
     <div className="grid h-full min-h-0 gap-4 p-6 lg:grid-cols-[minmax(260px,.8fr)_minmax(360px,1.2fr)]">
-      <div className="flex min-h-0 flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
             <div className="font-mono text-[10px] uppercase tracking-wider text-primary opacity-70">{'// live build stream'}</div>
@@ -168,7 +178,27 @@ export function AgentBuildStream({
           <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
         </div>
 
-        <div className="space-y-2 overflow-y-auto pr-1">
+        {/* P0.2 — the plan, specific to this prompt, not a generic progress bar */}
+        {plan.length > 0 && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+            <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-primary">
+              <Sparkles className="h-3 w-3" /> Building this store
+            </div>
+            <div className="space-y-1.5">
+              {plan.map((item) => (
+                <div key={item.label} className="flex items-start gap-2 text-xs">
+                  <span className="mt-1 h-1 w-1 flex-shrink-0 rounded-full bg-primary" />
+                  <div className="min-w-0">
+                    <span className="font-medium text-foreground">{item.label}</span>
+                    <span className="text-muted-foreground"> — {item.detail}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
           {steps.map((def) => {
             const meta = STEP_DEFS.find((step) => step.key === def.key)
             const Icon = meta?.icon ?? Zap

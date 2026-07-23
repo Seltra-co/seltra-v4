@@ -32,3 +32,4 @@ export type ManifestSection =
   | { type: 'founder-story';     founderName?: string; story?: string; variant?: 'portrait-left' | 'portrait-right' | 'minimal' }
   | { type: 'ingredients-list';  headline?: string; items?: Array<{ name: string; benefit: string }>; variant?: 'grid' | 'horizontal' }
   | { type: 'lookbook-grid';     headline?: string; images?: Array<{ url: string; caption?: string }>; variant?: 'masonry' | 'editorial' | 'uniform' }
+  | { type: 'team-profiles';     headline?: string; members?: Array<{ name: string; role: string; bio?: string; photoUrl?: string }> }

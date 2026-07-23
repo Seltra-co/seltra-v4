@@ -5,6 +5,7 @@ import { Observable } from 'rxjs'
 export type BuildEvent =
   | { type: 'step'; step: string; status: 'started' | 'completed' | 'failed'; label?: string }
   | { type: 'log'; message: string }
+  | { type: 'plan'; items: Array<{ label: string; detail: string }> }
   | { type: 'file'; name: string; status: 'started' | 'completed' | 'failed' }
   | { type: 'chunk'; file: string; content: string }
   | { type: 'preview'; url: string; store?: unknown }

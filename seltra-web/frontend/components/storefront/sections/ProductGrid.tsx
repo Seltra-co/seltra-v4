@@ -1,7 +1,6 @@
-//seltra-web/frontend/components/storefront/sections/ProductGrid.tsx
 'use client'
 import { useMemo, useState } from 'react'
-import { ProductCard } from './ProductCard'
+import { ProductCard, type ProductCardVariant } from './ProductCard'
 import type { StoreProduct } from './types'
 
 interface Props {
@@ -9,6 +8,15 @@ interface Props {
   products: StoreProduct[]
   onAddToCart: (p: StoreProduct) => void
   onViewDetail?: (p: StoreProduct) => void
+}
+
+// P0 — multiple product card treatments, chosen from the manifest's grid
+// style so it stays deterministic (no extra LLM call), not hand-picked per file.
+const VARIANT_BY_STYLE: Record<string, ProductCardVariant> = {
+  uniform: 'default',
+  'featured-first': 'default',
+  dense: 'overlay',
+  magazine: 'editorial',
 }
 
 export function ProductGrid({ section, products, onAddToCart, onViewDetail }: Props) {
@@ -20,6 +28,7 @@ export function ProductGrid({ section, products, onAddToCart, onViewDetail }: Pr
   const filtered = activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory)
   const limited  = filtered.slice(0, section.limit ?? 9)
   const colClass = section.columns === 4 ? 'grid-cols-2 md:grid-cols-4' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+  const variant = VARIANT_BY_STYLE[section.style] ?? 'default'
 
   return (
     <section className="storefront-section">
@@ -67,6 +76,7 @@ export function ProductGrid({ section, products, onAddToCart, onViewDetail }: Pr
               showCategory={section.showCategory ?? true}
               index={i}
               isBestseller={i === 0}
+              variant={variant}
               onAddToCart={onAddToCart}
               onViewDetail={onViewDetail}
             />

@@ -3,6 +3,7 @@ export interface CanonicalStore {
   storeId: string
   prompt: string
   brandName: string
+  brandVoice: string
   businessName: string
   businessType: string
   targetAudience: string

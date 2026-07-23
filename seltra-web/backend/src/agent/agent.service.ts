@@ -14,6 +14,8 @@ export type AgentAction =
   | { action: 'UPDATE_PRODUCT'; payload: { id: string; name?: string; price?: number | string; description?: string; category?: string } }
   | { action: 'DELETE_PRODUCT'; payload: { id: string; name?: string } }
   | { action: 'UPDATE_THEME'; payload: { primaryColor?: string; font?: string } }
+  | { action: 'SET_HERO_IMAGE'; payload: { url: string } }
+  | { action: 'SET_STORY_IMAGE'; payload: { url: string } }
   | { action: 'SET_POLICY'; payload: { type: 'shipping' | 'returns'; content: string } }
   | { action: 'REFETCH_STOREFRONT'; payload: { storeId: string } }
   | { action: 'PATCH_STOREFRONT'; payload: { instruction: string } }
@@ -42,7 +44,9 @@ Emit structured JSON actions after your reply, separated by ---ACTIONS---:
   { "action": "UPDATE_THEME", "payload": { "primaryColor"?: string, "font"?: string } },
   { "action": "SET_POLICY", "payload": { "type": "shipping"|"returns", "content": string } },
   { "action": "PATCH_STOREFRONT", "payload": { "instruction": string } },
-  { "action": "REGENERATE_STOREFRONT", "payload": { "reason": string } }
+  { "action": "REGENERATE_STOREFRONT", "payload": { "reason": string } },
+  { "action": "SET_HERO_IMAGE", "payload": { "url": string } },
+  { "action": "SET_STORY_IMAGE", "payload": { "url": string } },
 ]
 
 Rules:
@@ -51,6 +55,8 @@ Rules:
 - For UI/visual changes, emit PATCH_STOREFRONT with a precise instruction.
 - For complete look overhauls, emit REGENERATE_STOREFRONT.
 - If no action is needed, omit ---ACTIONS--- entirely.
+- If the merchant's message contains an attached image (look for "[image: <url>]") and mentions hero, banner, or cover, emit SET_HERO_IMAGE with that exact url.
+- If it mentions the story/about section image, emit SET_STORY_IMAGE with that exact url.
 - Default currency is GHS. Always reply in the same language the merchant uses.`
 
 function makeConversationId(conversationId?: string) {
@@ -84,7 +90,16 @@ function inferredActionsFromMessage(message: string): AgentAction[] {
   const lower = message.toLowerCase()
   const actions: AgentAction[] = []
   const percent = lower.match(/(\d+(?:\.\d+)?)\s*%/)?.[1]
+  const imageMatch = message.match(/\[image:\s*(\S+)\]/)
 
+  if (imageMatch) {
+    const url = imageMatch[1]
+    if (/hero|banner|cover/.test(lower)) {
+      actions.push({ action: 'SET_HERO_IMAGE', payload: { url } })
+    } else if (/story|about|why we exist/.test(lower)) {
+      actions.push({ action: 'SET_STORY_IMAGE', payload: { url } })
+    }
+  }
   if (/increase|raise|bump/.test(lower) && /price|prices/.test(lower) && /all|every/.test(lower)) {
     actions.push({ action: 'UPDATE_PRODUCTS', payload: { operation: 'increase_prices_percent', percent: percent ? Number(percent) : 10 } })
   }
@@ -215,8 +230,29 @@ export class AgentService {
 
     for (const action of actions) {
 
+      if (action.action === 'SET_HERO_IMAGE') {
+          const canonical = (store.canonical || {}) as Record<string, unknown>
+          await prisma.tenant.update({
+            where: { id: store.id },
+            data: { canonical: { ...canonical, heroImageUrl: action.payload.url } },
+          })
+          persisted.push(action)
+          needsStorefrontRefetch = true
+        }
+      if (action.action === 'SET_STORY_IMAGE') {
+        const canonical = (store.canonical || {}) as Record<string, unknown>
+        await prisma.tenant.update({
+          where: { id: store.id },
+          data: { canonical: { ...canonical, storyImageUrl: action.payload.url } },
+        })
+        persisted.push(action)
+        needsStorefrontRefetch = true
+      }
+
       // ── ADD PRODUCT ────────────────────────────────────────────────────
       if (action.action === 'ADD_PRODUCT') {
+        const existingCount = await prisma.product.count({ where: { tenantId: store.id } })
+         if (existingCount >= 50) { continue }
         const p = action.payload
         const product = await prisma.product.create({
           data: {
@@ -361,7 +397,12 @@ export class AgentService {
           const average = baseProducts.length
             ? baseProducts.reduce((sum, product) => sum + Number(product.price || 0), 0) / baseProducts.length
             : 75
-          for (let i = 0; i < count; i += 1) {
+          const existingCount = await prisma.product.count({
+            where: { tenantId: store.id },
+          })
+
+          const remaining = Math.max(0, 50 - existingCount)
+          for (let i = 0; i < Math.min(count, remaining); i++) {
             await prisma.product.create({
               data: {
                 tenantId: store.id,

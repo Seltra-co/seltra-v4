@@ -118,7 +118,7 @@
 .store-btn-primary {
   background-color: var(--store-accent);
   color: var(--store-accent-text);
-  border-radius: var(--store-radius);
+  border-radius: var(--store-radius-full);
   font-weight: 700;
   transition: opacity 0.15s, transform 0.1s;
   cursor: pointer;
@@ -130,7 +130,7 @@
 .store-btn-outline {
   border: 1.5px solid var(--store-border);
   color: var(--store-text);
-  border-radius: var(--store-radius);
+  border-radius: var(--store-radius-full);
   background: transparent;
   transition: border-color 0.15s;
   cursor: pointer;
@@ -141,7 +141,7 @@
 .store-product-card {
   background: var(--store-surface);
   border: 1px solid var(--store-border);
-  border-radius: var(--store-radius);
+  border-radius: var(--store-radius-card);
   overflow: hidden;
   box-shadow: var(--store-shadow);
   transition: transform 0.22s cubic-bezier(0.4,0,0.2,1), box-shadow 0.22s cubic-bezier(0.4,0,0.2,1);
@@ -154,11 +154,20 @@
 /* ── Hero mesh gradient background ───────────────────────────────────── */
 .store-hero-mesh {
   background:
-    radial-gradient(at 20% 10%, color-mix(in srgb, var(--store-accent) 10%, transparent) 0px, transparent 50%),
-    radial-gradient(at 80% 0%,  color-mix(in srgb, var(--store-accent)  6%, transparent) 0px, transparent 45%),
-    radial-gradient(at 5%  60%, color-mix(in srgb, var(--store-accent)  7%, transparent) 0px, transparent 50%),
-    radial-gradient(at 90% 80%, color-mix(in srgb, var(--store-accent)  4%, transparent) 0px, transparent 40%),
+    radial-gradient(at 15% 15%, color-mix(in srgb, var(--store-accent) 22%, transparent) 0px, transparent 55%),
+    radial-gradient(at 85% 5%,  color-mix(in srgb, var(--store-accent-secondary, var(--store-accent)) 16%, transparent) 0px, transparent 50%),
+    radial-gradient(at 0%  70%, color-mix(in srgb, var(--store-accent-secondary, var(--store-accent)) 12%, transparent) 0px, transparent 55%),
+    radial-gradient(at 95% 85%, color-mix(in srgb, var(--store-accent) 10%, transparent) 0px, transparent 45%),
     var(--store-bg);
+}
+
+/* Rounded gradient hero card — the Epoche/child.com reference look:
+   a large, softly-rounded panel with a two-tone gradient, not a flat rect. */
+.store-hero-gradient-card {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--store-accent) 92%, black 3%) 0%,
+    color-mix(in srgb, var(--store-accent-secondary, var(--store-accent)) 88%, black 3%) 100%);
+  border-radius: var(--store-radius-2xl);
 }
 
 /* ── Announcement scrolling ───────────────────────────────────────────── */

@@ -1,4 +1,3 @@
-//seltra-web/frontend/components/storefront/sections/TrustBar.tsx
 'use client'
 import {
   Leaf, Droplets, Sparkles, Heart,
@@ -8,7 +7,6 @@ import {
   Package, CheckCircle, Lock, Headphones,
 } from 'lucide-react'
 
-// Industry icon sets — 4 icons per industry matched to trust signals
 const INDUSTRY_ICONS: Record<string, Array<React.ElementType>> = {
   beauty:      [Leaf, Droplets, Sparkles, Heart],
   skincare:    [Droplets, Leaf, Sparkles, Shield],
@@ -20,6 +18,7 @@ const INDUSTRY_ICONS: Record<string, Array<React.ElementType>> = {
   wellness:    [Leaf, Heart, Sparkles, Shield],
   electronics: [Zap, Shield, Truck, Wrench],
   artisan:     [Heart, Leaf, Award, Sparkles],
+  logistics:   [Truck, MapPin, Clock, Shield],
   general:     [Lock, Truck, RefreshCw, Headphones],
 }
 
@@ -31,13 +30,13 @@ function detectIconSet(items: string[]): Array<React.ElementType> {
   if (/drop|hype|limited|sneaker|urban/.test(corpus)) return INDUSTRY_ICONS.streetwear
   if (/handmade|craft|artisan|small.batch/.test(corpus)) return INDUSTRY_ICONS.artisan
   if (/warranty|repair|device|tech/.test(corpus)) return INDUSTRY_ICONS.electronics
+  if (/tracking|courier|freight|fleet|shipment|dispatch|coverage/.test(corpus)) return INDUSTRY_ICONS.logistics
   return INDUSTRY_ICONS.general
 }
 
 export function TrustBar({ items, industry }: { items: string[]; industry?: string }) {
   const safe = items?.length ? items : ['Secure checkout', 'Fast delivery', 'Easy returns', 'Local support']
-  
-  // Resolve icon set: prefer explicit industry prop, fallback to content detection
+
   const iconKey = industry && INDUSTRY_ICONS[industry] ? industry : null
   const icons = iconKey ? INDUSTRY_ICONS[iconKey] : detectIconSet(safe)
 
@@ -46,7 +45,7 @@ export function TrustBar({ items, industry }: { items: string[]; industry?: stri
       className="storefront-section-tight border-y"
       style={{ borderColor: 'var(--store-border)', background: 'var(--store-surface)' }}
     >
-      <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4 sm:gap-x-10">
         {safe.map((item, i) => {
           const Icon = icons[i % icons.length]
           return (

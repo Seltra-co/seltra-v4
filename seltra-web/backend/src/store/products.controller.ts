@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body, Controller, Delete, Get, Headers, HttpCode,
   Param, Patch, Post, Query,
 } from '@nestjs/common'
@@ -24,6 +25,8 @@ class BulkProductActionDto {
 
 @Controller('seltra/store/:storeId/products')
 export class ProductsController {
+      private readonly FREE_TIER_PRODUCT_LIMIT = 50
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly tenantEvents: TenantEventsService,
@@ -60,6 +63,10 @@ export class ProductsController {
     @Headers('authorization') auth?: string,
   ) {
     const tenant = await this.assertOwner(storeId, auth)
+    const count = await prisma.product.count({ where: { tenantId: tenant.id } })
+      if (count >= this.FREE_TIER_PRODUCT_LIMIT) {
+        throw new BadRequestException(`Free tier allows up to ${this.FREE_TIER_PRODUCT_LIMIT} products. Upgrade to Premium for more.`)
+      }
     const product = await prisma.product.create({
       data: {
         tenantId: tenant.id,

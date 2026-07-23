@@ -25,6 +25,8 @@ import { ProductDetailModal } from './sections/ProductDetailModal'
 import type {
   StoreProduct, StoreManifest, ManifestSection, StorePalette, StoreTypography,
 } from './sections/types'
+import { THEMES, RADIUS_SCALE, SPACING_SCALE, shadowFor, type ThemeKey } from './themes'
+
 
 function StyleInjector({ fontParam, themeVars }: { fontParam: string; themeVars: string }) {
   useEffect(() => {
@@ -50,6 +52,7 @@ export interface StoreData {
     brandName?: string; businessName?: string
     storeFeatures?: string[]; productCategories?: string[]; layoutVariant?: string
     recommendedTechStack?: { paymentGateways?: string[] }
+    heroImageUrl?: string; storyImageUrl?: string
   }
   storeDNA?: { brandPersonality?: string; industry?: string }
   products?: Array<{
@@ -64,12 +67,13 @@ export interface StoreData {
   storefrontCode?: string | null; storefrontVersion?: number
 }
 
-const RADIUS_MAP:  Record<string, string> = { luxury:'0.5rem','bold-dark':'0px','minimal-light':'0.5rem',editorial:'0.5rem','warm-earth':'999px','cool-modern':'0.5rem',vibrant:'0.375rem' }
-const SPACING_MAP: Record<string, string> = { luxury:'6rem','bold-dark':'3.5rem','minimal-light':'5rem',editorial:'6rem','warm-earth':'5rem','cool-modern':'5rem',vibrant:'3.5rem' }
-const SHADOW_MAP:  Record<string, string> = { luxury:'0 2px 12px rgba(0,0,0,0.06)','bold-dark':'none','minimal-light':'0 1px 4px rgba(0,0,0,0.06)',editorial:'0 2px 8px rgba(0,0,0,0.05)','warm-earth':'0 2px 8px rgba(0,0,0,0.05)','cool-modern':'0 4px 16px rgba(0,0,0,0.08)',vibrant:'none' }
-
 function buildThemeVars(p: StorePalette, t: StoreTypography, themeKey: string): string {
-  return `--store-bg:${p.bg};--store-surface:${p.surface};--store-border:${p.border};--store-text:${p.text};--store-muted:${p.muted};--store-accent:${p.accent};--store-accent-text:${p.accentText};--store-accent-soft:${p.accentSoft};--store-heading-font:'${t.headingFont}';--store-body-font:'${t.bodyFont}';--store-radius:${RADIUS_MAP[themeKey]??'0.5rem'};--store-section-spacing:${SPACING_MAP[themeKey]??'5rem'};--store-shadow:${SHADOW_MAP[themeKey]??'none'};`
+  const tokens = THEMES[themeKey as ThemeKey] ?? THEMES['minimal-light']
+  const radius = RADIUS_SCALE[tokens.borderRadius]
+  const cardRadius = tokens.borderRadius === 'pill' ? '1.5rem' : radius
+  const spacing = SPACING_SCALE[tokens.spacing]
+  const shadow = shadowFor({ shadow: tokens.shadow, accentColor: p.accent })
+  return `--store-bg:${p.bg};--store-surface:${p.surface};--store-border:${p.border};--store-text:${p.text};--store-muted:${p.muted};--store-accent:${p.accent};--store-accent-text:${p.accentText};--store-accent-soft:${p.accentSoft};--store-accent-secondary:${tokens.accentSecondaryColor};--store-heading-font:'${t.headingFont}';--store-body-font:'${t.bodyFont}';--store-radius:${radius};--store-radius-card:${cardRadius};--store-section-spacing:${spacing};--store-shadow:${shadow};`
 }
 
 function deriveManifest(store: StoreData): StoreManifest {
@@ -133,10 +137,20 @@ function renderSection(
     products: StoreProduct[]; features: string[]; categories: string[]
     onAddToCart: (p: StoreProduct) => void; storeName: string
     onViewDetail?: (p: StoreProduct) => void; industry?: string
+    storyImageUrl?: string
   },
 ) {
   const W = ({ children }: { children: React.ReactNode }) => <SectionFade>{children}</SectionFade>
-  const { products, features, categories, onAddToCart, storeName, onViewDetail, industry } = props
+  const {
+    products,
+    features,
+    categories,
+    onAddToCart,
+    storeName,
+    onViewDetail,
+    industry,
+    storyImageUrl,
+} = props
 
   switch (section.type) {
     case 'announcement-bar': return <AnnouncementBar key={i} message={section.message} />
@@ -153,8 +167,15 @@ function renderSection(
       return <W key={i}><ProductGrid section={section} products={products} onAddToCart={onAddToCart} onViewDetail={onViewDetail} /></W>
     case 'product-shelf':
       return <W key={i}><ProductShelf section={section} products={products} onAddToCart={onAddToCart} storeName={storeName} onViewDetail={onViewDetail} /></W>
-    case 'brand-story':
-      return <W key={i}><BrandStory {...section} /></W>
+   case 'brand-story':
+    return (
+        <W key={i}>
+            <BrandStory
+                {...section}
+                storyImageUrl={storyImageUrl}
+            />
+        </W>
+    )
     case 'social-proof':
       return <W key={i}><SocialProof style={section.style} headline={section.headline} subtext={section.subtext} /></W>
     case 'newsletter':
@@ -179,6 +200,8 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
   const manifest = store.manifest ?? deriveManifest(store)
   const { palette, typography } = manifest
   const displayName = resolveDisplayName(store)
+  const heroImageUrl = store.canonical?.heroImageUrl as string | undefined
+  const storyImageUrl = store.canonical?.storyImageUrl as string | undefined
   const industry = store.storeDNA?.industry
   const heroSection = manifest.sections.find(isHeroSection) ?? deriveManifest(store).sections.find(isHeroSection)!
   const bodySections = manifest.sections.filter((section) => !isHeroSection(section))
@@ -244,8 +267,17 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
     storeName: displayName,
     onViewDetail: (p: StoreProduct) => setDetailProduct(p),
     industry,
+    storyImageUrl,
   }
-  const heroFallback = <HeroSection section={heroSection} products={products} features={features} storeName={displayName} />
+const heroFallback = (
+  <HeroSection
+    section={heroSection}
+    products={products}
+    features={features}
+    storeName={displayName}
+    heroImageUrl={heroImageUrl}
+  />
+)
   const heroProps = {
     store: {
       id: store.id,
@@ -289,7 +321,15 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
       <MicroComponentRenderer source={store.navSource} componentName="StorefrontNav" props={navProps} fallback={navFallback} />
 
       <div data-section="hero">
-        <MicroComponentRenderer source={store.heroSource} componentName="StorefrontHero" props={heroProps} fallback={heroFallback} />
+            <MicroComponentRenderer
+        source={heroImageUrl ? null : store.heroSource}
+        componentName="StorefrontHero"
+        props={{
+            ...heroProps,
+            heroImageUrl,
+        }}
+        fallback={heroFallback}
+    />
       </div>
 
       {/* ── Sections — each gets a data-section attribute for scroll targeting ── */}
@@ -375,68 +415,90 @@ function DefaultNav({
   onLogoClick,
   mounted = true,
 }: DefaultNavProps) {
-  return (
-    <nav
-      className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b px-5 py-3 backdrop-blur-xl"
-      style={{ background: `color-mix(in srgb, var(--store-bg) 92%, transparent)`, borderColor: 'var(--store-border)' }}
-    >
-      <button onClick={onLogoClick} className="flex min-w-0 items-center gap-3 border-0 bg-transparent p-0 text-left">
-        <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
-          style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)', fontFamily: 'var(--store-heading-font)' }}
-        >
-          {displayName.charAt(0).toUpperCase()}
-        </span>
-        <span className="min-w-0">
-          <span className="store-heading block truncate text-base font-bold leading-none" style={{ fontFamily: 'var(--store-heading-font)' }}>
-            {displayName}
+return (
+    <div className="sticky top-0 z-30">
+      <nav
+        className="flex items-center justify-between gap-4 border-b px-5 py-3 backdrop-blur-xl"
+        style={{ background: `color-mix(in srgb, var(--store-bg) 92%, transparent)`, borderColor: 'var(--store-border)' }}
+      >
+        <button onClick={onLogoClick} className="flex min-w-0 items-center gap-3 border-0 bg-transparent p-0 text-left">
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+            style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)', fontFamily: 'var(--store-heading-font)' }}
+          >
+            {displayName.charAt(0).toUpperCase()}
           </span>
-          {businessType && <span className="store-eyebrow mt-0.5 block truncate">{businessType}</span>}
-        </span>
-      </button>
+          <span className="min-w-0">
+            <span className="store-heading block truncate text-base font-bold leading-none" style={{ fontFamily: 'var(--store-heading-font)' }}>
+              {displayName}
+            </span>
+            {businessType && <span className="store-eyebrow mt-0.5 block truncate">{businessType}</span>}
+          </span>
+        </button>
 
+        {categories.length > 0 && (
+          <div className="hidden items-center gap-5 md:flex">
+            {categories.slice(0, 4).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => onCategoryClick(cat)}
+                className="border-0 bg-transparent text-xs font-medium transition-colors"
+                style={{ color: 'var(--store-muted)', cursor: 'pointer' }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--store-text)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--store-muted)')}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={onOpenCart}
+          className="store-btn-outline relative flex shrink-0 items-center gap-2 px-3 py-1.5 text-xs"
+          style={{ borderRadius: 'var(--store-radius-full)' }}
+        >
+          <ShoppingBag className="h-3.5 w-3.5" style={{ color: 'var(--store-accent)' }} />
+          Cart
+          {mounted && (
+            <AnimatePresence mode="wait">
+              {cartCount > 0 && (
+                <motion.span
+                  key={cartCount}
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
+                  style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)' }}
+                >
+                  {cartCount}
+                </motion.span>
+              )}
+            </AnimatePresence>
+          )}
+        </button>
+      </nav>
+
+      {/* P0.6 — mobile had zero category navigation before this. Desktop hides
+         the row at md: and mobile got nothing in its place. */}
       {categories.length > 0 && (
-        <div className="hidden items-center gap-5 md:flex">
-          {categories.slice(0, 4).map((cat) => (
+        <div
+          className="flex items-center gap-2 overflow-x-auto border-b px-4 py-2 md:hidden"
+          style={{ borderColor: 'var(--store-border)', background: 'var(--store-bg)', scrollbarWidth: 'none' }}
+        >
+          {categories.slice(0, 8).map((cat) => (
             <button
               key={cat}
               onClick={() => onCategoryClick(cat)}
-              className="border-0 bg-transparent text-xs font-medium transition-colors"
-              style={{ color: 'var(--store-muted)', cursor: 'pointer' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--store-text)')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--store-muted)')}
+              className="flex-shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[0.7rem] font-medium"
+              style={{ borderColor: 'var(--store-border)', color: 'var(--store-muted)' }}
             >
               {cat}
             </button>
           ))}
         </div>
       )}
-
-      <button
-        onClick={onOpenCart}
-        className="store-btn-outline relative flex shrink-0 items-center gap-2 px-3 py-1.5 text-xs"
-        style={{ borderRadius: 'var(--store-radius-full)' }}
-      >
-        <ShoppingBag className="h-3.5 w-3.5" style={{ color: 'var(--store-accent)' }} />
-        Cart
-        {mounted && (
-          <AnimatePresence mode="wait">
-            {cartCount > 0 && (
-              <motion.span
-                key={cartCount}
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.5, opacity: 0 }}
-                className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
-                style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)' }}
-              >
-                {cartCount}
-              </motion.span>
-            )}
-          </AnimatePresence>
-        )}
-      </button>
-    </nav>
+    </div>
   )
 }
 
