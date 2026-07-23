@@ -7,6 +7,7 @@ import { prisma } from '../db'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 import type { CanonicalStore, GeneratedProduct } from '../types'
 import type { BuildContext } from './build-events.service'
+import { planLimits } from '../common/plan-limits'
 
 type CreateStoreInput = {
   name: string
@@ -39,15 +40,24 @@ export class StoreService {
     return result.tenant
   }
 
-  async createFromPrompt(prompt: string, ownerId?: string, ctx?: BuildContext) {
-      //Free tier for everyone by default (1 store, 50 products)
-      if (ownerId) {
-        const existingCount = await prisma.tenant.count({ where: { ownerId } })
-        if (existingCount >= 1) {
-          throw new Error('Free tier allows 1 store. Upgrade to Premium to launch additional stores.')
-        }
-        console.log("Error: Free tier allows 1 store. Upgrade to Premium to launch additional stores.")
-     }
+ async createFromPrompt(prompt: string, ownerId?: string, ctx?: BuildContext) {
+  // Resolve product cap up front so it's available to every generateProducts() call below.
+  let maxProducts = planLimits(undefined).maxProductsPerStore // free-tier default for guests
+  if (ownerId) {
+    const [existingCount, owner] = await Promise.all([
+      prisma.tenant.count({ where: { ownerId } }),
+      prisma.user.findUnique({ where: { id: ownerId }, select: { plan: true } }),
+    ])
+    const { maxStores, tier, maxProductsPerStore } = planLimits(owner?.plan)
+    maxProducts = maxProductsPerStore
+    if (existingCount >= maxStores) {
+      throw new Error(
+        tier === 'premium'
+          ? `Premium allows up to ${maxStores} stores.`
+          : 'Free tier allows 1 store. Upgrade to Premium to launch additional stores.',
+      )
+    }
+  }
     ctx?.emit({ type: 'step', step: 'intent', status: 'started', label: 'Business intent' })
     ctx?.emit({ type: 'log', message: 'Reading merchant prompt...' })
     ctx?.emit({ type: 'step', step: 'blueprint', status: 'started', label: 'Blueprint' })

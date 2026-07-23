@@ -1,14 +1,15 @@
-//seltra-web/backend/src/ai/agents/product.agent.ts
 import { chat } from '../client'
 import type { CanonicalStore, GeneratedProduct } from '../../types'
 import { sourceImage } from './image-sourcing.agent'
+import { planLimits } from '../../common/plan-limits'
 
-// ── System prompt ──────────────────────────────────────────────────────────
-const PRODUCT_SYSTEM_PROMPT = `You are Seltra's Product Generator AI.
+// ── System prompt — now takes a dynamic count ──────────────────────────────
+function buildProductSystemPrompt(count: number): string {
+  return `You are Seltra's Product Generator AI.
 Given a store blueprint, generate a realistic product catalog.
 
-Rules:s
-1. Generate exactly 20 products.
+Rules:
+1. Generate exactly ${count} products.
 2. Return ONLY a valid JSON array. No markdown, no explanation, no code blocks.
 3. Use GHS (Ghanaian Cedi) as the currency.
 4. Prices must be realistic for the Ghanaian/African market.
@@ -30,6 +31,7 @@ Rules:s
     ]
   }
 ]`
+}
 
 function cleanJSON(raw: string): string {
   let s = raw.trim()
@@ -39,23 +41,30 @@ function cleanJSON(raw: string): string {
   return s.trim()
 }
 
+const BASE_NAMES = [
+  'Starter Set', 'Daily Essential', 'Signature Bundle', 'Premium Kit',
+  'Travel Pack', 'Gift Box', 'Limited Drop', 'Refill Pack',
+  'Discovery Kit', 'Luxury Edition', 'Mini Collection', 'Value Pack',
+  'Seasonal Special', 'Core Essential', 'Pro Bundle', 'Sample Set',
+  'Bestseller Box', 'New Arrival', 'Classic Set', 'Exclusive Drop',
+]
 
-function fallbackProducts(blueprint: CanonicalStore): GeneratedProduct[] {
+// count now drives how many fallback products get generated — cycles through
+// BASE_NAMES with a numeric suffix once count exceeds the name pool so names
+// stay unique instead of repeating verbatim.
+function fallbackProducts(blueprint: CanonicalStore, count: number): GeneratedProduct[] {
   const categories = blueprint.productCategories.length > 0 ? blueprint.productCategories : ['Featured']
-  const names = [
-    'Starter Set', 'Daily Essential', 'Signature Bundle', 'Premium Kit',
-    'Travel Pack', 'Gift Box', 'Limited Drop', 'Refill Pack',
-    'Discovery Kit', 'Luxury Edition', 'Mini Collection', 'Value Pack',
-    'Seasonal Special', 'Core Essential', 'Pro Bundle', 'Sample Set',
-    'Bestseller Box', 'New Arrival', 'Classic Set', 'Exclusive Drop',
-  ]
+  const brand = blueprint.brandName || blueprint.businessName.split(' ').slice(0, 2).join(' ')
 
-  return names.map((name, index) => {
+  return Array.from({ length: count }, (_, index) => {
     const category = categories[index % categories.length]
+    const cycle = Math.floor(index / BASE_NAMES.length)
+    const baseName = BASE_NAMES[index % BASE_NAMES.length]
+    const name = cycle > 0 ? `${baseName} ${cycle + 1}` : baseName
     return {
-      name: `${blueprint.brandName || blueprint.businessName.split(' ').slice(0, 2).join(' ')} ${name}`,
+      name: `${brand} ${name}`,
       description: `A customer-ready ${category.toLowerCase()} product for ${blueprint.targetAudience}. Designed as part of the first Seltra-generated catalog.`,
-      price: 45 + index * 8,
+      price: 45 + (index % 20) * 8,
       currency: 'GHS',
       category,
       sku: `SKU-${String(index + 1).padStart(3, '0')}`,
@@ -81,7 +90,7 @@ async function attachProductImages(products: GeneratedProduct[]) {
 
     const urls = await Promise.all(
       batch.map((product) =>
-       sourceImage(
+        sourceImage(
           product.name,
           product.category,
         )
@@ -127,15 +136,24 @@ async function attachProductImages(products: GeneratedProduct[]) {
   }
 }
 
-export async function generateProducts(blueprint: CanonicalStore): Promise<{
+// maxProducts is now a required-in-spirit param — defaults to the free tier
+// limit (via planLimits(undefined)) so existing callers that don't pass it
+// (e.g. tenant.service.ts) keep working, but every tier-aware caller should
+// pass planLimits(owner?.plan).maxProductsPerStore explicitly.
+export async function generateProducts(
+  blueprint: CanonicalStore,
+  maxProducts: number = planLimits(undefined).maxProductsPerStore,
+): Promise<{
   success: boolean
   products: GeneratedProduct[]
   provider: string
   imageStats: { total: number; generated: number; failed: number }
   error: string | null
 }> {
+  const count = Math.max(1, maxProducts)
+
   if (process.env.SELTRA_LLM_PRODUCTS !== 'true') {
-    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint))
+    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count))
     return {
       success: true,
       products,
@@ -160,16 +178,16 @@ export async function generateProducts(blueprint: CanonicalStore): Promise<{
       {
         role: 'user',
         content:
-          `${PRODUCT_SYSTEM_PROMPT}\n\n` +
+          `${buildProductSystemPrompt(count)}\n\n` +
           `Store: ${blueprint.businessName}\n` +
           `Type: ${blueprint.businessType}\n` +
           `Target Audience: ${blueprint.targetAudience}\n` +
           `Categories: ${blueprint.productCategories.join(', ')}\n\n` +
-          `Generate 20 realistic products for this store.`,
+          `Generate ${count} realistic products for this store.`,
       },
-    ], { maxTokens: 700 })
+    ], { maxTokens: Math.min(4000, 200 + count * 60) })
   } catch (error) {
-    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint))
+    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count))
     return {
       success: true,
       products,
@@ -192,7 +210,10 @@ export async function generateProducts(blueprint: CanonicalStore): Promise<{
     )
   }
 
-  const { products: productsWithImages, imageStats } = await attachProductImages(rawProducts)
+  // Enforce the cap even if the LLM over/under-generates relative to count.
+  const capped = rawProducts.slice(0, count)
+
+  const { products: productsWithImages, imageStats } = await attachProductImages(capped)
 
   return {
     success: true,

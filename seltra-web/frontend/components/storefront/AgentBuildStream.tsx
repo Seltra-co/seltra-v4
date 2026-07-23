@@ -60,6 +60,10 @@ export function AgentBuildStream({
   const [status, setStatus] = useState<'idle' | 'working' | 'done' | 'error'>('idle')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Guards source.onerror from overwriting a real terminal event (done/build-error)
+  // that already arrived — the browser can still fire a connection-level onerror
+  // right after the server closes the stream on purpose.
+  const finishedRef = useRef(false)
 
   useEffect(() => {
     if (!buildId) return
@@ -69,6 +73,7 @@ export function AgentBuildStream({
     setFiles({})
     setPreviewUrl(null)
     setStatus('working')
+    finishedRef.current = false
 
     const source = new EventSource(eventSourceUrl(buildId))
 
@@ -121,6 +126,7 @@ export function AgentBuildStream({
       }
 
       if (parsed.type === 'done') {
+        finishedRef.current = true
         setStatus('done')
         setLogs((prev) => [...prev.slice(-80), '✓ Build successful'])
         source.close()
@@ -128,6 +134,7 @@ export function AgentBuildStream({
       }
 
       if (parsed.type === 'error') {
+        finishedRef.current = true
         setStatus('error')
         setLogs((prev) => [...prev.slice(-80), `! ${parsed.message}`])
         source.close()
@@ -136,10 +143,13 @@ export function AgentBuildStream({
     }
 
     source.onmessage = handle
-    for (const eventName of ['step', 'log', 'plan', 'file', 'chunk', 'preview', 'done', 'error']) {
+    // Listen for 'build-error' on the wire (not 'error' — that name is reserved by
+    // EventSource for connection-level failures and won't reliably deliver custom data).
+    for (const eventName of ['step', 'log', 'plan', 'file', 'chunk', 'preview', 'done', 'build-error']) {
       source.addEventListener(eventName, handle as EventListener)
     }
     source.onerror = () => {
+      if (finishedRef.current) return
       setStatus('error')
       setLogs((prev) => [...prev.slice(-80), '! Build stream disconnected'])
       source.close()
@@ -178,7 +188,6 @@ export function AgentBuildStream({
           <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
         </div>
 
-        {/* P0.2 — the plan, specific to this prompt, not a generic progress bar */}
         {plan.length > 0 && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
             <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-primary">

@@ -27,7 +27,7 @@ export function ProductGrid({ section, products, onAddToCart, onViewDetail }: Pr
   }, [products])
   const filtered = activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory)
   const limited  = filtered.slice(0, section.limit ?? 9)
-  const colClass = section.columns === 4 ? 'grid-cols-2 md:grid-cols-4' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+  const colClass = section.columns === 4 ? 'grid-cols-2 md:grid-cols-4' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3'
   const variant = VARIANT_BY_STYLE[section.style] ?? 'default'
 
   return (

@@ -31,6 +31,259 @@ Prompt 4 (Restaurant & Food Delivery)
 
 I own a fast-growing restaurant called Spice Garden Kitchen that serves authentic African and continental meals. I want an online ordering platform where customers can browse the menu, place orders for pickup or delivery, view featured meals, and make secure payments online. The design should be modern, mobile-first, and visually appealing with high-quality food photography. My customers are busy professionals, families, and students looking for convenient, delicious meals.
 
+
+# Build De-Yogo Bar's Commerce Experience
+
+You are Seltra AI, acting as a world-class ecommerce designer, growth marketer, brand strategist, food photographer, copywriter, and conversion expert.
+
+Your task is to create a complete digital storefront for De-Yogo Bar.
+
+## Business Information
+
+Business Name: De-Yogo Bar
+
+Location: Accra, Ghana
+
+Founder: Constance Ackom Pyne
+
+Industry: Food & Beverage
+
+Business Stage: Early-stage business
+
+## About The Business
+
+De-Yogo Bar creates healthy, delicious, and affordable yogurt-based products for customers who want nutritious snacks, drinks, and treats.
+
+The business combines wellness, freshness, local ingredients, convenience, and great taste.
+
+Products include:
+
+* Greek Yogurt
+* Drinking Yogurt
+* Fruit Parfaits
+* Banana Bread
+* Fresh Fruit Juice
+* Local Drinks
+* Mobile Stand Sales
+
+## Brand Personality
+
+The brand should feel:
+
+* Fresh
+* Healthy
+* Modern
+* Friendly
+* Authentic
+* Vibrant
+* Ghanaian
+* Premium but affordable
+
+Customers should immediately feel:
+
+"These products are fresh, healthy, trustworthy, and made with care."
+
+## Target Customers
+
+Primary Customers:
+
+* Young professionals
+* University students
+* Office workers
+* Gym enthusiasts
+* Health-conscious consumers
+* Busy parents
+
+Location Focus:
+
+* Accra
+* East Legon
+* Airport Area
+* Cantonments
+* Osu
+* Dzorwulu
+* Spintex
+* University campuses
+
+## Storefront Objectives
+
+The storefront must:
+
+1. Increase product orders
+2. Increase WhatsApp inquiries
+3. Build trust
+4. Showcase products beautifully
+5. Make mobile ordering extremely easy
+6. Encourage repeat purchases
+7. Position De-Yogo Bar as the go-to healthy yogurt brand in Accra
+
+## Visual Direction
+
+Create a clean, modern food-commerce experience.
+
+Use:
+
+* Fresh yogurt imagery
+* Fruit imagery
+* Natural textures
+* Bright photography
+* Minimal design
+* Premium food presentation
+
+Suggested color palette:
+
+Primary:
+
+* Yogurt White
+* Fresh Green
+
+Secondary:
+
+* Mango Yellow
+* Berry Purple
+
+Accent:
+
+* Warm Orange
+
+The design should feel similar to a premium health-food startup rather than a traditional restaurant website.
+
+## Homepage Structure
+
+### Hero Section
+
+Headline:
+
+Fresh. Healthy. Delicious.
+
+Subheadline:
+
+Greek yogurt, parfaits, fresh juices, and wholesome treats made daily in Accra.
+
+Primary CTA:
+
+Order Now
+
+Secondary CTA:
+
+Chat on WhatsApp
+
+### Trust Section
+
+Highlight:
+
+* Freshly made
+* Healthy ingredients
+* Locally crafted
+* Fast ordering
+* Customer favorite
+
+### Featured Products
+
+Create beautiful product cards for:
+
+* Greek Yogurt
+* Drinking Yogurt
+* Fruit Parfait
+* Banana Bread
+* Fresh Juice
+* Local Drinks
+
+Each product should include:
+
+* Product image
+* Description
+* Benefits
+* Order button
+
+### Why Customers Love De-Yogo Bar
+
+Emphasize:
+
+* Rich Greek yogurt
+* Fresh fruit combinations
+* Healthy alternatives to sugary snacks
+* Convenient grab-and-go options
+* Locally made with care
+
+### Mobile Stand Section
+
+Explain where customers can find the mobile stand.
+
+Allow location updates and event announcements.
+
+### Testimonials Section
+
+Generate realistic placeholder customer reviews focused on:
+
+* Taste
+* Freshness
+* Health benefits
+* Convenience
+
+### Founder Story
+
+Tell the story of a Ghanaian entrepreneur passionate about making healthy food more accessible.
+
+Focus on authenticity and community.
+
+### Ordering Section
+
+Offer:
+
+* Buy Now
+* WhatsApp Order
+* Delivery Request
+* Pickup Request
+
+## AI Commerce Features
+
+Automatically generate:
+
+* Product descriptions
+* Product tags
+* SEO content
+* Promotional banners
+* Upsell suggestions
+* Bundle offers
+
+Examples:
+
+Healthy Breakfast Bundle
+
+* Greek Yogurt
+* Fruit Parfait
+* Fresh Juice
+
+Gym Recovery Bundle
+
+* Greek Yogurt
+* Banana Bread
+* Drinking Yogurt
+
+## SEO Strategy
+
+Target keywords:
+
+* Greek Yogurt Accra
+* Healthy Snacks Ghana
+* Yogurt Delivery Accra
+* Fresh Fruit Parfait Ghana
+* Healthy Breakfast Accra
+* Fresh Juice Accra
+
+## Conversion Optimization
+
+Display:
+
+* WhatsApp ordering button on every page
+* Sticky mobile CTA
+* Fast checkout
+* Recently ordered products
+* Best sellers
+* Recommended products
+
+
 //seltra context engineering MVP:
 - memory
 -

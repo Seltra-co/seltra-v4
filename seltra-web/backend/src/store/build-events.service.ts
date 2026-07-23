@@ -80,7 +80,14 @@ export class BuildEventsService {
 
     return new Observable<MessageEvent>((observer) => {
       const send = (event: BuildEvent) => {
-        observer.next({ type: event.type, data: event })
+        // 'error' is a reserved/special SSE event name for EventSource — a server-sent
+        // frame literally named `event: error` can race with or get swallowed by the
+        // browser's own connection-error handling (source.onerror), which is why real
+        // error messages were showing up as a generic "stream disconnected" instead.
+        // The JSON payload still says type: 'error' (client logic is unaffected) — only
+        // the wire-level SSE event name changes.
+        const wireType = event.type === 'error' ? 'build-error' : event.type
+        observer.next({ type: wireType, data: event })
         if (event.type === 'done' || event.type === 'error') observer.complete()
       }
 

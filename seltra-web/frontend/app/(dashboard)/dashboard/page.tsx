@@ -283,6 +283,7 @@ export default function DashboardPage() {
   const [stores, setStores] = useState<StoreData[]>([])
   const [pendingAttachment, setPendingAttachment] = useState<{ name: string; url: string } | null>(null)
   const [buildId, setBuildId] = useState<string | null>(null)
+  const [credits, setCredits] = useState<{ used: number; limit: number; resetsAt: string } | null>(null)
   const [buildConversationId, setBuildConversationId] = useState<string | undefined>()
 
   useEffect(() => { if (sending) setSidebarOpen(false) }, [sending])
@@ -332,6 +333,20 @@ export default function DashboardPage() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [msgs])
+
+  useEffect(() => {
+  let cancelled = false
+  const loadCredits = async () => {
+    const id = storeIdOf(activeStore)
+    if (!id) { setCredits(null); return }
+    const { data } = await apiFetch<{ used: number; limit: number; resetsAt: string }>(
+      `/api/v1/seltra/agent/${encodeURIComponent(id)}/credits`
+    )
+    if (!cancelled && data) setCredits(data)
+  }
+  void loadCredits()
+  return () => { cancelled = true }
+}, [activeStore])
 
   const loadStores = async () => {
     const { data } = await apiFetch<StoreData[]>('/api/v1/seltra/store')
@@ -406,6 +421,7 @@ export default function DashboardPage() {
             try {
               const j = JSON.parse(norm)
               if (j.conversationId) setConvId(j.conversationId)
+              if (j.credits) setCredits(j.credits)
               const chunk = j.chunk ?? j.delta ?? j.text ?? j.reply ?? j.message ?? ''
               if (chunk) { streamedReply += chunk; appendChunk(chunk) }
               if (Array.isArray(j.actions)) j.actions.forEach((a: { action: string }) => {
@@ -421,7 +437,8 @@ export default function DashboardPage() {
       '/api/v1/seltra/agent/message',
       { method: 'POST', body: JSON.stringify({ storeId, message, conversationId: convId }) }
     )
-    if (data?.conversationId) setConvId(data.conversationId)
+   if (data?.conversationId) setConvId(data.conversationId)
+    if ((data as { credits?: typeof credits })?.credits) setCredits((data as { credits?: typeof credits }).credits!)
     const reply = data?.reply ?? data?.message ?? ''
     setMsgs((prev) => prev.map((m, i) => i === prev.length - 1 ? { ...m, content: reply } : m))
     return reply
@@ -548,12 +565,13 @@ const handleAgentAttach = async (f: File) => {
         <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <MobileHeader storeName={activeStore?.name} onMenuOpen={() => setMobileSidebar(true)} onSignOut={signOut} />
           <DashboardTopBar activeStore={activeStore} />   {/* ← was <DashboardNotifications .../> */}
-          <TabContent
+        <TabContent
             tab={tab} activeStore={activeStore} stores={stores}
             onSelectStore={(s) => { setActiveStore(s); setTab('mission'); setRev((v) => v + 1) }}
             onStoreDeleted={(id) => { /* unchanged */ }}
             onStoreUpdated={(store) => { /* unchanged */ }}
             reloadStores={loadStores} user={user}
+            credits={credits}
           />
         </main>
         <MobileSidebarDrawer
@@ -596,15 +614,23 @@ const handleAgentAttach = async (f: File) => {
               {/* Header */}
               <div className="flex flex-shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
                 <span className="font-mono text-xs text-primary">{`// agent${activeStore ? ` · ${activeStore.name}` : ''}`}</span>
-                <div className="flex items-center gap-2">
-                  {sending ? (
-                    <span className="flex items-center gap-1.5 rounded-full bg-yellow-500/10 px-2.5 py-1 font-mono text-[10px] text-yellow-500">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-400" /> WORKING
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 font-mono text-[10px] text-primary">READY</span>
-                  )}
-                </div>
+               <div className="flex items-center gap-2">
+                   {credits && (
+                     <span
+                       title={`Resets ${new Date(credits.resetsAt).toLocaleTimeString()}`}
+                       className={`rounded-full border px-2.5 py-1 font-mono text-[10px] ${credits.used >= credits.limit ? 'border-red-500/30 text-red-400' : 'border-border text-muted-foreground'}`}
+                     >
+                       {credits.used}/{credits.limit} credits
+                     </span>
+                   )}
+                   {sending ? (
+                     <span className="flex items-center gap-1.5 rounded-full bg-yellow-500/10 px-2.5 py-1 font-mono text-[10px] text-yellow-500">
+                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-400" /> WORKING
+                     </span>
+                   ) : (
+                     <span className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 font-mono text-[10px] text-primary">READY</span>
+                   )}
+                 </div>
               </div>
 
               {/* Messages */}
@@ -1351,12 +1377,13 @@ function ChatInput({ input, setInput, send, sending, onAttach, compact = false, 
 
 // ── Tab content router ─────────────────────────────────────────────────────────
 function TabContent({
-  tab, activeStore, stores, onSelectStore, onStoreDeleted, onStoreUpdated, reloadStores, user,
+  tab, activeStore, stores, onSelectStore, onStoreDeleted, onStoreUpdated, reloadStores, user, credits,
 }: {
   tab: string; activeStore: StoreData | null; stores: StoreData[]
   onSelectStore: (s: StoreData) => void; onStoreDeleted: (id: string) => void
   onStoreUpdated: (s: StoreData) => void; reloadStores: () => Promise<void>
   user: { email: string; name: string; avatar: string; joinedAt?: string } | null
+  credits: { used: number; limit: number; resetsAt: string } | null
 }) {
   if (tab === 'store') return <StoreTab stores={stores} activeStore={activeStore} onSelectStore={onSelectStore} onStoreDeleted={onStoreDeleted} reloadStores={reloadStores} />
   if (tab === 'mission') return <MissionControlTab activeStore={activeStore} />
@@ -1368,7 +1395,16 @@ function TabContent({
   if (tab === 'customers' || tab === 'marketing') return <CustomersTab activeStore={activeStore} mode={tab} />
   if (tab === 'analytics') return <AnalyticsTab activeStore={activeStore} />
   if (['account', 'billing', 'domains', 'help'].includes(tab)) {
-    return <ProfileCenterTab mode={tab as 'account' | 'billing' | 'domains' | 'help'} activeStore={activeStore} user={user} stores={stores} onStoreUpdated={onStoreUpdated} />
+    return (
+      <ProfileCenterTab
+        mode={tab as 'account' | 'billing' | 'domains' | 'help'}
+        activeStore={activeStore}
+        user={user}
+        stores={stores}
+        credits={credits}
+        onStoreUpdated={onStoreUpdated}
+      />
+    )
   }
   return null
 }
@@ -2708,11 +2744,12 @@ function AnalyticsTab({ activeStore }: { activeStore: StoreData | null }) {
   )
 }
 
-function ProfileCenterTab({ mode, activeStore, user, stores, onStoreUpdated }: {
+function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpdated }: {
   mode: 'account' | 'billing' | 'domains' | 'help'
   activeStore: StoreData | null
   user: { email: string; name: string; avatar: string; joinedAt?: string } | null
   stores: StoreData[]
+  credits: { used: number; limit: number; resetsAt: string } | null
   onStoreUpdated: (s: StoreData) => void
 }) {
   const [name, setName] = useState(activeStore?.name ?? '')
@@ -2744,11 +2781,19 @@ function ProfileCenterTab({ mode, activeStore, user, stores, onStoreUpdated }: {
     setPayoutError('')
   }, [activeStore])
 
-  const plan = stores.length > 1 ? 'premium' : 'free trial'
-  const storeLimit = plan === 'premium' ? 3 : 1
+  // ── Plan / tier (dynamic) ──────────────────────────────────────────────
+  // Heuristic based on what the client actually has: more than 1 store implies premium.
+  // Swap this for a real `user.plan` field from the API once it's exposed to the frontend.
+  const isPremium = stores.length > 1
+  const plan: 'free' | 'premium' = isPremium ? 'premium' : 'free'
+  const storeLimit = isPremium ? 3 : 1
+  const productLimit = isPremium ? 100 : 50
   const payoutOptions = payout.method === 'bank' ? GHANA_BANKS : GHANA_TELCOS
   const accountStores = stores.slice((accountStoresPage - 1) * accountStoresPageSize, accountStoresPage * accountStoresPageSize)
   useEffect(() => { setAccountStoresPage(1) }, [stores.length])
+
+  const creditsExhausted = Boolean(credits && credits.used >= credits.limit)
+
   const saveAccount = async () => {
     const id = storeIdOf(activeStore)
     if (!id || saving) return
@@ -2814,7 +2859,7 @@ function ProfileCenterTab({ mode, activeStore, user, stores, onStoreUpdated }: {
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <MetricCard label="stores used" value={`${stores.length}/${storeLimit}`} />
-                <MetricCard label="plan" value={plan} />
+                <MetricCard label="plan" value={plan === 'premium' ? 'premium' : 'free trial'} />
               </div>
               <div className="mt-4 space-y-2">
                 {stores.length === 0 ? <p className="text-sm text-muted-foreground">No stores yet.</p> : accountStores.map((store) => (
@@ -2890,17 +2935,49 @@ function ProfileCenterTab({ mode, activeStore, user, stores, onStoreUpdated }: {
             <section className="rounded-2xl border border-border bg-card/40 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold capitalize">{plan}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Default monthly merchant credit limit for MVP operations.</p>
+                  <h2 className="text-lg font-semibold">{plan === 'premium' ? 'Premium' : 'Free Trial'}</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {plan === 'premium'
+                      ? 'AI credit usage for the current window.'
+                      : 'Default monthly merchant credit limit for MVP operations.'}
+                  </p>
                 </div>
-                <div className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 font-mono text-xs text-primary">100 credits / month</div>
+                {plan === 'free' && (
+                  <div className="rounded-full border border-border px-3 py-1 font-mono text-xs text-muted-foreground">
+                    30 day trial
+                  </div>
+                )}
               </div>
+
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 font-mono text-xs text-primary">
+                  {plan === 'premium' ? '100 credits / month' : '100 credits / month'}
+                </span>
+                {credits && (
+                  <span className={`rounded-full border px-3 py-1 font-mono text-xs ${creditsExhausted ? 'border-red-500/30 text-red-400' : 'border-border text-muted-foreground'}`}>
+                    {credits.used}/{credits.limit} credits used
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <MetricCard label="used" value={credits ? String(credits.used) : '—'} />
+                <MetricCard label="limit" value={credits ? String(credits.limit) : '—'} />
+                <MetricCard label="resets" value={credits ? new Date(credits.resetsAt).toLocaleTimeString() : '—'} />
+              </div>
+
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <MetricCard label="free tier" value="$0/m" />
                 <MetricCard label="premium" value="$10/m" />
                 <MetricCard label="trial" value="30 days" />
               </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <MetricCard label="stores used" value={`${stores.length}/${storeLimit}`} />
+                <MetricCard label="products per store" value={String(productLimit)} />
+              </div>
             </section>
+
             <section className="rounded-2xl border border-border bg-card/40 p-5">
               <h2 className="text-sm font-semibold">Premium Unlocks</h2>
               <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
@@ -2908,70 +2985,76 @@ function ProfileCenterTab({ mode, activeStore, user, stores, onStoreUpdated }: {
                   <div key={item} className="flex items-center gap-2"><CheckCheck className="h-4 w-4 text-primary" /> {item}</div>
                 ))}
               </div>
-              <Button className="mt-5 w-full rounded-full" onClick={() => setUpgradeOpen(true)}>Upgrade to Premium</Button>
+              {plan === 'premium' ? (
+                <div className="mt-5 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">
+                  <CheckCheck className="h-4 w-4" /> You're on Premium
+                </div>
+              ) : (
+                <Button className="mt-5 w-full rounded-full" onClick={() => setUpgradeOpen(true)}>Upgrade to Premium</Button>
+              )}
             </section>
           </div>
         )}
 
-     {mode === 'domains' && (
-  <section className="rounded-2xl border border-border bg-card/40 p-5">
-    <div>
-      <h2 className="text-sm font-semibold">Your Seltra subdomain</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Every store gets a free, permanent subdomain the moment it launches.</p>
-    </div>
+        {mode === 'domains' && (
+          <section className="rounded-2xl border border-border bg-card/40 p-5">
+            <div>
+              <h2 className="text-sm font-semibold">Your Seltra subdomain</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Every store gets a free, permanent subdomain the moment it launches.</p>
+            </div>
 
-    {activeStore ? (
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Globe2 className="h-4 w-4 flex-shrink-0 text-primary" />
-          <a
-            href={storefrontUrl(activeStore)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="truncate font-mono text-sm text-primary hover:underline"
-          >
-            {activeStore.slug}.{ROOT_DOMAIN}
-          </a>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-shrink-0 rounded-full"
-          onClick={() => {
-            void navigator.clipboard.writeText(storefrontUrl(activeStore))
-            toast.success('Subdomain copied')
-          }}
-        >
-          <Copy className="h-3.5 w-3.5" /> Copy
-        </Button>
-      </div>
-    ) : (
-      <div className="mt-4 rounded-xl border border-dashed border-border bg-background/50 p-6 text-center text-sm text-muted-foreground">
-        Create a store to get your subdomain.
-      </div>
-    )}
+            {activeStore ? (
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Globe2 className="h-4 w-4 flex-shrink-0 text-primary" />
+                  <a
+                    href={storefrontUrl(activeStore)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate font-mono text-sm text-primary hover:underline"
+                  >
+                    {activeStore.slug}.{ROOT_DOMAIN}
+                  </a>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-shrink-0 rounded-full"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(storefrontUrl(activeStore))
+                    toast.success('Subdomain copied')
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" /> Copy
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-dashed border-border bg-background/50 p-6 text-center text-sm text-muted-foreground">
+                Create a store to get your subdomain.
+              </div>
+            )}
 
-    <div className="mt-6 border-t border-border pt-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold">Custom domains</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Buy a domain here or connect one you already own.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="rounded-full" onClick={() => setUpgradeOpen(true)}>Transfer in</Button>
-          <Button className="rounded-full" onClick={() => setUpgradeOpen(true)}>Buy a domain</Button>
-        </div>
-      </div>
-      <div className="mt-5 grid min-h-40 place-items-center rounded-2xl border border-dashed border-border bg-background/50 p-8 text-center">
-        <div>
-          <LockKeyhole className="mx-auto h-8 w-8 text-primary" />
-          <p className="mt-3 text-sm font-medium">Custom domains require Premium.</p>
-          <p className="mt-1 text-xs text-muted-foreground">Your subdomain above keeps working either way.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-)}
+            <div className="mt-6 border-t border-border pt-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold">Custom domains</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Buy a domain here or connect one you already own.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" className="rounded-full" onClick={() => setUpgradeOpen(true)}>Transfer in</Button>
+                  <Button className="rounded-full" onClick={() => setUpgradeOpen(true)}>Buy a domain</Button>
+                </div>
+              </div>
+              <div className="mt-5 grid min-h-40 place-items-center rounded-2xl border border-dashed border-border bg-background/50 p-8 text-center">
+                <div>
+                  <LockKeyhole className="mx-auto h-8 w-8 text-primary" />
+                  <p className="mt-3 text-sm font-medium">Custom domains require Premium.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Your subdomain above keeps working either way.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {mode === 'help' && (
           <div className="grid gap-4 md:grid-cols-2">

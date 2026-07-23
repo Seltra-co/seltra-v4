@@ -13,11 +13,13 @@ const REVIEWS = [
 
 const STARS = '★★★★★'
 
-export function SocialProof({ style, headline, subtext }: {
+export function SocialProof({ style, headline, subtext, reviews }: {
   style: 'marquee' | 'grid' | 'cards'
   headline?: string
   subtext?: string
+  reviews?: Array<{ text: string; author: string }>
 }) {
+  const items = reviews?.length ? reviews : REVIEWS
   if (style === 'marquee') return (
     <section
       className="border-t"
@@ -44,7 +46,7 @@ export function SocialProof({ style, headline, subtext }: {
         }}
       >
         <div className="store-marquee-inner">
-          {[...REVIEWS, ...REVIEWS].map((r, i) => (
+          {[...items, ...items].map((r, i) => (
             <span
               key={i}
               className="whitespace-nowrap text-[0.8rem]"
@@ -123,7 +125,7 @@ export function SocialProof({ style, headline, subtext }: {
             }
           }}
         >
-          {REVIEWS.map((r, i) => (
+          {items.map((r, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0, y: 12 }}
@@ -157,7 +159,7 @@ export function SocialProof({ style, headline, subtext }: {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-3">
-          {REVIEWS.slice(0, 3).map((r, i) => (
+          {items.slice(0, 3).map((r, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0, y: 12 }}

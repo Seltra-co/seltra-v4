@@ -111,7 +111,7 @@ export function HeroSection({
   const t = section.type
 
   if (t === 'hero-minimal') return (
-    <section className="flex min-h-[clamp(40vh,50vh,65vh)] items-center border-b" style={{ background:'var(--store-bg)', borderColor:'var(--store-border)' }}>
+    <section className="flex min-h-[380px] sm:min-h-[clamp(40vh,50vh,65vh)] items-center border-b" style={{ background:'var(--store-bg)', borderColor:'var(--store-border)' }}>
       <motion.div variants={container} initial="hidden" animate="show" className="flex max-w-2xl flex-col gap-3 px-[clamp(1.5rem,5vw,4rem)]">
         {section.eyebrow && <Eyebrow text={section.eyebrow} />}
         <motion.h1 variants={item} className="store-heading text-[clamp(2.5rem,5vw,4rem)] font-light tracking-tighter">{section.headline}</motion.h1>
@@ -122,7 +122,7 @@ export function HeroSection({
   )
 
   if (t === 'hero-split') return (
-    <section className="relative grid min-h-[clamp(55vh,70vh,85vh)] overflow-hidden border-b md:grid-cols-2" style={{ background:'var(--store-bg)', borderColor:'var(--store-border)' }}>
+    <section className="relative grid min-h-[520px] sm:min-h-[clamp(55vh,70vh,85vh)] overflow-hidden border-b md:grid-cols-2" style={{ background:'var(--store-bg)', borderColor:'var(--store-border)' }}>
       <HeroBlob className="pointer-events-none absolute -left-16 -top-16 h-64 w-64 md:h-80 md:w-80" />
 
       <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex flex-col justify-center gap-5 px-[clamp(1.5rem,5vw,4rem)] py-16">
@@ -184,7 +184,7 @@ export function HeroSection({
   )
 
   if (t === 'hero-fullbleed') return (
-    <section className="relative flex min-h-[clamp(70vh,85vh,100vh)] items-end justify-center overflow-hidden text-center">
+    <section className="relative flex min-h-[520px] sm:min-h-[clamp(70vh,85vh,100vh)] items-end justify-center overflow-hidden text-center">
       <div className="absolute inset-0 z-0" style={{ background:'linear-gradient(to top, #050505 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.2) 100%)' }} />
       {imgUrl && <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-[-1]"><Image src={imgUrl} alt="" fill className="object-cover opacity-40" priority aria-hidden /></motion.div>}
       <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex max-w-5xl flex-col items-center gap-5 px-6 pb-16 pt-24" style={{ color:'#ffffff' }}>
@@ -200,7 +200,7 @@ export function HeroSection({
   )
 
   if (t === 'hero-editorial') return (
-    <section className="relative flex min-h-[clamp(60vh,75vh,90vh)] items-center overflow-hidden" style={{ background:'var(--store-bg)' }}>
+    <section className="relative flex min-h-[480px] sm:min-h-[clamp(60vh,75vh,90vh)] items-center overflow-hidden" style={{ background:'var(--store-bg)' }}>
       {imgUrl ? (
         <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-0">
           <Image src={imgUrl} alt="" fill className="object-cover object-right" priority aria-hidden />
@@ -224,7 +224,7 @@ export function HeroSection({
   return (
     <section className="relative overflow-hidden px-4 pt-6 md:px-6" style={{ background:'var(--store-bg)' }}>
       <div
-        className="store-hero-gradient-card store-hero-mesh relative flex min-h-[clamp(60vh,75vh,88vh)] items-center justify-center overflow-hidden text-center"
+        className="store-hero-gradient-card store-hero-mesh relative flex min-h-[480px] sm:min-h-[clamp(60vh,75vh,88vh)] items-center justify-center overflow-hidden text-center"
         style={{ borderRadius: 'var(--store-radius-2xl)', boxShadow: 'var(--store-shadow)' }}
       >
         {imgUrl && (

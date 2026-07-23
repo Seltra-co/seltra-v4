@@ -2,7 +2,7 @@
 'use client'
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
-import { ShoppingBag } from 'lucide-react'
+import { ShoppingBag, Menu, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AnnouncementBar }    from './sections/AnnouncementBar'
 import { HeroSection }        from './sections/HeroSection'
@@ -76,6 +76,41 @@ function buildThemeVars(p: StorePalette, t: StoreTypography, themeKey: string): 
   return `--store-bg:${p.bg};--store-surface:${p.surface};--store-border:${p.border};--store-text:${p.text};--store-muted:${p.muted};--store-accent:${p.accent};--store-accent-text:${p.accentText};--store-accent-soft:${p.accentSoft};--store-accent-secondary:${tokens.accentSecondaryColor};--store-heading-font:'${t.headingFont}';--store-body-font:'${t.bodyFont}';--store-radius:${radius};--store-radius-card:${cardRadius};--store-section-spacing:${spacing};--store-shadow:${shadow};`
 }
 
+function applyMerchantOverrides(manifest: StoreManifest, store: StoreData): StoreManifest {
+  const canonical = store.canonical as Record<string, unknown> | undefined
+  if (!canonical) return manifest
+  let sections = [...manifest.sections]
+
+  const about = canonical.aboutOverride as { headline?: string; body?: string } | undefined
+  if (about?.body) {
+    sections = sections.map((s) => {
+      if (s.type !== 'brand-story') return s
+      const existing = s as { headline?: string; body?: string }
+      return {
+        ...s,
+        headline: about.headline ?? existing.headline ?? 'Our story',
+        body: about.body ?? existing.body ?? '',
+      }
+    })
+  }
+
+  const faqItems = canonical.faqItems as Array<{ question: string; answer: string }> | undefined
+  if (Array.isArray(faqItems) && faqItems.length > 0) {
+    const hasFaq = sections.some((s) => s.type === 'faq')
+    if (hasFaq) {
+      sections = sections.map((s) => (s.type === 'faq' ? { ...s, items: faqItems } : s))
+    } else {
+      const newsletterIdx = sections.findIndex((s) => s.type === 'newsletter')
+      const faqSection = { type: 'faq', headline: 'Questions customers ask', items: faqItems } as ManifestSection
+      sections = newsletterIdx === -1
+        ? [...sections, faqSection]
+        : [...sections.slice(0, newsletterIdx), faqSection, ...sections.slice(newsletterIdx)]
+    }
+  }
+
+  return { ...manifest, sections }
+}
+
 function deriveManifest(store: StoreData): StoreManifest {
   const c = [store.name, store.businessType ?? '', store.targetAudience ?? ''].join(' ').toLowerCase()
   const isFood   = /food|restaurant|cafe|snack|drink/.test(c)
@@ -133,11 +168,12 @@ const SectionFade = ({ children }: { children: React.ReactNode }) => (
 function renderSection(
   section: ManifestSection,
   i: number,
-  props: {
+ props: {
     products: StoreProduct[]; features: string[]; categories: string[]
     onAddToCart: (p: StoreProduct) => void; storeName: string
     onViewDetail?: (p: StoreProduct) => void; industry?: string
     storyImageUrl?: string
+    testimonials?: Array<{ text: string; author: string }>
   },
 ) {
   const W = ({ children }: { children: React.ReactNode }) => <SectionFade>{children}</SectionFade>
@@ -150,6 +186,7 @@ function renderSection(
     onViewDetail,
     industry,
     storyImageUrl,
+    testimonials,
 } = props
 
   switch (section.type) {
@@ -176,8 +213,8 @@ function renderSection(
             />
         </W>
     )
-    case 'social-proof':
-      return <W key={i}><SocialProof style={section.style} headline={section.headline} subtext={section.subtext} /></W>
+  case 'social-proof':
+      return <W key={i}><SocialProof style={section.style} headline={section.headline} subtext={section.subtext} reviews={testimonials} /></W>
     case 'newsletter':
       return <W key={i}><Newsletter headline={section.headline} subtext={section.subtext} placeholder={section.placeholder} /></W>
     case 'faq':
@@ -197,7 +234,10 @@ function renderSection(
 interface CanvasProps { store: StoreData; storeSlug: string; minHeightClass?: string; themeKey?: string }
 
 export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[560px]', themeKey = 'minimal-light' }: CanvasProps) {
-  const manifest = store.manifest ?? deriveManifest(store)
+  const manifest = applyMerchantOverrides(store.manifest ?? deriveManifest(store), store)
+  const testimonials = (store.canonical as Record<string, unknown> | undefined)?.testimonials as
+    | Array<{ text: string; author: string }>
+    | undefined
   const { palette, typography } = manifest
   const displayName = resolveDisplayName(store)
   const heroImageUrl = store.canonical?.heroImageUrl as string | undefined
@@ -268,6 +308,7 @@ export function StorefrontCanvas({ store, storeSlug, minHeightClass = 'min-h-[56
     onViewDetail: (p: StoreProduct) => setDetailProduct(p),
     industry,
     storyImageUrl,
+    testimonials,
   }
 const heroFallback = (
   <HeroSection
@@ -405,6 +446,102 @@ type DefaultNavProps = {
   mounted?: boolean
 }
 
+// function DefaultNav({
+//   displayName,
+//   businessType,
+//   categories,
+//   cartCount,
+//   onOpenCart,
+//   onCategoryClick,
+//   onLogoClick,
+//   mounted = true,
+// }: DefaultNavProps) {
+// return (
+//     <div className="sticky top-0 z-30">
+//       <nav
+//         className="flex items-center justify-between gap-4 border-b px-5 py-3 backdrop-blur-xl"
+//         style={{ background: `color-mix(in srgb, var(--store-bg) 92%, transparent)`, borderColor: 'var(--store-border)' }}
+//       >
+//         <button onClick={onLogoClick} className="flex min-w-0 items-center gap-3 border-0 bg-transparent p-0 text-left">
+//           <span
+//             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+//             style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)', fontFamily: 'var(--store-heading-font)' }}
+//           >
+//             {displayName.charAt(0).toUpperCase()}
+//           </span>
+//           <span className="min-w-0">
+//             <span className="store-heading block truncate text-base font-bold leading-none" style={{ fontFamily: 'var(--store-heading-font)' }}>
+//               {displayName}
+//             </span>
+//             {businessType && <span className="store-eyebrow mt-0.5 block truncate">{businessType}</span>}
+//           </span>
+//         </button>
+
+//         {categories.length > 0 && (
+//           <div className="hidden items-center gap-5 md:flex">
+//             {categories.slice(0, 4).map((cat) => (
+//               <button
+//                 key={cat}
+//                 onClick={() => onCategoryClick(cat)}
+//                 className="border-0 bg-transparent text-xs font-medium transition-colors"
+//                 style={{ color: 'var(--store-muted)', cursor: 'pointer' }}
+//                 onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--store-text)')}
+//                 onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--store-muted)')}
+//               >
+//                 {cat}
+//               </button>
+//             ))}
+//           </div>
+//         )}
+
+//         <button
+//           onClick={onOpenCart}
+//           className="store-btn-outline relative flex shrink-0 items-center gap-2 px-3 py-1.5 text-xs"
+//           style={{ borderRadius: 'var(--store-radius-full)' }}
+//         >
+//           <ShoppingBag className="h-3.5 w-3.5" style={{ color: 'var(--store-accent)' }} />
+//           Cart
+//           {mounted && (
+//             <AnimatePresence mode="wait">
+//               {cartCount > 0 && (
+//                 <motion.span
+//                   key={cartCount}
+//                   initial={{ scale: 0.5, opacity: 0 }}
+//                   animate={{ scale: 1, opacity: 1 }}
+//                   exit={{ scale: 0.5, opacity: 0 }}
+//                   className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
+//                   style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)' }}
+//                 >
+//                   {cartCount}
+//                 </motion.span>
+//               )}
+//             </AnimatePresence>
+//           )}
+//         </button>
+//       </nav>
+
+//       {/* P0.6 — mobile had zero category navigation before this. Desktop hides
+//          the row at md: and mobile got nothing in its place. */}
+//       {categories.length > 0 && (
+//         <div
+//           className="flex items-center gap-2 overflow-x-auto border-b px-4 py-2 md:hidden"
+//           style={{ borderColor: 'var(--store-border)', background: 'var(--store-bg)', scrollbarWidth: 'none' }}
+//         >
+//           {categories.slice(0, 8).map((cat) => (
+//             <button
+//               key={cat}
+//               onClick={() => onCategoryClick(cat)}
+//               className="flex-shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[0.7rem] font-medium"
+//               style={{ borderColor: 'var(--store-border)', color: 'var(--store-muted)' }}
+//             >
+//               {cat}
+//             </button>
+//           ))}
+//         </div>
+//       )}
+//     </div>
+//   )
+// }
 function DefaultNav({
   displayName,
   businessType,
@@ -415,33 +552,54 @@ function DefaultNav({
   onLogoClick,
   mounted = true,
 }: DefaultNavProps) {
-return (
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const handleCategoryClick = (cat: string) => {
+    setMenuOpen(false)
+    onCategoryClick(cat)
+  }
+
+  return (
     <div className="sticky top-0 z-30">
       <nav
-        className="flex items-center justify-between gap-4 border-b px-5 py-3 backdrop-blur-xl"
+        className="flex items-center justify-between gap-3 border-b px-4 py-3 backdrop-blur-xl sm:px-5"
         style={{ background: `color-mix(in srgb, var(--store-bg) 92%, transparent)`, borderColor: 'var(--store-border)' }}
       >
-        <button onClick={onLogoClick} className="flex min-w-0 items-center gap-3 border-0 bg-transparent p-0 text-left">
-          <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
-            style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)', fontFamily: 'var(--store-heading-font)' }}
-          >
-            {displayName.charAt(0).toUpperCase()}
-          </span>
-          <span className="min-w-0">
-            <span className="store-heading block truncate text-base font-bold leading-none" style={{ fontFamily: 'var(--store-heading-font)' }}>
-              {displayName}
+        <div className="flex min-w-0 items-center gap-2">
+          {categories.length > 0 && (
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border md:hidden"
+              style={{ borderColor: 'var(--store-border)', color: 'var(--store-text)' }}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
+            >
+              {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </button>
+          )}
+
+          <button onClick={onLogoClick} className="flex min-w-0 items-center gap-2.5 border-0 bg-transparent p-0 text-left">
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+              style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)', fontFamily: 'var(--store-heading-font)' }}
+            >
+              {displayName.charAt(0).toUpperCase()}
             </span>
-            {businessType && <span className="store-eyebrow mt-0.5 block truncate">{businessType}</span>}
-          </span>
-        </button>
+            <span className="min-w-0">
+              <span className="store-heading block truncate text-base font-bold leading-none" style={{ fontFamily: 'var(--store-heading-font)' }}>
+                {displayName}
+              </span>
+              {businessType && <span className="store-eyebrow mt-0.5 hidden truncate sm:block">{businessType}</span>}
+            </span>
+          </button>
+        </div>
 
         {categories.length > 0 && (
           <div className="hidden items-center gap-5 md:flex">
             {categories.slice(0, 4).map((cat) => (
               <button
                 key={cat}
-                onClick={() => onCategoryClick(cat)}
+                onClick={() => handleCategoryClick(cat)}
                 className="border-0 bg-transparent text-xs font-medium transition-colors"
                 style={{ color: 'var(--store-muted)', cursor: 'pointer' }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--store-text)')}
@@ -453,13 +611,15 @@ return (
           </div>
         )}
 
-        <button
+        <motion.button
           onClick={onOpenCart}
-          className="store-btn-outline relative flex shrink-0 items-center gap-2 px-3 py-1.5 text-xs"
-          style={{ borderRadius: 'var(--store-radius-full)' }}
+          whileTap={{ scale: 0.92 }}
+          className="relative flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors"
+          style={{ borderColor: 'var(--store-border)', color: 'var(--store-text)' }}
+          aria-label="Open cart"
         >
           <ShoppingBag className="h-3.5 w-3.5" style={{ color: 'var(--store-accent)' }} />
-          Cart
+          <span className="hidden sm:inline">Cart</span>
           {mounted && (
             <AnimatePresence mode="wait">
               {cartCount > 0 && (
@@ -468,6 +628,7 @@ return (
                   initial={{ scale: 0.5, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 22 }}
                   className="flex h-4 w-4 items-center justify-center rounded-full text-[0.6rem] font-extrabold"
                   style={{ background: 'var(--store-accent)', color: 'var(--store-accent-text)' }}
                 >
@@ -476,28 +637,36 @@ return (
               )}
             </AnimatePresence>
           )}
-        </button>
+        </motion.button>
       </nav>
 
-      {/* P0.6 — mobile had zero category navigation before this. Desktop hides
-         the row at md: and mobile got nothing in its place. */}
-      {categories.length > 0 && (
-        <div
-          className="flex items-center gap-2 overflow-x-auto border-b px-4 py-2 md:hidden"
-          style={{ borderColor: 'var(--store-border)', background: 'var(--store-bg)', scrollbarWidth: 'none' }}
-        >
-          {categories.slice(0, 8).map((cat) => (
-            <button
-              key={cat}
-              onClick={() => onCategoryClick(cat)}
-              className="flex-shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[0.7rem] font-medium"
-              style={{ borderColor: 'var(--store-border)', color: 'var(--store-muted)' }}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Mobile category drawer — replaces the old always-visible horizontal
+         category strip. Collapsed by default, opened via the hamburger. */}
+      <AnimatePresence>
+        {menuOpen && categories.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden border-b md:hidden"
+            style={{ borderColor: 'var(--store-border)', background: 'var(--store-bg)' }}
+          >
+            <div className="flex flex-col gap-0.5 p-2">
+              {categories.slice(0, 8).map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => handleCategoryClick(cat)}
+                  className="rounded-lg px-3 py-2.5 text-left text-sm font-medium"
+                  style={{ color: 'var(--store-text)' }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

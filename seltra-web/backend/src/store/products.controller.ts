@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt'
 import { prisma } from '../db'
 import { UnauthorizedException, NotFoundException } from '@nestjs/common'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
+import { planLimits } from '../common/plan-limits'
 
 class UpsertProductDto {
   name!: string
@@ -25,7 +26,6 @@ class BulkProductActionDto {
 
 @Controller('seltra/store/:storeId/products')
 export class ProductsController {
-      private readonly FREE_TIER_PRODUCT_LIMIT = 50
 
   constructor(
     private readonly jwtService: JwtService,
@@ -63,10 +63,14 @@ export class ProductsController {
     @Headers('authorization') auth?: string,
   ) {
     const tenant = await this.assertOwner(storeId, auth)
-    const count = await prisma.product.count({ where: { tenantId: tenant.id } })
-      if (count >= this.FREE_TIER_PRODUCT_LIMIT) {
-        throw new BadRequestException(`Free tier allows up to ${this.FREE_TIER_PRODUCT_LIMIT} products. Upgrade to Premium for more.`)
-      }
+    const [count, owner] = await Promise.all([
+      prisma.product.count({ where: { tenantId: tenant.id } }),
+      prisma.user.findUnique({ where: { id: tenant.ownerId ?? undefined }, select: { plan: true } }),
+    ])
+    const { maxProductsPerStore } = planLimits(owner?.plan)
+    if (count >= maxProductsPerStore) {
+      throw new BadRequestException(`Your plan allows up to ${maxProductsPerStore} products for this store. Upgrade to Premium for more.`)
+    }
     const product = await prisma.product.create({
       data: {
         tenantId: tenant.id,

@@ -8,6 +8,7 @@ import { loadMerchantContext, updateMerchantContext } from '../ai/agents/merchan
 import { ContextEngine } from '../ai/context-engine.service'
 import { AgentEventsService } from './agent-events.service'
 import { MoolreService } from '../payment/moolre.service'
+import { planLimits } from '../common/plan-limits'
 
 export type AgentAction =
   | { action: 'ADD_PRODUCT'; payload: { id?: string; name: string; price: number | string; currency: string; description?: string; category?: string } }
@@ -24,6 +25,9 @@ export type AgentAction =
   | { action: 'UPDATE_PRODUCTS'; payload: { operation: 'increase_prices_percent' | 'premium_names' | 'create_bundles' | 'dark_image_direction'; percent?: number; count?: number; theme?: string } }
   | { action: 'CREATE_INVOICE'; payload: { customerName: string; customerEmail: string; items: Array<{ description: string; quantity: number; unitPrice: number | string }> } }
   | { action: 'SEND_SMS'; payload: { to: string; message: string } }
+  | { action: 'SET_TESTIMONIALS'; payload: { testimonials: Array<{ text: string; author: string }> } }
+  | { action: 'SET_FAQ'; payload: { items: Array<{ question: string; answer: string }> } }
+  | { action: 'SET_ABOUT'; payload: { headline?: string; body: string } }
 
 export const SELTRA_SYSTEM_PROMPT = `You are the Seltra commerce agent. You help merchants build and manage their African e-commerce stores.
 
@@ -47,6 +51,9 @@ Emit structured JSON actions after your reply, separated by ---ACTIONS---:
   { "action": "REGENERATE_STOREFRONT", "payload": { "reason": string } },
   { "action": "SET_HERO_IMAGE", "payload": { "url": string } },
   { "action": "SET_STORY_IMAGE", "payload": { "url": string } },
+  { "action": "SET_TESTIMONIALS", "payload": { "testimonials": [{ "text": string, "author": string }] } },
+  { "action": "SET_FAQ", "payload": { "items": [{ "question": string, "answer": string }] } },
+  { "action": "SET_ABOUT", "payload": { "headline"?: string, "body": string } },
 ]
 
 Rules:
@@ -57,7 +64,10 @@ Rules:
 - If no action is needed, omit ---ACTIONS--- entirely.
 - If the merchant's message contains an attached image (look for "[image: <url>]") and mentions hero, banner, or cover, emit SET_HERO_IMAGE with that exact url.
 - If it mentions the story/about section image, emit SET_STORY_IMAGE with that exact url.
-- Default currency is GHS. Always reply in the same language the merchant uses.`
+- Default currency is GHS. Always reply in the same language the merchant uses.
+- If the merchant gives you testimonial or review content to use, emit SET_TESTIMONIALS with that exact content — never invent reviews on their behalf.
+- If the merchant gives you FAQ questions/answers, emit SET_FAQ with that exact content.
+- If the merchant gives you "about us" or "our story" content, emit SET_ABOUT with that exact content.`
 
 function makeConversationId(conversationId?: string) {
   return conversationId || `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -138,6 +148,34 @@ export class AgentService {
     private readonly moolre: MoolreService,
   ) {}
 
+  private readonly CREDIT_LIMIT = Number(process.env.SELTRA_AI_CREDIT_LIMIT || 40)
+  private readonly CREDIT_WINDOW_MS = Number(process.env.SELTRA_AI_CREDIT_WINDOW_HOURS || 5) * 60 * 60 * 1000
+
+  private async consumeCredit(tenantId: string) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { aiCreditsUsed: true, aiCreditsWindowStart: true },
+    })
+    if (!tenant) return { allowed: false, used: 0, limit: this.CREDIT_LIMIT, resetsAt: new Date() }
+
+    const expired = Date.now() - tenant.aiCreditsWindowStart.getTime() > this.CREDIT_WINDOW_MS
+    const currentUsed = expired ? 0 : tenant.aiCreditsUsed
+    const currentWindowStart = expired ? new Date() : tenant.aiCreditsWindowStart
+    const resetsAt = new Date(currentWindowStart.getTime() + this.CREDIT_WINDOW_MS)
+
+    if (currentUsed >= this.CREDIT_LIMIT) {
+      if (expired) await prisma.tenant.update({ where: { id: tenantId }, data: { aiCreditsWindowStart: currentWindowStart, aiCreditsUsed: 0 } })
+      return { allowed: false, used: currentUsed, limit: this.CREDIT_LIMIT, resetsAt }
+    }
+
+    const nextUsed = currentUsed + 1
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { aiCreditsUsed: nextUsed, aiCreditsWindowStart: currentWindowStart },
+    })
+    return { allowed: true, used: nextUsed, limit: this.CREDIT_LIMIT, resetsAt }
+  }
+
   async buildStore(prompt: string) {
     const { tenant, blueprint, provider, layoutVariant } = await this.storeService.createFromPrompt(prompt)
     return {
@@ -151,13 +189,22 @@ export class AgentService {
     }
   }
 
-  async sendMessage(storeId: string, message: string, conversationId?: string) {
+ async sendMessage(storeId: string, message: string, conversationId?: string) {
     const nextConversationId = makeConversationId(conversationId)
     const store = await this.storeService.findByIdOrSlug(storeId)
+    const credit = await this.consumeCredit(store.id)
+    if (!credit.allowed) {
+      return {
+        reply: `You've used all ${credit.limit} AI credits for this window. They reset at ${credit.resetsAt.toLocaleTimeString()}. Dashboard operations (orders, products, payments) still work normally.`,
+        conversationId: nextConversationId,
+        actions: [],
+        credits: { used: credit.used, limit: credit.limit, resetsAt: credit.resetsAt },
+      }
+    }
     const canonical = (store.canonical || {}) as Record<string, unknown>
     const tech = canonical.recommendedTechStack as { paymentGateways?: string[] } | undefined
 
-    // Load merchant context
+    //Load merchant context
     const context = await loadMerchantContext(store.id)
     const promptContext = await this.contextEngine.build(store.id, message)
 
@@ -192,11 +239,12 @@ export class AgentService {
           ].filter(Boolean).join('\n\n'),
         },
       ], { maxTokens: 500 })
-    } catch {
+    }catch {
       return {
         reply: `I saved the conversation for ${store.name}. The AI provider is offline but will reconnect shortly.`,
         conversationId: nextConversationId,
         actions: [],
+        credits: { used: credit.used, limit: credit.limit, resetsAt: credit.resetsAt },
       }
     }
 
@@ -221,6 +269,26 @@ export class AgentService {
       reply: parsed.reply || result.content,
       conversationId: nextConversationId,
       actions: persistedActions,
+      credits: { used: credit.used, limit: credit.limit, resetsAt: credit.resetsAt },
+    }
+  }
+
+  // Peek at credit usage without consuming one — used by the dashboard to
+  // display current usage on load, independent of sending a chat message.
+  async getCreditStatus(tenantId: string) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { aiCreditsUsed: true, aiCreditsWindowStart: true },
+    })
+    if (!tenant) return { used: 0, limit: this.CREDIT_LIMIT, resetsAt: new Date(Date.now() + this.CREDIT_WINDOW_MS) }
+
+    const expired = Date.now() - tenant.aiCreditsWindowStart.getTime() > this.CREDIT_WINDOW_MS
+    const used = expired ? 0 : tenant.aiCreditsUsed
+    const windowStart = expired ? new Date() : tenant.aiCreditsWindowStart
+    return {
+      used,
+      limit: this.CREDIT_LIMIT,
+      resetsAt: new Date(windowStart.getTime() + this.CREDIT_WINDOW_MS),
     }
   }
 
@@ -251,8 +319,11 @@ export class AgentService {
 
       // ── ADD PRODUCT ────────────────────────────────────────────────────
       if (action.action === 'ADD_PRODUCT') {
-        const existingCount = await prisma.product.count({ where: { tenantId: store.id } })
-         if (existingCount >= 50) { continue }
+        const [existingCount, maxProducts] = await Promise.all([
+          prisma.product.count({ where: { tenantId: store.id } }),
+          this.resolveMaxProducts(store.id),
+        ])
+        if (existingCount >= maxProducts) { continue }
         const p = action.payload
         const product = await prisma.product.create({
           data: {
@@ -397,11 +468,12 @@ export class AgentService {
           const average = baseProducts.length
             ? baseProducts.reduce((sum, product) => sum + Number(product.price || 0), 0) / baseProducts.length
             : 75
-          const existingCount = await prisma.product.count({
-            where: { tenantId: store.id },
-          })
+         const [existingCount, maxProducts] = await Promise.all([
+            prisma.product.count({ where: { tenantId: store.id } }),
+            this.resolveMaxProducts(store.id),
+          ])
 
-          const remaining = Math.max(0, 50 - existingCount)
+          const remaining = Math.max(0, maxProducts - existingCount)
           for (let i = 0; i < Math.min(count, remaining); i++) {
             await prisma.product.create({
               data: {
@@ -454,6 +526,36 @@ export class AgentService {
           payload: action.payload as Prisma.InputJsonValue,
         }).catch(() => null)
         persisted.push(action)
+      }
+
+      if (action.action === 'SET_TESTIMONIALS') {
+        const canonical = (store.canonical || {}) as Record<string, unknown>
+        await prisma.tenant.update({
+          where: { id: store.id },
+          data: { canonical: { ...canonical, testimonials: action.payload.testimonials } },
+        })
+        persisted.push(action)
+        needsStorefrontRefetch = true
+      }
+
+      if (action.action === 'SET_FAQ') {
+        const canonical = (store.canonical || {}) as Record<string, unknown>
+        await prisma.tenant.update({
+          where: { id: store.id },
+          data: { canonical: { ...canonical, faqItems: action.payload.items } },
+        })
+        persisted.push(action)
+        needsStorefrontRefetch = true
+      }
+
+      if (action.action === 'SET_ABOUT') {
+        const canonical = (store.canonical || {}) as Record<string, unknown>
+        await prisma.tenant.update({
+          where: { id: store.id },
+          data: { canonical: { ...canonical, aboutOverride: { headline: action.payload.headline, body: action.payload.body } } },
+        })
+        persisted.push(action)
+        needsStorefrontRefetch = true
       }
 
       // ── REGENERATE STOREFRONT ──────────────────────────────────────────
@@ -567,5 +669,13 @@ export class AgentService {
     }).catch(() => null)
 
     return invoice
+  }
+
+  private async resolveMaxProducts(tenantId: string) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { owner: { select: { plan: true } } },
+    })
+    return planLimits(tenant?.owner?.plan).maxProductsPerStore
   }
 }

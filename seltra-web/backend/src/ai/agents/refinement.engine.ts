@@ -7,7 +7,7 @@
 import { runCritic, type ManifestForCritic, type CriticIssue, type CriticReport } from './critic.agent'
 import type { CanonicalStore } from '../../types'
 
-const MAX_ITERATIONS = 2
+const MAX_ITERATIONS = 3
 
 export interface RefinementResult {
   manifest:     ManifestForCritic
