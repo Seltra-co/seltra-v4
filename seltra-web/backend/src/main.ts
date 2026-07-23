@@ -14,13 +14,32 @@ async function bootstrap() {
   app.use(bodyParser.json({ limit: '15mb' }))
   app.use(bodyParser.urlencoded({ limit: '15mb', extended: true }))
 
+  // Static allowlist for known non-tenant origins (marketing site, admin dashboard, local dev)
+  const STATIC_ALLOWED_ORIGINS = new Set([
+    'http://localhost:3000',
+    'https://seltra.co',
+    'https://www.seltra.co',
+    'https://seltra-merchant.vercel.app',
+  ])
+
+  // Matches any merchant storefront subdomain, e.g. https://glow-luxe-skincare.seltra.co
+  const TENANT_SUBDOMAIN_REGEX = /^https:\/\/[a-z0-9-]+\.seltra\.co$/
+
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'https://seltra.co',
-      'https://www.seltra.co',
-      'https://seltra-merchant.vercel.app',
-    ],
+    origin: (origin, callback) => {
+      // Requests with no Origin header (server-to-server, curl, Postman, webhooks) — allow
+      if (!origin) return callback(null, true)
+
+      const isAllowed =
+        STATIC_ALLOWED_ORIGINS.has(origin) || TENANT_SUBDOMAIN_REGEX.test(origin)
+
+      if (isAllowed) {
+        return callback(null, true)
+      }
+
+      logger.warn(`Blocked CORS request from origin: ${origin}`)
+      return callback(new Error('Not allowed by CORS'), false)
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
