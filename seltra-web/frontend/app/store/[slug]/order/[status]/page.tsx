@@ -138,8 +138,13 @@ export default function OrderStatusPage() {
           </div>
         )}
 
-        <Button asChild className="w-full gap-2">
+        {/* <Button asChild className="w-full gap-2">
           <Link href={`/store/${params.slug}`}>
+            <ShoppingBag className="h-4 w-4" /> Continue shopping
+          </Link>
+        </Button> */}
+        <Button asChild className="w-full gap-2">
+          <Link href="/">
             <ShoppingBag className="h-4 w-4" /> Continue shopping
           </Link>
         </Button>

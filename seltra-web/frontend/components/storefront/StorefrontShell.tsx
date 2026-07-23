@@ -82,8 +82,12 @@ export function StorefrontShell({
             </div>
           )}
           <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" asChild>
-            {/* <Link href={`${BASE}/store/${slug}`} target="_blank" rel="noopener noreferrer"> */}
-            <Link href={`https://${slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.co'}`} target="_blank" rel="noopener noreferrer">
+            {/* local*/}
+            {/* <Link href={`${BASE}/store/${slug}`} target="_blank" rel="noopener noreferrer">
+            Open Store
+            </Link> */}
+             {/* prod */}
+               <Link href={`https://${slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.co'}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-3.5 w-3.5" /> Open store
             </Link>
           </Button>

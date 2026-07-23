@@ -1354,6 +1354,101 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     }
   }
 
+  // async confirmDisbursement(
+  //   authorization: string | undefined,
+  //   body: { tenantId?: string; disbursementId?: string; otp?: string },
+  // ) {
+  //   const tenantId = await this.resolveTenantId(authorization, body.tenantId)
+  //   if (!body.disbursementId || !body.otp) throw new BadRequestException('Missing disbursement OTP details')
+
+  //   const disbursement = await prisma.disbursement.findFirst({
+  //     where: { id: body.disbursementId, tenantId },
+  //     include: { tenant: { include: { owner: { include: { application: true } } } }, ledger: true },
+  //   })
+  //   if (!disbursement) throw new NotFoundException('Disbursement request not found')
+  //   if (disbursement.status !== 'pending_otp') throw new BadRequestException('Disbursement is not awaiting OTP')
+  //   if (!disbursement.otpExpiresAt || disbursement.otpExpiresAt.getTime() < Date.now()) {
+  //     throw new BadRequestException('Disbursement OTP has expired')
+  //   }
+  //   if (disbursement.otpHash !== this.hashOtp(body.otp)) throw new BadRequestException('Invalid disbursement OTP')
+
+  //   const amount = new Prisma.Decimal(disbursement.amount)
+  //   const ledger = await prisma.merchantLedger.findUnique({ where: { id: disbursement.ledgerId } })
+  //   if (!ledger || new Prisma.Decimal(ledger.balance).lt(amount)) {
+  //     throw new BadRequestException('Ledger balance is no longer enough for this disbursement')
+  //   }
+
+  //   const method = this.normalizePayoutMethod(disbursement.tenant.payoutMethod || disbursement.status)
+  //   const transfer = await this.moolreService.initiateTransfer({
+  //     method,
+  //     providerCode: disbursement.providerCode || '',
+  //     amount: amount.toFixed(2),
+  //     account: disbursement.account,
+  //     externalRef: disbursement.externalRef,
+  //     reference: `Seltra payout ${disbursement.tenant.name}`,
+  //     receiverName: disbursement.accountName || undefined,
+  //   })
+  //   if (!transfer.success) throw new BadRequestException(transfer.error || 'Disbursement transfer failed')
+
+  //   const [, tx] = await prisma.$transaction([
+  //     prisma.merchantLedger.update({
+  //       where: { id: disbursement.ledgerId },
+  //       data: { balance: { decrement: amount } },
+  //     }),
+  //     prisma.ledgerTransaction.create({
+  //       data: {
+  //         ledgerId: disbursement.ledgerId,
+  //         type: 'debit',
+  //         amount,
+  //         currency: disbursement.currency,
+  //         description: 'Payout sent',
+  //         meta: {
+  //           disbursementId: disbursement.id,
+  //           provider: disbursement.provider,
+  //           account: disbursement.account,
+  //           accountName: disbursement.accountName,
+  //           transactionid: transfer.transactionid,
+  //           testMode: transfer.testMode,
+  //         } as unknown as Prisma.InputJsonValue,
+  //       },
+  //     }),
+  //     prisma.disbursement.update({
+  //       where: { id: disbursement.id },
+  //       data: {
+  //         status: 'paid',
+  //         transactionId: transfer.transactionid,
+  //         rawResponse: transfer.raw as Prisma.InputJsonValue,
+  //         confirmedAt: new Date(),
+  //         otpHash: null,
+  //       },
+  //     }),
+  //   ])
+
+  //   await this.markOrdersDisbursed(tenantId)
+  //   void this.tenantEvents.recordForTenant(tenantId, 'disbursement_paid', {
+  //     disbursementId: disbursement.id,
+  //     amount: amount.toString(),
+  //     currency: disbursement.currency,
+  //     transactionid: transfer.transactionid,
+  //     testMode: transfer.testMode,
+  //   })
+  //   void this.resendService.sendMerchantReceipt({
+  //     to: disbursement.tenant.owner?.email || '',
+  //     merchantName: disbursement.tenant.owner?.name,
+  //     storeName: disbursement.tenant.name,
+  //     amount: amount.toFixed(2),
+  //     currency: disbursement.currency,
+  //     account: disbursement.account,
+  //     provider: disbursement.provider,
+  //     reference: disbursement.externalRef,
+  //   }).catch(() => null)
+  //   void this.moolreService.sendSms({
+  //     to: this.merchantPhoneFromTenant(disbursement.tenant),
+  //     message: `Seltra payout sent: ${disbursement.currency} ${amount.toFixed(2)} to ${disbursement.provider || 'your payout account'}.`,
+  //   })
+
+  //   return { success: true, transaction: tx, disbursementId: disbursement.id, testMode: transfer.testMode }
+  // }
   async confirmDisbursement(
     authorization: string | undefined,
     body: { tenantId?: string; disbursementId?: string; otp?: string },
@@ -1366,29 +1461,69 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
       include: { tenant: { include: { owner: { include: { application: true } } } }, ledger: true },
     })
     if (!disbursement) throw new NotFoundException('Disbursement request not found')
-    if (disbursement.status !== 'pending_otp') throw new BadRequestException('Disbursement is not awaiting OTP')
-    if (!disbursement.otpExpiresAt || disbursement.otpExpiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('Disbursement OTP has expired')
+
+    // Idempotency guard #1: already fully completed — just tell the client it's done.
+    if (disbursement.status === 'paid') {
+      return { success: true, disbursementId: disbursement.id, alreadyProcessed: true }
     }
-    if (disbursement.otpHash !== this.hashOtp(body.otp)) throw new BadRequestException('Invalid disbursement OTP')
+
+    if (disbursement.status !== 'pending_otp' && disbursement.status !== 'transfer_sent') {
+      throw new BadRequestException('Disbursement is not awaiting OTP')
+    }
+
+    // Only check OTP/expiry if we haven't already sent the transfer to Moolre.
+    // If status is 'transfer_sent', money already moved — we just need to finish
+    // the ledger write below, regardless of OTP expiry.
+    if (disbursement.status === 'pending_otp') {
+      if (!disbursement.otpExpiresAt || disbursement.otpExpiresAt.getTime() < Date.now()) {
+        throw new BadRequestException('Disbursement OTP has expired')
+      }
+      if (disbursement.otpHash !== this.hashOtp(body.otp)) throw new BadRequestException('Invalid disbursement OTP')
+    }
 
     const amount = new Prisma.Decimal(disbursement.amount)
     const ledger = await prisma.merchantLedger.findUnique({ where: { id: disbursement.ledgerId } })
-    if (!ledger || new Prisma.Decimal(ledger.balance).lt(amount)) {
-      throw new BadRequestException('Ledger balance is no longer enough for this disbursement')
-    }
+    if (!ledger) throw new BadRequestException('Ledger not found for this disbursement')
 
-    const method = this.normalizePayoutMethod(disbursement.tenant.payoutMethod || disbursement.status)
-    const transfer = await this.moolreService.initiateTransfer({
-      method,
-      providerCode: disbursement.providerCode || '',
-      amount: amount.toFixed(2),
-      account: disbursement.account,
-      externalRef: disbursement.externalRef,
-      reference: `Seltra payout ${disbursement.tenant.name}`,
-      receiverName: disbursement.accountName || undefined,
-    })
-    if (!transfer.success) throw new BadRequestException(transfer.error || 'Disbursement transfer failed')
+    let transactionId = disbursement.transactionId
+    let transferRaw: unknown = disbursement.rawResponse
+    let testMode = false
+
+    // Idempotency guard #2: only call Moolre if we haven't already sent this transfer.
+    if (disbursement.status === 'pending_otp') {
+      if (new Prisma.Decimal(ledger.balance).lt(amount)) {
+        throw new BadRequestException('Ledger balance is no longer enough for this disbursement')
+      }
+
+      const method = this.normalizePayoutMethod(disbursement.tenant.payoutMethod || undefined)
+      const transfer = await this.moolreService.initiateTransfer({
+        method,
+        providerCode: disbursement.providerCode || '',
+        amount: amount.toFixed(2),
+        account: disbursement.account,
+        externalRef: disbursement.externalRef,
+        reference: `Seltra payout ${disbursement.tenant.name}`,
+        receiverName: disbursement.accountName || undefined,
+      })
+      if (!transfer.success) throw new BadRequestException(transfer.error || 'Disbursement transfer failed')
+
+      transactionId = transfer.transactionid ?? null
+      transferRaw = transfer.raw as Prisma.InputJsonValue
+      testMode = Boolean(transfer.testMode)
+
+      // Persist immediately — money has now moved. Even if the ledger
+      // transaction below throws, we will never call initiateTransfer
+      // again for this disbursement (status is no longer 'pending_otp').
+      await prisma.disbursement.update({
+        where: { id: disbursement.id },
+        data: {
+          status: 'transfer_sent',
+          transactionId,
+          rawResponse: transferRaw as Prisma.InputJsonValue,
+          otpHash: null,
+        },
+      })
+    }
 
     const [, tx] = await prisma.$transaction([
       prisma.merchantLedger.update({
@@ -1407,8 +1542,8 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
             provider: disbursement.provider,
             account: disbursement.account,
             accountName: disbursement.accountName,
-            transactionid: transfer.transactionid,
-            testMode: transfer.testMode,
+            transactionid: transactionId,
+            testMode,
           } as unknown as Prisma.InputJsonValue,
         },
       }),
@@ -1416,10 +1551,7 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
         where: { id: disbursement.id },
         data: {
           status: 'paid',
-          transactionId: transfer.transactionid,
-          rawResponse: transfer.raw as Prisma.InputJsonValue,
           confirmedAt: new Date(),
-          otpHash: null,
         },
       }),
     ])
@@ -1429,8 +1561,8 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
       disbursementId: disbursement.id,
       amount: amount.toString(),
       currency: disbursement.currency,
-      transactionid: transfer.transactionid,
-      testMode: transfer.testMode,
+      transactionid: transactionId,
+      testMode,
     })
     void this.resendService.sendMerchantReceipt({
       to: disbursement.tenant.owner?.email || '',
@@ -1447,8 +1579,9 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
       message: `Seltra payout sent: ${disbursement.currency} ${amount.toFixed(2)} to ${disbursement.provider || 'your payout account'}.`,
     })
 
-    return { success: true, transaction: tx, disbursementId: disbursement.id, testMode: transfer.testMode }
+    return { success: true, transaction: tx, disbursementId: disbursement.id, testMode }
   }
+  
 
   async getMerchantSales(authorization: string | undefined, page = 1, perPage = 20, tenantId?: string) {
     const resolvedTenantId = await this.resolveTenantId(authorization, tenantId)

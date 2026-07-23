@@ -394,10 +394,17 @@ export class MoolreService {
         this.logMissingCredentials('initiateTransfer')
         return { success: false, raw, error: raw?.message || 'Moolre transfer failed' }
       }
+      // return {
+      //   success: true,
+      //   transactionid: raw?.data?.transactionid,
+      //   externalref: raw?.data?.externalref || params.externalRef,
+      //   receivername: raw?.data?.receivername,
+      //   raw,
+      // }
       return {
         success: true,
-        transactionid: raw?.data?.transactionid,
-        externalref: raw?.data?.externalref || params.externalRef,
+        transactionid: raw?.data?.transactionid != null ? String(raw.data.transactionid) : undefined,
+        externalref: raw?.data?.externalref ? String(raw.data.externalref) : params.externalRef,
         receivername: raw?.data?.receivername,
         raw,
       }
