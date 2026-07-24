@@ -1,6 +1,6 @@
 'use client'
 import { motion } from 'framer-motion'
-import Image from 'next/image'
+import { SafeImage } from './SafeImage'
 import { ShoppingBag, Heart } from 'lucide-react'
 import type { StoreProduct } from './types'
 
@@ -70,7 +70,7 @@ export function ProductCard({
         onClick={handleClick}
       >
         {hasImg ? (
-          <Image src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.05]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
+          <SafeImage src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.05]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
         ) : (
           <GradientTile name={product.name} seed={product.id} />
         )}
@@ -122,7 +122,7 @@ export function ProductCard({
       >
         <div className="relative overflow-hidden" style={{ aspectRatio: '4 / 5', borderRadius: 'var(--store-radius-card)', background: 'var(--store-accent-soft)' }}>
           {hasImg ? (
-            <Image src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.03]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
+            <SafeImage src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.03]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
           ) : (
             <GradientTile name={product.name} seed={product.id} />
           )}
@@ -159,7 +159,7 @@ export function ProductCard({
     >
       <div className="relative overflow-hidden" style={{ aspectRatio: '1 / 1', background: 'var(--store-accent-soft)', borderTopLeftRadius: 'var(--store-radius-card)', borderTopRightRadius: 'var(--store-radius-card)' }}>
         {hasImg ? (
-          <Image src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.04]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
+          <SafeImage src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.04]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
         ) : (
           <GradientTile name={product.name} seed={product.id} />
         )}

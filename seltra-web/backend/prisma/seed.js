@@ -24,7 +24,7 @@ async function main() {
       data: {
         email,
         merchantId,
-        status: 'approved',
+        status: 'pending',
         fullName: name,
         phone: '',
         createdBy: 'ops-seed-v1',

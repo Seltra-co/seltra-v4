@@ -39,4 +39,9 @@ export interface StoreDNA {
   // Derived tokens — same shape as existing types.ts
   palette: StorePalette
   typography: StoreTypography
+
+  // Visual brief for image generation
+  lighting: 'soft-daylight' | 'studio-softbox' | 'moody-dramatic' | 'bright-flatlay'
+  cameraStyle: '85mm-editorial' | 'flatlay-overhead' | 'lifestyle-context' | 'macro-detail'
+  backgroundStyle: 'warm-neutral' | 'pure-white' | 'dark-studio' | 'textured-surface'
 }

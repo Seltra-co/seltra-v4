@@ -2,6 +2,7 @@ import { chat } from '../client'
 import type { CanonicalStore, GeneratedProduct } from '../../types'
 import { sourceImage } from './image-sourcing.agent'
 import { planLimits } from '../../common/plan-limits'
+import type { StoreDNA } from '../../types/store-dna'
 
 // ── System prompt — now takes a dynamic count ──────────────────────────────
 function buildProductSystemPrompt(count: number): string {
@@ -77,7 +78,7 @@ function fallbackProducts(blueprint: CanonicalStore, count: number): GeneratedPr
   })
 }
 
-async function attachProductImages(products: GeneratedProduct[]) {
+async function attachProductImages(products: GeneratedProduct[], dna?: StoreDNA) {
   console.log(
     `[ProductAgent] Resolving product images for ${products.length} products...`,
   )
@@ -93,6 +94,7 @@ async function attachProductImages(products: GeneratedProduct[]) {
         sourceImage(
           product.name,
           product.category,
+          dna,
         )
       ),
     )
@@ -143,6 +145,7 @@ async function attachProductImages(products: GeneratedProduct[]) {
 export async function generateProducts(
   blueprint: CanonicalStore,
   maxProducts: number = planLimits(undefined).maxProductsPerStore,
+  dna?: StoreDNA,
 ): Promise<{
   success: boolean
   products: GeneratedProduct[]
@@ -153,7 +156,7 @@ export async function generateProducts(
   const count = Math.max(1, maxProducts)
 
   if (process.env.SELTRA_LLM_PRODUCTS !== 'true') {
-    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count))
+    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count), dna)
     return {
       success: true,
       products,
@@ -187,7 +190,7 @@ export async function generateProducts(
       },
     ], { maxTokens: Math.min(4000, 200 + count * 60) })
   } catch (error) {
-    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count))
+    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count), dna)
     return {
       success: true,
       products,
@@ -213,7 +216,7 @@ export async function generateProducts(
   // Enforce the cap even if the LLM over/under-generates relative to count.
   const capped = rawProducts.slice(0, count)
 
-  const { products: productsWithImages, imageStats } = await attachProductImages(capped)
+  const { products: productsWithImages, imageStats } = await attachProductImages(capped, dna)
 
   return {
     success: true,

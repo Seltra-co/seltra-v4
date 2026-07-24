@@ -280,6 +280,7 @@ export default function DashboardPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileSidebar, setMobileSidebar] = useState(false)
+  const [mobileView, setMobileView] = useState<'chat' | 'store'>('chat')
   const [stores, setStores] = useState<StoreData[]>([])
   const [pendingAttachment, setPendingAttachment] = useState<{ name: string; url: string } | null>(null)
   const [buildId, setBuildId] = useState<string | null>(null)
@@ -608,9 +609,32 @@ const handleAgentAttach = async (f: File) => {
             }}
           />
         ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-[5fr_7fr] overflow-hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[5fr_7fr]">
+            <div className="flex flex-shrink-0 border-b border-border lg:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileView('chat')}
+                className={`flex-1 py-2.5 text-center text-xs font-mono uppercase tracking-wider transition-colors ${
+                  mobileView === 'chat' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
+                }`}
+              >
+                Agent
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileView('store')}
+                className={`flex-1 py-2.5 text-center text-xs font-mono uppercase tracking-wider transition-colors ${
+                  mobileView === 'store' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
+                }`}
+              >
+                Store preview
+              </button>
+            </div>
+
             {/* ── Agent panel ── */}
-            <section className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-background">
+            <section className={`flex min-h-0 flex-col overflow-hidden border-r border-border bg-background ${
+              mobileView === 'store' ? 'hidden lg:flex' : 'flex'
+            }`}>
               {/* Header */}
               <div className="flex flex-shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
                 <span className="font-mono text-xs text-primary">{`// agent${activeStore ? ` · ${activeStore.name}` : ''}`}</span>
@@ -670,12 +694,15 @@ const handleAgentAttach = async (f: File) => {
               </div>
             </section>
 
-            <StorefrontShell slug={storeSlug} isStream={Boolean(buildId)}>
-              {buildId ? (
-                <AgentBuildStream storeName={storeTitle} buildId={buildId} onDone={handleBuildDone} onError={handleBuildError} />
-              ) : (
-           <StorefrontPreview key={storeSlug} storeSlug={storeSlug} suppressFallback={!activeStore} rev={rev} />              )}
-            </StorefrontShell>
+            <div className={mobileView === 'chat' ? 'hidden lg:block' : 'block'}>
+              <StorefrontShell slug={storeSlug} isStream={Boolean(buildId)}>
+                {buildId ? (
+                  <AgentBuildStream storeName={storeTitle} buildId={buildId} onDone={handleBuildDone} onError={handleBuildError} />
+                ) : (
+                  <StorefrontPreview key={storeSlug} storeSlug={storeSlug} suppressFallback={!activeStore} rev={rev} />
+                )}
+              </StorefrontShell>
+            </div>
           </div>
         )}
       </main>
@@ -1729,7 +1756,7 @@ function InvoicesTab({ activeStore }: { activeStore: StoreData | null }) {
 
               <div className="mt-2.5 space-y-2">
                 {form.items.map((item, index) => (
-                  <div key={index} className="grid grid-cols-[minmax(0,1fr)_3.5rem_5.5rem_1.75rem] items-end gap-1.5">
+                  <div key={index} className="grid grid-cols-2 gap-1.5 sm:grid-cols-[minmax(0,1fr)_3.5rem_5.5rem_1.75rem] sm:items-end">
                     <label className="grid gap-1 text-[11px] text-muted-foreground">
                       {index === 0 && 'Item'}
                       <input value={item.description} onChange={(e) => updateItem(index, 'description', e.target.value)} className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
@@ -2847,7 +2874,7 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
         <PageHeader tab={mode} title={title} subtitle={subtitle} />
 
         {mode === 'account' && (
-          <div className="grid h-[calc(100%-5.5rem)] min-h-0 gap-5 lg:grid-cols-[.85fr_1.15fr]">
+          <div className="grid min-h-0 gap-5 lg:h-[calc(100%-5.5rem)] lg:grid-cols-[.85fr_1.15fr]">
             <section className="min-h-0 overflow-hidden rounded-2xl border border-border bg-card/40 p-4">
               <div className="flex items-center gap-4">
                 {user?.avatar && <img src={user.avatar} alt={user.name || 'Merchant'} className="h-14 w-14 rounded-full border border-border bg-muted object-cover" />}

@@ -1,4 +1,8 @@
 //ai/agents/image-sourcing.agent.ts
+import type { StoreDNA } from '../../types/store-dna'
+import { buildImagePromptPrefix } from './dna.agent'
+import { generateProductImage } from '../providers/cloudflare-images'
+
 async function fetchPexels(query: string): Promise<string | null> {
   const key = process.env.PEXELS_API_KEY
   if (!key) return null
@@ -111,7 +115,13 @@ async function fetchUnsplashUrl(
 export async function sourceImage(
   name: string,
   category: string,
+  dna?: StoreDNA,
 ): Promise<string> {
+  if (process.env.SELTRA_IMAGE_PROVIDER === 'cloudflare' && dna) {
+    const prompt = `${buildImagePromptPrefix(dna)}, ${name}, ${category}, product photography`
+    const generated = await generateProductImage(prompt)
+    if (generated) return generated
+  }
 
   const query = cleanQuery(name, category)
 

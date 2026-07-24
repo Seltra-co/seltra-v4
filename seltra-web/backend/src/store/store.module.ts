@@ -6,6 +6,8 @@ import { ProductsController } from './products.controller'
 import { CloudinaryController } from './cloudinary.controller'
 import { BuildEventsService } from './build-events.service'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
+import { StoreImageController } from './store-image.controller'
+import { StoreImageService } from './store-image.service'
 
 @Module({
   imports: [
@@ -14,8 +16,8 @@ import { TenantEventsService } from '../internal-ops/events/tenant-events.servic
       signOptions: { expiresIn: '7d' },
     }),
   ],
-  controllers: [StoreController, ProductsController, CloudinaryController],
-  providers: [StoreService, BuildEventsService, TenantEventsService],
-  exports: [StoreService],
+  controllers: [StoreController, ProductsController, CloudinaryController, StoreImageController],
+  providers: [StoreService, BuildEventsService, TenantEventsService, StoreImageService],
+  exports: [StoreService, StoreImageService],
 })
 export class StoreModule {}

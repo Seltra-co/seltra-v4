@@ -1,9 +1,9 @@
 //providers/cloudflare.ts
 
-const CF_API_BASE = 'https://api.cloudflare.com/client/v4/accounts'
+export const CF_API_BASE = 'https://api.cloudflare.com/client/v4/accounts'
 
 // ── Fetch with timeout ────────────────────────────────────────────────────────
-async function fetchWithTimeout(
+export async function fetchWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs: number,
@@ -29,7 +29,7 @@ interface ModelState {
 
 const modelState = new Map<string, ModelState>()
 
-function getModelState(model: string): ModelState {
+export function getModelState(model: string): ModelState {
   if (!modelState.has(model)) {
     modelState.set(model, {
       cooldownUntil: 0,
@@ -41,7 +41,7 @@ function getModelState(model: string): ModelState {
   return modelState.get(model)!
 }
 
-function recordSuccess(model: string) {
+export function recordSuccess(model: string) {
   const s = getModelState(model)
   s.consecutiveErrors = 0
   const now = Date.now()
@@ -53,7 +53,7 @@ function recordSuccess(model: string) {
   }
 }
 
-function recordError(model: string, cooldownMs = 30_000) {
+export function recordError(model: string, cooldownMs = 30_000) {
   const s = getModelState(model)
   s.consecutiveErrors++
   const backoff = Math.min(
@@ -66,7 +66,7 @@ function recordError(model: string, cooldownMs = 30_000) {
   )
 }
 
-function isModelAvailable(model: string): boolean {
+export function isModelAvailable(model: string): boolean {
   return Date.now() > getModelState(model).cooldownUntil
 }
 

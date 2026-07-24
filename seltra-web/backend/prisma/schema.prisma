@@ -171,6 +171,17 @@ model ProductVariant {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
+model GeneratedImageCache {
+  id         String   @id @default(uuid())
+  promptHash String   @unique
+  prompt     String
+  model      String
+  url        String
+  createdAt  DateTime @default(now())
+
+  @@index([promptHash])
+}
+
 model PaymentProvider {
   id       String @id @default(uuid())
   tenantId String

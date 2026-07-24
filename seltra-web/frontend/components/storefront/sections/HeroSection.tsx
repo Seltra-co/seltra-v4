@@ -1,6 +1,6 @@
 'use client'
 import { motion } from 'framer-motion'
-import Image from 'next/image'
+import { SafeImage } from './SafeImage'
 import { ArrowRight, Star } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,8 +51,6 @@ function CTA({ label = 'Shop now' }: { label?: string }) {
   )
 }
 
-// Floating stat/review badge — the Epoche/On-running reference motif: a small
-// elevated card sitting on top of the hero image, not baked into it.
 function FloatingStatCard({ position = 'bottom-left' }: { position?: 'bottom-left' | 'top-right' }) {
   const pos = position === 'top-right'
     ? { top: '1.25rem', right: '1.25rem' }
@@ -74,9 +72,6 @@ function FloatingStatCard({ position = 'bottom-left' }: { position?: 'bottom-lef
   )
 }
 
-// Decorative organic blob — the child.com / Anthropologie reference accent
-// shape. Pure CSS/SVG, themed off accentSecondary so it doesn't fight the
-// hero image or headline.
 function HeroBlob({ className = '' }: { className?: string }) {
   return (
     <svg viewBox="0 0 200 200" className={className} aria-hidden="true">
@@ -174,7 +169,7 @@ export function HeroSection({
           style={{ borderRadius: 'var(--store-radius-2xl)', boxShadow: 'var(--store-shadow)' }}
         >
           {imgUrl
-            ? <Image src={imgUrl} alt={section.headline} fill className="object-cover" priority />
+            ? <SafeImage src={imgUrl} alt={section.headline} fill className="object-cover" priority />
             : <div className="absolute inset-0" style={{ background:`linear-gradient(135deg, var(--store-accent-soft), var(--store-surface))` }} />
           }
         </div>
@@ -186,7 +181,7 @@ export function HeroSection({
   if (t === 'hero-fullbleed') return (
     <section className="relative flex min-h-[520px] sm:min-h-[clamp(70vh,85vh,100vh)] items-end justify-center overflow-hidden text-center">
       <div className="absolute inset-0 z-0" style={{ background:'linear-gradient(to top, #050505 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.2) 100%)' }} />
-      {imgUrl && <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-[-1]"><Image src={imgUrl} alt="" fill className="object-cover opacity-40" priority aria-hidden /></motion.div>}
+      {imgUrl && <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-[-1]"><SafeImage src={imgUrl} alt="" fill className="object-cover opacity-40" priority aria-hidden /></motion.div>}
       <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex max-w-5xl flex-col items-center gap-5 px-6 pb-16 pt-24" style={{ color:'#ffffff' }}>
         {section.eyebrow && <motion.div variants={item}><span className="font-mono text-[0.65rem] uppercase tracking-widest opacity-60">{section.eyebrow}</span></motion.div>}
         <motion.h1 variants={item} className="font-black leading-none tracking-tight" style={{ fontFamily:'var(--store-heading-font), serif', fontSize:'clamp(4rem,14vw,10rem)', textShadow:'0 2px 32px rgba(0,0,0,0.3)' }}>{section.headline}</motion.h1>
@@ -203,7 +198,7 @@ export function HeroSection({
     <section className="relative flex min-h-[480px] sm:min-h-[clamp(60vh,75vh,90vh)] items-center overflow-hidden" style={{ background:'var(--store-bg)' }}>
       {imgUrl ? (
         <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-0">
-          <Image src={imgUrl} alt="" fill className="object-cover object-right" priority aria-hidden />
+          <SafeImage src={imgUrl} alt="" fill className="object-cover object-right" priority aria-hidden />
           <div className="absolute inset-0" style={{ background:`linear-gradient(to right, var(--store-bg) 30%, color-mix(in srgb, var(--store-bg) 60%, transparent) 60%, transparent 100%)` }} />
         </motion.div>
       ) : <div className="store-hero-mesh absolute inset-0 z-0" />}
@@ -218,9 +213,6 @@ export function HeroSection({
     </section>
   )
 
-  // hero-centered (default) — the child.com / Epoche reference: large rounded
-  // gradient card behind the content instead of a flat full-bleed background,
-  // with a floating rating badge in the corner.
   return (
     <section className="relative overflow-hidden px-4 pt-6 md:px-6" style={{ background:'var(--store-bg)' }}>
       <div
@@ -229,7 +221,7 @@ export function HeroSection({
       >
         {imgUrl && (
           <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-0">
-            <Image src={imgUrl} alt="" fill className="object-cover object-center opacity-[0.14]" priority aria-hidden />
+            <SafeImage src={imgUrl} alt="" fill className="object-cover object-center opacity-[0.14]" priority aria-hidden />
           </motion.div>
         )}
         <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex max-w-3xl flex-col items-center gap-4 px-6 py-20">

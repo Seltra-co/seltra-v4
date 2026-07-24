@@ -30,3 +30,29 @@ export async function generateProductImage(
     return null
   }
 }
+
+export async function generateHeroImage(
+  businessName: string,
+  businessType: string,
+  stylePrompt?: string,
+): Promise<string | null> {
+  try {
+    const basePrompt = `Professional lifestyle hero photograph for "${businessName}", a ${businessType} brand. Wide cinematic composition, natural lighting, commercial quality, high resolution`
+    const prompt = stylePrompt ? `${basePrompt}, ${stylePrompt}` : basePrompt
+
+    const result = await fal.subscribe('fal-ai/flux/schnell', {
+      input: {
+        prompt,
+        image_size: 'landscape_16_9',
+        num_inference_steps: 4,
+        num_images: 1,
+      },
+    })
+
+    const imageUrl = (result.data as { images: Array<{ url: string }> }).images?.[0]?.url
+    return imageUrl || null
+  } catch (err) {
+    console.error(`Hero image generation failed for ${businessName}:`, err)
+    return null
+  }
+}

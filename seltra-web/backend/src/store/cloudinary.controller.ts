@@ -5,14 +5,8 @@ import {
   Logger,
 } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import { v2 as cloudinary } from 'cloudinary'
 import { prisma } from '../db'
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-})
+import { uploadImageBuffer } from './cloudinary.service'
 
 @Controller('seltra/upload')
 export class CloudinaryController {
@@ -41,22 +35,13 @@ export class CloudinaryController {
     })
     if (!tenant) throw new UnauthorizedException('Store not found or access denied')
 
-    const dataUri = `data:${body.mimeType ?? 'image/jpeg'};base64,${body.imageBase64}`
-
     // Sanitize public_id: strip leading/trailing slashes, replace unsafe chars
     const safeProductId = body.productId.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^_+|_+$/g, '')
     const publicId = `seltra/${tenant.id}/products/${safeProductId}`
 
     let result: { secure_url: string }
     try {
-      result = await cloudinary.uploader.upload(dataUri, {
-        folder:        undefined,       // folder is encoded in public_id path instead
-        public_id:     publicId,
-        overwrite:     true,
-        resource_type: 'image',
-        // ── No transformation here — eager transforms require a paid plan.
-        // ── Apply fetch-time transforms via URL if needed (e.g. w_800,c_fill).
-      })
+      result = await uploadImageBuffer(body.imageBase64, body.mimeType ?? 'image/jpeg', publicId)
    } catch (err) {
       const msg =
         err instanceof Error

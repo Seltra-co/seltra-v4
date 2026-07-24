@@ -1,10 +1,12 @@
 //backend/src/agent/agent.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { chat } from '../ai'
 import { prisma } from '../db'
 import { StoreService } from '../store/store.service'
+import { StoreImageService } from '../store/store-image.service'
 import { loadMerchantContext, updateMerchantContext } from '../ai/agents/merchants-context'
+import { parseImageChangeIntent } from '../ai/agents/image-intent.agent'
 import { ContextEngine } from '../ai/context-engine.service'
 import { AgentEventsService } from './agent-events.service'
 import { MoolreService } from '../payment/moolre.service'
@@ -16,6 +18,9 @@ export type AgentAction =
   | { action: 'DELETE_PRODUCT'; payload: { id: string; name?: string } }
   | { action: 'UPDATE_THEME'; payload: { primaryColor?: string; font?: string } }
   | { action: 'SET_HERO_IMAGE'; payload: { url: string } }
+  | { action: 'GENERATE_HERO_IMAGE'; payload: { prompt?: string } }
+  | { action: 'SET_PRODUCT_IMAGE'; payload: { productId?: string; productName?: string; url: string } }
+  | { action: 'GENERATE_PRODUCT_IMAGE'; payload: { productId?: string; productName?: string; prompt?: string } }
   | { action: 'SET_STORY_IMAGE'; payload: { url: string } }
   | { action: 'SET_POLICY'; payload: { type: 'shipping' | 'returns'; content: string } }
   | { action: 'REFETCH_STOREFRONT'; payload: { storeId: string } }
@@ -50,6 +55,9 @@ Emit structured JSON actions after your reply, separated by ---ACTIONS---:
   { "action": "PATCH_STOREFRONT", "payload": { "instruction": string } },
   { "action": "REGENERATE_STOREFRONT", "payload": { "reason": string } },
   { "action": "SET_HERO_IMAGE", "payload": { "url": string } },
+  { "action": "GENERATE_HERO_IMAGE", "payload": { "prompt"?: string } },
+  { "action": "SET_PRODUCT_IMAGE", "payload": { "productId"?: string, "productName"?: string, "url": string } },
+  { "action": "GENERATE_PRODUCT_IMAGE", "payload": { "productId"?: string, "productName"?: string, "prompt"?: string } },
   { "action": "SET_STORY_IMAGE", "payload": { "url": string } },
   { "action": "SET_TESTIMONIALS", "payload": { "testimonials": [{ "text": string, "author": string }] } },
   { "action": "SET_FAQ", "payload": { "items": [{ "question": string, "answer": string }] } },
@@ -62,8 +70,7 @@ Rules:
 - For UI/visual changes, emit PATCH_STOREFRONT with a precise instruction.
 - For complete look overhauls, emit REGENERATE_STOREFRONT.
 - If no action is needed, omit ---ACTIONS--- entirely.
-- If the merchant's message contains an attached image (look for "[image: <url>]") and mentions hero, banner, or cover, emit SET_HERO_IMAGE with that exact url.
-- If it mentions the story/about section image, emit SET_STORY_IMAGE with that exact url.
+- Never invent an image URL. If the merchant gives you an actual URL to a hero or product image, emit SET_HERO_IMAGE or SET_PRODUCT_IMAGE with that exact url. If they ask you to "generate" or "create" a new hero/product image and give no URL, emit GENERATE_HERO_IMAGE or GENERATE_PRODUCT_IMAGE instead — never fabricate a placeholder or example.com URL.
 - Default currency is GHS. Always reply in the same language the merchant uses.
 - If the merchant gives you testimonial or review content to use, emit SET_TESTIMONIALS with that exact content — never invent reviews on their behalf.
 - If the merchant gives you FAQ questions/answers, emit SET_FAQ with that exact content.
@@ -96,20 +103,43 @@ Merchant context:
 ${context.lastAction ? `- Last action: ${context.lastAction} at ${context.lastActionAt}` : ''}`.trim()
 }
 
-function inferredActionsFromMessage(message: string): AgentAction[] {
+// Image requests get their own dedicated parse via image-intent.agent — this
+// replaces the old bare "[image: url]" regex, which had no way to express
+// "generate one" vs "here's a url" vs "which image do you mean".
+function inferredImageAction(message: string, products: Array<{ id: string; name: string }>): AgentAction | null {
+  const intent = parseImageChangeIntent(message, products)
+  if (intent.target === 'unclear') return null
+
+  if (intent.target === 'hero') {
+    return intent.requestedUrl
+      ? { action: 'SET_HERO_IMAGE', payload: { url: intent.requestedUrl } }
+      : { action: 'GENERATE_HERO_IMAGE', payload: { prompt: intent.stylePrompt } }
+  }
+
+  // target === 'product'
+  const productId = intent.productMatch?.id
+  const productName = intent.productMatch?.name
+  return intent.requestedUrl
+    ? { action: 'SET_PRODUCT_IMAGE', payload: { productId, productName, url: intent.requestedUrl } }
+    : { action: 'GENERATE_PRODUCT_IMAGE', payload: { productId, productName, prompt: intent.stylePrompt } }
+}
+
+function inferredActionsFromMessage(message: string, products: Array<{ id: string; name: string }>): AgentAction[] {
   const lower = message.toLowerCase()
   const actions: AgentAction[] = []
   const percent = lower.match(/(\d+(?:\.\d+)?)\s*%/)?.[1]
-  const imageMatch = message.match(/\[image:\s*(\S+)\]/)
 
-  if (imageMatch) {
-    const url = imageMatch[1]
-    if (/hero|banner|cover/.test(lower)) {
-      actions.push({ action: 'SET_HERO_IMAGE', payload: { url } })
-    } else if (/story|about|why we exist/.test(lower)) {
-      actions.push({ action: 'SET_STORY_IMAGE', payload: { url } })
-    }
+  const looksLikeImageRequest =
+    /\bhero\b|\bbanner\b|\bmain image\b|\bmain photo\b|\bcover\b/.test(lower) ||
+    /\b(image|photo|picture)\b.*\b(change|update|generate|regenerate|new|swap|replace|use)\b/.test(lower) ||
+    /\b(change|update|generate|regenerate|swap|replace)\b.*\b(image|photo|picture)\b/.test(lower) ||
+    /https?:\/\/\S+\.(png|jpe?g|webp|gif|avif)/i.test(message)
+
+  if (looksLikeImageRequest) {
+    const imageAction = inferredImageAction(message, products)
+    if (imageAction) actions.push(imageAction)
   }
+
   if (/increase|raise|bump/.test(lower) && /price|prices/.test(lower) && /all|every/.test(lower)) {
     actions.push({ action: 'UPDATE_PRODUCTS', payload: { operation: 'increase_prices_percent', percent: percent ? Number(percent) : 10 } })
   }
@@ -123,7 +153,7 @@ function inferredActionsFromMessage(message: string): AgentAction[] {
   if (/image|images|photo|photos|asset|assets/.test(lower) && /dark|black|moody|background/.test(lower)) {
     actions.push({ action: 'UPDATE_PRODUCTS', payload: { operation: 'dark_image_direction', theme: 'dark studio background' } })
   }
-  if (/hero|button|font|faq|testimonial|newsletter|countdown|bestseller|best seller|storefront|layout|move|hide|show|dark mode/.test(lower)) {
+  if (/hero|button|font|faq|testimonial|newsletter|countdown|bestseller|best seller|storefront|layout|move|hide|show|dark mode/.test(lower) && !looksLikeImageRequest) {
     actions.push({ action: 'PATCH_STOREFRONT', payload: { instruction: message } })
   }
   return actions
@@ -143,6 +173,7 @@ function mergeActions(modelActions: AgentAction[], inferred: AgentAction[]) {
 export class AgentService {
   constructor(
     private readonly storeService: StoreService,
+    private readonly storeImageService: StoreImageService,
     private readonly contextEngine: ContextEngine,
     private readonly agentEvents: AgentEventsService,
     private readonly moolre: MoolreService,
@@ -249,8 +280,9 @@ export class AgentService {
     }
 
     const parsed = parseActions(result.content)
-    const actions = mergeActions(parsed.actions, inferredActionsFromMessage(message))
-    const persistedActions = await this.executeActions(store, actions)
+    const productList = (store.products ?? []).map((p) => ({ id: p.id, name: p.name }))
+    const actions = mergeActions(parsed.actions, inferredActionsFromMessage(message, productList))
+    const { persisted: persistedActions, errors } = await this.executeActions(store, actions)
     void this.agentEvents.emit({
       tenantId: store.id,
       agent: 'CommerceAgent',
@@ -265,8 +297,12 @@ export class AgentService {
     const lastAction = persistedActions[0]?.action ?? undefined
     updateMerchantContext(store.id, store.name, industry, brandPersonality, message, lastAction).catch(() => null)
 
+    const replyText = errors.length
+      ? [parsed.reply || result.content, ...errors].filter(Boolean).join('\n\n')
+      : (parsed.reply || result.content)
+
     return {
-      reply: parsed.reply || result.content,
+      reply: replyText,
       conversationId: nextConversationId,
       actions: persistedActions,
       credits: { used: credit.used, limit: credit.limit, resetsAt: credit.resetsAt },
@@ -292,21 +328,76 @@ export class AgentService {
     }
   }
 
+  private async resolveProductId(store: { id: string; products?: Array<{ id: string; name: string }> }, productId?: string, productName?: string) {
+    if (productId) return productId
+    if (productName) {
+      const match = await this.storeImageService.findProductByName(store.id, productName)
+      if (match) return match.id
+    }
+    return null
+  }
+
   private async executeActions(store: Awaited<ReturnType<typeof StoreService.prototype.findByIdOrSlug>>, actions: AgentAction[]) {
     const persisted: AgentAction[] = []
+    const errors: string[] = []
     let needsStorefrontRefetch = false
 
     for (const action of actions) {
 
+      // ── HERO IMAGE — set (validated + re-hosted) ───────────────────────
       if (action.action === 'SET_HERO_IMAGE') {
-          const canonical = (store.canonical || {}) as Record<string, unknown>
-          await prisma.tenant.update({
-            where: { id: store.id },
-            data: { canonical: { ...canonical, heroImageUrl: action.payload.url } },
-          })
+        try {
+          await this.storeImageService.setHeroImageUrl(store.id, action.payload.url)
           persisted.push(action)
           needsStorefrontRefetch = true
+        } catch (err) {
+          errors.push(err instanceof BadRequestException ? (err.getResponse() as { message?: string })?.message ?? err.message : 'Could not update the hero image.')
         }
+      }
+
+      // ── HERO IMAGE — generate ───────────────────────────────────────────
+      if (action.action === 'GENERATE_HERO_IMAGE') {
+        try {
+          const result = await this.storeImageService.regenerateHeroImage(store.id, action.payload.prompt)
+          persisted.push({ action: 'SET_HERO_IMAGE', payload: { url: result.url } })
+          needsStorefrontRefetch = true
+        } catch (err) {
+          errors.push(err instanceof BadRequestException ? (err.getResponse() as { message?: string })?.message ?? err.message : 'Could not generate a hero image.')
+        }
+      }
+
+      // ── PRODUCT IMAGE — set (validated + re-hosted) ────────────────────
+      if (action.action === 'SET_PRODUCT_IMAGE') {
+        const productId = await this.resolveProductId(store, action.payload.productId, action.payload.productName)
+        if (!productId) {
+          errors.push(`Couldn't find a product matching "${action.payload.productName ?? 'that'}" to update.`)
+        } else {
+          try {
+            const result = await this.storeImageService.setProductImageUrl(store.id, productId, action.payload.url)
+            persisted.push({ action: 'SET_PRODUCT_IMAGE', payload: { productId, productName: result.productName, url: result.url } })
+            needsStorefrontRefetch = true
+          } catch (err) {
+            errors.push(err instanceof BadRequestException ? (err.getResponse() as { message?: string })?.message ?? err.message : 'Could not update that product image.')
+          }
+        }
+      }
+
+      // ── PRODUCT IMAGE — generate ─────────────────────────────────────────
+      if (action.action === 'GENERATE_PRODUCT_IMAGE') {
+        const productId = await this.resolveProductId(store, action.payload.productId, action.payload.productName)
+        if (!productId) {
+          errors.push(`Couldn't find a product matching "${action.payload.productName ?? 'that'}" to generate an image for.`)
+        } else {
+          try {
+            const result = await this.storeImageService.regenerateProductImage(store.id, productId, action.payload.prompt)
+            persisted.push({ action: 'SET_PRODUCT_IMAGE', payload: { productId, productName: result.productName, url: result.url } })
+            needsStorefrontRefetch = true
+          } catch (err) {
+            errors.push(err instanceof BadRequestException ? (err.getResponse() as { message?: string })?.message ?? err.message : 'Could not generate a product image.')
+          }
+        }
+      }
+
       if (action.action === 'SET_STORY_IMAGE') {
         const canonical = (store.canonical || {}) as Record<string, unknown>
         await prisma.tenant.update({
@@ -570,7 +661,7 @@ export class AgentService {
       persisted.push({ action: 'REFETCH_STOREFRONT', payload: { storeId: store.id } })
     }
 
-    return persisted
+    return { persisted, errors }
   }
 
   private async patchStorefrontHtml(currentHtml: string, instruction: string, storeName: string): Promise<string | null> {

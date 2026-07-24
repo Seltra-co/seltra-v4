@@ -26,6 +26,16 @@ const TYPOGRAPHY_MAP: Record<string, StoreDNA['typography']> = {
   vibrant: { headingFont: 'Syne', bodyFont: 'Inter' },
 }
 
+const VISUAL_STYLE_MAP: Record<string, Pick<StoreDNA, 'lighting' | 'cameraStyle' | 'backgroundStyle'>> = {
+  luxury: { lighting: 'studio-softbox', cameraStyle: '85mm-editorial', backgroundStyle: 'warm-neutral' },
+  'bold-dark': { lighting: 'moody-dramatic', cameraStyle: 'lifestyle-context', backgroundStyle: 'dark-studio' },
+  'minimal-light': { lighting: 'soft-daylight', cameraStyle: 'flatlay-overhead', backgroundStyle: 'pure-white' },
+  editorial: { lighting: 'soft-daylight', cameraStyle: '85mm-editorial', backgroundStyle: 'warm-neutral' },
+  'warm-earth': { lighting: 'soft-daylight', cameraStyle: 'lifestyle-context', backgroundStyle: 'textured-surface' },
+  'cool-modern': { lighting: 'bright-flatlay', cameraStyle: 'flatlay-overhead', backgroundStyle: 'pure-white' },
+  vibrant: { lighting: 'studio-softbox', cameraStyle: 'macro-detail', backgroundStyle: 'pure-white' },
+}
+
 const PERSONALITY_BY_INDUSTRY: Record<string, BrandPersonality> = {
   beauty: 'luxury',
   skincare: 'luxury',
@@ -51,6 +61,7 @@ export function extractDNA(prompt: string, businessType?: string, targetAudience
 
   const palette = PALETTE_MAP[themeKey] ?? PALETTE_MAP['minimal-light']
   const typography = TYPOGRAPHY_MAP[themeKey] ?? TYPOGRAPHY_MAP['minimal-light']
+  const visualStyle = VISUAL_STYLE_MAP[themeKey] ?? VISUAL_STYLE_MAP['minimal-light']
 
   // Detect visual density from keywords
   const lower = corpus.toLowerCase()
@@ -83,5 +94,24 @@ export function extractDNA(prompt: string, businessType?: string, targetAudience
     productDisplay: composition.layout === 'showcase' ? 'featured' : 'grid',
     palette,
     typography,
+    lighting: visualStyle.lighting,
+    cameraStyle: visualStyle.cameraStyle,
+    backgroundStyle: visualStyle.backgroundStyle,
   }
+}
+
+export function buildImagePromptPrefix(dna: StoreDNA): string {
+  const lightingLabel = dna.lighting === 'studio-softbox' ? 'studio softbox lighting' :
+    dna.lighting === 'moody-dramatic' ? 'moody dramatic lighting' :
+    dna.lighting === 'bright-flatlay' ? 'bright flatlay lighting' : 'soft daylight lighting'
+
+  const cameraLabel = dna.cameraStyle === '85mm-editorial' ? '85mm editorial lens' :
+    dna.cameraStyle === 'flatlay-overhead' ? 'flatlay overhead composition' :
+    dna.cameraStyle === 'macro-detail' ? 'macro detail lens' : 'lifestyle context composition'
+
+  const backgroundLabel = dna.backgroundStyle === 'warm-neutral' ? 'warm neutral backdrop' :
+    dna.backgroundStyle === 'pure-white' ? 'pure white backdrop' :
+    dna.backgroundStyle === 'dark-studio' ? 'dark studio backdrop' : 'textured surface backdrop'
+
+  return `editorial studio photograph, ${lightingLabel}, ${backgroundLabel}, ${cameraLabel}, minimal shadow, premium commercial aesthetic`
 }

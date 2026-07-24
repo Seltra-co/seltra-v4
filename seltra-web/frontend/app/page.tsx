@@ -425,7 +425,7 @@ function Hero() {
                   deleteSpeed={18}
                   pauseDuration={1600}
                   active={chatInput.length === 0}
-                  className="pointer-events-none absolute inset-x-6 top-5 text-base leading-relaxed sm:inset-x-8 sm:top-5 sm:text-lg"
+                  className="pointer-events-none absolute inset-x-4 top-5 text-[15px] leading-relaxed sm:inset-x-8 sm:top-5 sm:text-lg"
                 />
                 <textarea
                   value={chatInput}

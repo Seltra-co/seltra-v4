@@ -284,6 +284,129 @@ Display:
 * Recommended products
 
 
+----------------------------------------
+Build a premium fashion ecommerce store for the following merchant.
+
+## Merchant Information
+
+Business Name: Waffles & Co.
+Store Name: Waffles & Co.
+Industry: Fashion
+Location: Santa Maria, Ghana
+Business Stage: Early-stage business (under GHS 1,000/month)
+
+## Brand Overview
+
+Waffles & Co. specializes in premium men's and unisex shirts. The brand focuses on modern, stylish, high-quality apparel that balances comfort, confidence, and everyday elegance. The storefront should feel clean, premium, and trustworthy while remaining approachable for first-time customers.
+
+## Target Audience
+
+- Young professionals
+- University students
+- Fashion-conscious adults
+- Men looking for premium casual and smart-casual shirts
+- Women purchasing oversized or unisex fashion pieces
+
+## Brand Personality
+
+- Premium
+- Modern
+- Minimal
+- Confident
+- Elegant
+- African-inspired contemporary fashion
+
+## Store Theme
+
+Generate a modern premium fashion storefront with:
+
+- Large hero banner
+- Featured collections
+- Best Sellers section
+- New Arrivals
+- Promotional banner
+- Customer testimonials
+- Newsletter signup
+- Mobile-first responsive layout
+- Smooth animations
+- Premium typography
+- Clean white background with black accents and subtle gold highlights
+
+## Collections
+
+Create the following collections:
+
+- Premium Shirts
+- Men's Collection
+- Unisex Collection
+- New Arrivals
+- Best Sellers
+
+## Initial Products
+
+Generate realistic products with names, descriptions, pricing, categories, and variants.
+
+Example product lineup should include items such as:
+
+- Premium Oxford Shirt
+- Essential Linen Shirt
+- Classic Black Shirt
+- White Signature Shirt
+- Oversized Unisex Tee
+- Premium Cotton Shirt
+- Everyday Casual Shirt
+- Executive Long Sleeve Shirt
+
+### Pricing
+
+Use realistic Ghanaian pricing:
+
+- Premium Shirts: GHS 180–320
+- Linen Shirts: GHS 220–350
+- Cotton Shirts: GHS 160–260
+- Oversized Tees: GHS 120–200
+
+Generate final prices naturally within these ranges.
+
+## Product Variants
+
+Generate realistic variants including:
+
+- Sizes (S, M, L, XL, XXL)
+- Colors
+- Materials
+- Fit (Slim, Regular, Oversized where appropriate)
+
+## Important
+
+The AI agent should automatically determine:
+
+- Product quantities
+- Inventory levels
+- SKU values
+- Product images
+- Product weight
+- SEO metadata
+- Product tags
+
+Do not ask the merchant for these.
+
+## Payments
+
+Configure the store to support Paystack.
+
+## Shipping
+
+Generate standard shipping options for Ghana.
+
+## AI Permissions
+
+The merchant has used AI before and is comfortable with AI-assisted commerce but prefers to review AI actions before they are applied. Configure the store so AI-generated recommendations require merchant review before major changes are published.
+
+## Overall Goal
+
+Create a premium, conversion-focused fashion store that is launch-ready, visually polished, and capable of scaling as Waffles & Co. grows.
+
 //seltra context engineering MVP:
 - memory
 -

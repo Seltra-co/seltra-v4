@@ -1,7 +1,7 @@
 //seltra-web/frontend/components/storefront/sections/LookbookGrid.tsx
 'use client'
 import { motion } from 'framer-motion'
-import Image from 'next/image'
+import { SafeImage } from './SafeImage'
 import type { StoreProduct } from './types'
 
 interface Props { headline?: string; images?: Array<{ url: string; caption?: string }>; variant?: 'masonry'|'editorial'|'uniform'; products: StoreProduct[]; onAddToCart: (p: StoreProduct) => void }
@@ -17,7 +17,7 @@ export function LookbookGrid({ headline, images, variant='editorial', products }
       <div className={gridClass}>
         {display.map((img, i) => (
           <motion.div key={i} initial={{ opacity:0 }} whileInView={{ opacity:1 }} viewport={{ once:true }} transition={{ duration:0.5, delay:i*0.05 }} className={`relative overflow-hidden rounded-[var(--store-radius)] ${variant==='masonry'?'mb-2 break-inside-avoid':'aspect-square'}`}>
-            <Image src={img.url} alt={img.caption??''} fill className="object-cover" sizes="33vw" />
+            <SafeImage src={img.url} alt={img.caption??''} fill className="object-cover" sizes="33vw" />
           </motion.div>
         ))}
       </div>

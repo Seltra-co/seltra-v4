@@ -702,10 +702,19 @@ function MicroComponentRenderer({
     }
   }, [source, componentName])
 
-  if (!Component) return <>{fallback}</>
+  // Minimal, guaranteed-safe fallback — this must never itself throw.
+  // We can't reuse `fallback` here because in the hero case `fallback` IS
+  // the thing that can throw (it renders next/image), so wrapping it
+  // around itself would just crash again on retry.
+  const safeFallback = (
+    <div className="flex min-h-[240px] items-center justify-center px-6 py-10 text-sm text-muted-foreground">
+      This section couldn&apos;t load.
+    </div>
+  )
+
   return (
-    <MicroErrorBoundary fallback={fallback}>
-      <Component {...props} />
+    <MicroErrorBoundary fallback={safeFallback}>
+      {Component ? <Component {...props} /> : fallback}
     </MicroErrorBoundary>
   )
 }

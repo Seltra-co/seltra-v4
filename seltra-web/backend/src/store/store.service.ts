@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { generateBlueprint, generateProducts, classifyLayout, generateManifest, generateHeroNavSources } from '../ai'
-import { extractDNA } from '../ai/agents/dna.agent'
+import { buildImagePromptPrefix, extractDNA } from '../ai/agents/dna.agent'
+import { generateHeroImage } from '../ai/providers/cloudflare-images'
 import { buildPlan } from '../ai/agents/plan.agent'
 import { prisma } from '../db'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 import type { CanonicalStore, GeneratedProduct } from '../types'
+import type { StoreDNA } from '../types/store-dna'
 import type { BuildContext } from './build-events.service'
 import { planLimits } from '../common/plan-limits'
 
@@ -91,7 +93,7 @@ export class StoreService {
     ctx?.emit({ type: 'step', step: 'products', status: 'started', label: 'Products' })
     ctx?.emit({ type: 'log', message: 'Generating launch-ready product catalog...' })
     const [productResult, layoutResult] = await Promise.all([
-      generateProducts(blueprint),
+      generateProducts(blueprint, maxProducts, dna),
       classifyLayout(blueprint),
     ])
 
@@ -105,7 +107,7 @@ export class StoreService {
       const savedFlag = process.env.SELTRA_LLM_PRODUCTS
       process.env.SELTRA_LLM_PRODUCTS = 'false'
       try {
-        const fallbackResult = await generateProducts(blueprint)
+        const fallbackResult = await generateProducts(blueprint, maxProducts, dna)
         products = fallbackResult.products
       } finally {
         process.env.SELTRA_LLM_PRODUCTS = savedFlag
@@ -171,7 +173,7 @@ export class StoreService {
   private async generateAndSaveStorefrontAssets(
     tenantId: string,
     blueprint: CanonicalStore,
-    dna?: unknown,
+    dna?: StoreDNA,
     ctx?: BuildContext,
   ) {
     console.log(`[StorefrontAssets] Starting background generation for tenant ${tenantId}`)
@@ -204,7 +206,7 @@ export class StoreService {
       variants: p.variants,
     }))
 
-    const storeDNA = tenant.storeDNA ?? dna ?? null
+    const storeDNA = (tenant.storeDNA ?? dna ?? null) as StoreDNA | null
 
     // P0.1 — the critic/refinement loop now runs inside generateManifest() itself.
     // These hooks just surface it as its own visible build step instead of it
@@ -229,6 +231,11 @@ export class StoreService {
     ctx?.emit({ type: 'step', step: 'hero', status: 'started', label: 'Hero' })
     ctx?.emit({ type: 'step', step: 'nav', status: 'started', label: 'Navigation' })
     ctx?.emit({ type: 'log', message: 'Generating isolated hero and navigation micro-components...' })
+    let heroImageUrl: string | null = null
+    if (process.env.SELTRA_IMAGE_PROVIDER === 'cloudflare' && storeDNA) {
+      const heroImagePrompt = `${buildImagePromptPrefix(storeDNA)}, hero lifestyle photograph for ${blueprint.businessName}, ${blueprint.businessType}`
+      heroImageUrl = await generateHeroImage(heroImagePrompt)
+    }
     const micro = await generateHeroNavSources({
       blueprint,
       manifest: manifestResult.manifest,
@@ -250,6 +257,9 @@ export class StoreService {
     const heroGeneratedAt = micro.heroSource ? new Date() : null
     const navGeneratedAt = micro.navSource ? new Date() : null
 
+    const canonical = (tenant.canonical as Record<string, unknown> | null) ?? {}
+    const canonicalWithHero = heroImageUrl ? { ...canonical, heroImageUrl } : canonical
+
     await prisma.$executeRaw`
       UPDATE "Tenant"
       SET
@@ -258,6 +268,7 @@ export class StoreService {
         "heroGeneratedAt" = ${heroGeneratedAt},
         "navSource" = ${micro.navSource},
         "navGeneratedAt" = ${navGeneratedAt},
+        "canonical" = ${JSON.stringify(canonicalWithHero)}::jsonb,
         "updatedAt" = NOW()
       WHERE "id" = ${tenantId}
     `

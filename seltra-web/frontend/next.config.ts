@@ -11,22 +11,10 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.fal.media' },
       { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
       { protocol: 'https', hostname: 'api.dicebear.com' },
-         {
-        protocol: "https",
-        hostname: "images.pexels.com",
-      },
-      {
-        protocol: "https",
-        hostname: "pixabay.com",
-      },
-      {
-        protocol: "https",
-        hostname: "cdn.pixabay.com",
-      },
-      {
-        protocol: "https",
-        hostname: "images.unsplash.com",
-      },
+      { protocol: 'https', hostname: 'images.pexels.com' },
+      { protocol: 'https', hostname: 'pixabay.com' },
+      { protocol: 'https', hostname: 'cdn.pixabay.com' },
+      { protocol: 'https', hostname: 'example.com' }, 
     ],
     dangerouslyAllowSVG: true,
   },
