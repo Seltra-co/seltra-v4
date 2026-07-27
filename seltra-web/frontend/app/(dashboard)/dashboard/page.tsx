@@ -11,6 +11,7 @@ import {
   MessageSquare, Sparkles, ArrowRight, Palette, Megaphone,
   Zap, ShoppingCart, Bell, CreditCard, ShieldCheck, CheckCheck,
   FileText, Bot, UserCircle, HelpCircle, Globe2, Building2, LockKeyhole,
+  Eye, Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -49,6 +50,14 @@ function storefrontUrl(store: StoreData | null): string {
 
 const money = (value: string | number | null | undefined, currency = 'GHS') =>
   `${currency} ${Number(value ?? 0).toFixed(2)}`
+
+function shortOrderRef(ref?: string | null) {
+  if (!ref) return '—'
+  const clean = String(ref).replace(/^#/, '')
+  const parts = clean.split('_')
+  const tail = parts[parts.length - 1] || clean
+  return `#${tail.slice(-8)}`
+}
 
 const statusClass = (status: string) => {
   if (/paid|delivered|complete|sent/i.test(status)) return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
@@ -101,24 +110,6 @@ async function compressImage(file: File, maxPx = 1200, quality = 0.82): Promise<
   })
 }
 
-// async function uploadImageToCloudinary(file: File, storeId: string): Promise<string | null> {
-//   try {
-//     const reader = new FileReader()
-//     const base64 = await new Promise<string>((res, rej) => {
-//       reader.onload = () => res((reader.result as string).split(',')[1])
-//       reader.onerror = rej
-//       reader.readAsDataURL(file)
-//     })
-//     const tempProductId = `composer-${Date.now()}`
-//     const { data } = await apiFetch<{ url: string }>('/api/v1/seltra/upload/product-image', {
-//       method: 'POST',
-//       body: JSON.stringify({ storeId, productId: tempProductId, imageBase64: base64, mimeType: file.type }),
-//     })
-//     return data?.url ?? null
-//   } catch {
-//     return null
-//   }
-// }
 async function uploadImageToCloudinary(file: File, storeId: string): Promise<string | null> {
   try {
     const base64 = await compressImage(file)
@@ -153,6 +144,7 @@ type Conversation = { id: string; title: string; created_at?: string; updated_at
 type MessageRecord = { id: string; conversation_id: string; role: 'user' | 'assistant'; content: string; created_at: string; user_id: string }
 type OrderRecord = {
   id: string; customerEmail: string; customerName?: string; customerPhone?: string | null
+  shippingAddress?: string | null; shippingCity?: string | null; shippingCountry?: string | null
   totalAmount: string | number; currency: string; status: string; paystackRef?: string
   items: Array<{ productId?: string; productName?: string; quantity: number; price: string | number }>
   merchantAmount?: string | number | null; seltraFee?: string | number | null; createdAt: string
@@ -724,96 +716,6 @@ const handleAgentAttach = async (f: File) => {
   )
 }
 
-// function DashboardNotifications({ activeStore }: { activeStore: StoreData | null }) {
-//   const [open, setOpen] = useState(false)
-//   const [items, setItems] = useState<NotificationRecord[]>([])
-//   const [readIds, setReadIds] = useState<string[]>([])
-//   const tenantId = storeIdOf(activeStore)
-
-//   useEffect(() => {
-//     try {
-//       setReadIds(JSON.parse(localStorage.getItem('seltra:read_notifications') || '[]'))
-//     } catch {
-//       setReadIds([])
-//     }
-//   }, [])
-
-//   useEffect(() => {
-//     let cancelled = false
-//     const load = async () => {
-//       const path = `/api/v1/notifications${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`
-//       const { data } = await apiFetch<NotificationRecord[]>(path)
-//       if (!cancelled) setItems(data ?? [])
-//     }
-//     void load()
-//     const timer = window.setInterval(() => void load(), 45_000)
-//     return () => {
-//       cancelled = true
-//       window.clearInterval(timer)
-//     }
-//   }, [tenantId])
-
-//   const unreadCount = items.filter((item) => !readIds.includes(item.id)).length
-//   const markAllRead = () => {
-//     const next = Array.from(new Set([...readIds, ...items.map((item) => item.id)]))
-//     setReadIds(next)
-//     localStorage.setItem('seltra:read_notifications', JSON.stringify(next))
-//   }
-
-//   return (
-//     <div className="absolute right-4 top-4 z-30 lg:right-6">
-//       <button
-//         type="button"
-//         onClick={() => setOpen((current) => !current)}
-//         className="relative grid h-10 w-10 place-items-center rounded-xl border border-border bg-background/90 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
-//         aria-label="Open notifications"
-//       >
-//         <Bell className="h-4 w-4" />
-//         {unreadCount > 0 && (
-//           <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-mono text-[10px] font-semibold text-primary-foreground">
-//             {unreadCount > 9 ? '9+' : unreadCount}
-//           </span>
-//         )}
-//       </button>
-//       {open && (
-//         <div className="mt-2 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-//           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-//             <div>
-//               <div className="text-sm font-semibold">Notifications</div>
-//               <div className="font-mono text-[10px] text-muted-foreground">{unreadCount} unread</div>
-//             </div>
-//             <Button type="button" variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={markAllRead}>
-//               <CheckCheck className="h-3.5 w-3.5" /> Read
-//             </Button>
-//           </div>
-//           <div className="max-h-[420px] divide-y divide-border overflow-y-auto">
-//             {items.length === 0 ? (
-//               <div className="p-6 text-sm text-muted-foreground">Orders, payments, logins, security alerts, and announcements will appear here.</div>
-//             ) : items.map((item) => {
-//               const Icon = item.type === 'order' ? ShoppingBag : item.type === 'payment' ? CreditCard : item.type === 'security' ? ShieldCheck : Megaphone
-//               const unread = !readIds.includes(item.id)
-//               return (
-//                 <div key={item.id} className={`flex gap-3 px-4 py-3 text-sm ${unread ? 'bg-primary/5' : ''}`}>
-//                   <div className="mt-0.5 grid h-8 w-8 flex-shrink-0 place-items-center rounded-xl border border-border bg-background text-primary">
-//                     <Icon className="h-4 w-4" />
-//                   </div>
-//                   <div className="min-w-0 flex-1">
-//                     <div className="flex items-center gap-2">
-//                       <div className="truncate font-medium">{item.title}</div>
-//                       {unread && <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />}
-//                     </div>
-//                     <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{item.body}</p>
-//                     <div className="mt-1 font-mono text-[10px] text-muted-foreground/70">{new Date(item.createdAt).toLocaleString()}</div>
-//                   </div>
-//                 </div>
-//               )
-//             })}
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   )
-// }
 function NotificationBell({ activeStore }: { activeStore: StoreData | null }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<NotificationRecord[]>([])
@@ -1116,6 +1018,16 @@ function MobileSidebarDrawer({
   onLoadConversation: (c: Conversation) => void
   onDeleteConversation: (id: string) => void
 }) {
+  const [profileOpen, setProfileOpen] = useState(false)
+  const profileItems = [
+    { id: 'account', label: 'Account', icon: UserCircle },
+    { id: 'billing', label: 'Billing', icon: CreditCard },
+    { id: 'domains', label: 'Domains', icon: Globe2 },
+    { id: 'help', label: 'Get Help', icon: HelpCircle },
+  ]
+
+  useEffect(() => { if (!open) setProfileOpen(false) }, [open])
+
   return (
     <AnimatePresence>
       {open && (
@@ -1173,13 +1085,48 @@ function MobileSidebarDrawer({
               </div>
             </nav>
             {user && (
-              <div className="flex items-center gap-2.5 border-t border-border px-4 py-3.5">
-                <Image src={user.avatar} alt={user.name} width={32} height={32} className="rounded-full border border-border" unoptimized />
-                <div className="min-w-0 flex-1">
-                  {user.name && <div className="truncate text-xs font-medium">{user.name}</div>}
-                  <div className="truncate font-mono text-[10px] text-muted-foreground">{user.email}</div>
+              <div className="relative flex-shrink-0 border-t border-border">
+                <AnimatePresence>
+                  {profileOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
+                      className="absolute inset-x-3 bottom-[68px] z-10 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+                    >
+                      <div className="border-b border-border px-4 py-3">
+                        <div className="truncate text-sm font-semibold">{user.name || 'Merchant'}</div>
+                        <div className="truncate font-mono text-[11px] text-muted-foreground">{user.email}</div>
+                      </div>
+                      <div className="p-2">
+                        {profileItems.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => { setTab(item.id); setProfileOpen(false) }}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                          >
+                            <item.icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <div className="flex items-center gap-2.5 px-4 py-3.5">
+                  <button
+                    type="button"
+                    onClick={() => setProfileOpen((current) => !current)}
+                    className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl text-left outline-none"
+                  >
+                    <Image src={user.avatar} alt={user.name} width={32} height={32} className="flex-shrink-0 rounded-full border border-border" unoptimized />
+                    <div className="min-w-0 flex-1">
+                      {user.name && <div className="truncate text-xs font-medium">{user.name}</div>}
+                      <div className="truncate font-mono text-[10px] text-muted-foreground">{user.email}</div>
+                    </div>
+                    <ChevronRight className={`h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform ${profileOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-xl" onClick={onSignOut}><LogOut className="h-3.5 w-3.5" /></Button>
                 </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={onSignOut}><LogOut className="h-3.5 w-3.5" /></Button>
               </div>
             )}
           </motion.div>
@@ -1344,7 +1291,6 @@ function EmptyState({ input, setInput, send, sending, name, onAttach, conversati
 }
 
 // ── Chat input ─────────────────────────────────────────────────────────────────
-// Update ChatInput props type
 function ChatInput({ input, setInput, send, sending, onAttach, compact = false, pendingAttachment, onClearAttachment }: {
   input: string; setInput: (v: string) => void; send: () => void
   sending: boolean; onAttach: (f: File) => void; compact?: boolean
@@ -1489,21 +1435,23 @@ function PaginationControls({ page, total, pageSize, onPage }: { page: number; t
     </div>
   )
 }
-
 function OrderList({ rows, amountField }: { rows: OrderRecord[]; amountField?: 'merchant' | 'total' }) {
   return (
     <>
-      <GridHeader cols="grid-cols-[1.1fr_1.4fr_.7fr_.8fr_.8fr]" items={['order ref', 'customer', 'items', 'amount', 'date']} />
+      <GridHeader cols="grid-cols-[.8fr_1.4fr_.7fr_.8fr_.8fr]" items={['order ref', 'customer', 'items', 'amount', 'date']} />
       <div className="divide-y divide-border">
-        {rows.map((order) => (
-          <div key={order.id} className="grid grid-cols-[1.1fr_1.4fr_.7fr_.8fr_.8fr] gap-3 px-5 py-4 text-sm">
-            <div className="truncate font-mono text-xs">{order.paystackRef ?? order.id}</div>
-            <div className="truncate">{order.customerName || order.customerEmail}</div>
-            <div>{order.items?.length ?? 0} items</div>
-            <div>{money(amountField === 'merchant' ? order.merchantAmount ?? order.totalAmount : order.totalAmount, order.currency)}</div>
-            <div className="text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</div>
-          </div>
-        ))}
+        {rows.map((order) => {
+          const ref = order.paystackRef ?? order.id
+          return (
+            <div key={order.id} className="grid grid-cols-[.8fr_1.4fr_.7fr_.8fr_.8fr] gap-3 px-5 py-4 text-sm">
+              <div className="min-w-0 truncate font-mono text-xs" title={ref}>{shortOrderRef(ref)}</div>
+              <div className="min-w-0 truncate">{order.customerName || order.customerEmail}</div>
+              <div>{order.items?.length ?? 0} items</div>
+              <div>{money(amountField === 'merchant' ? order.merchantAmount ?? order.totalAmount : order.totalAmount, order.currency)}</div>
+              <div className="text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</div>
+            </div>
+          )
+        })}
       </div>
     </>
   )
@@ -1885,12 +1833,123 @@ function StoreTab({ stores, activeStore, onSelectStore, onStoreDeleted, reloadSt
   )
 }
 
+// ── Order detail modal ──────────────────────────────────────────────────────────
+function OrderDetailModal({ order, productImages, updating, onStatusChange, onClose }: {
+  order: OrderRecord
+  productImages: Record<string, string>
+  updating: boolean
+  onStatusChange: (status: string) => void
+  onClose: () => void
+}) {
+  const items = Array.isArray(order.items) ? order.items : []
+  const isPaid = hasConfirmedPayment(order)
+  const shippingParts = [order.shippingAddress, order.shippingCity, order.shippingCountry].filter(Boolean)
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm">
+      <div className="flex min-h-full items-start justify-center p-3 sm:items-center sm:p-4">
+        <div className="my-4 w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:my-8">
+          <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold">Order {order.paystackRef ?? order.id}</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString()}</p>
+            </div>
+            <button type="button" onClick={onClose} className="flex-shrink-0 rounded-xl p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="max-h-[75vh] overflow-y-auto px-5 py-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-border bg-background/60 p-3">
+                <div className="font-mono text-[10px] uppercase text-muted-foreground">Customer</div>
+                <div className="mt-1 truncate text-sm font-medium">{order.customerName || 'Unnamed customer'}</div>
+                <div className="truncate font-mono text-xs text-muted-foreground">{order.customerEmail}</div>
+                {order.customerPhone && <div className="mt-1 font-mono text-xs text-muted-foreground">{order.customerPhone}</div>}
+              </div>
+              <div className="rounded-xl border border-border bg-background/60 p-3">
+                <div className="font-mono text-[10px] uppercase text-muted-foreground">Shipping</div>
+                <div className="mt-1 text-sm">{shippingParts.length ? shippingParts.join(', ') : 'No shipping address provided'}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <StatusBadge status={isPaid ? 'paid' : 'awaiting'} />
+              <select
+                value={order.status}
+                disabled={updating}
+                onChange={(e) => onStatusChange(e.target.value)}
+                className="h-8 rounded-lg border border-border bg-background px-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              >
+                {!ORDER_STATUSES.includes(order.status) && <option value={order.status}>{order.status}</option>}
+                {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <span className="font-mono text-[11px] text-muted-foreground">Ref: {order.paystackRef ?? order.id}</span>
+            </div>
+
+            <div className="mt-5">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items ({items.length})</div>
+              <div className="space-y-2">
+                {items.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No item details recorded for this order.</p>
+                ) : items.map((item, index) => {
+                  const image = item.productId ? productImages[item.productId] : undefined
+                  const lineTotal = Number(item.price || 0) * Number(item.quantity || 1)
+                  return (
+                    <div key={`${item.productId ?? item.productName ?? 'item'}-${index}`} className="flex items-center gap-3 rounded-xl border border-border bg-background/60 p-3">
+                      <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-card/60">
+                        {image ? (
+                          <img src={image} alt={item.productName || 'Product'} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="grid h-full w-full place-items-center text-muted-foreground/30">
+                            <Package className="h-6 w-6" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{item.productName || 'Product'}</div>
+                        <div className="text-xs text-muted-foreground">Qty {item.quantity} · {money(item.price, order.currency)} each</div>
+                      </div>
+                      <div className="flex-shrink-0 text-sm font-semibold">{money(lineTotal, order.currency)}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-1.5 rounded-xl border border-border bg-background/60 p-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Order total</span>
+                <span className="font-semibold">{money(order.totalAmount, order.currency)}</span>
+              </div>
+              {order.seltraFee != null && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Seltra fee</span>
+                  <span>{money(order.seltraFee, order.currency)}</span>
+                </div>
+              )}
+              {order.merchantAmount != null && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Merchant proceeds</span>
+                  <span>{money(order.merchantAmount, order.currency)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
   const [rows, setRows] = useState<OrderRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [viewingOrder, setViewingOrder] = useState<OrderRecord | null>(null)
+  const [productImages, setProductImages] = useState<Record<string, string>>({})
   const pageSize = 8
   const visibleRows = rows
 
@@ -1909,6 +1968,25 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
   }, [activeStore, page])
   useEffect(() => { setPage(1) }, [activeStore])
 
+  // Load product images once per store so the order detail modal can show product photos.
+  useEffect(() => {
+    let cancelled = false
+    const loadImages = async () => {
+      const tenantId = storeIdOf(activeStore)
+      if (!tenantId) { setProductImages({}); return }
+      const { data } = await apiFetch<Paginated<ProductRecord>>(`/api/v1/seltra/store/${encodeURIComponent(tenantId)}/products?page=1&perPage=500`)
+      if (cancelled) return
+      const map: Record<string, string> = {}
+      ;(data?.data ?? []).forEach((product) => {
+        const image = product.images?.find((i) => i.isPrimary)?.url ?? product.images?.[0]?.url
+        if (image) map[product.id] = image
+      })
+      setProductImages(map)
+    }
+    void loadImages()
+    return () => { cancelled = true }
+  }, [activeStore])
+
   const updateOrderStatus = async (order: OrderRecord, status: string) => {
     setUpdatingId(order.id)
     const { data, error } = await apiFetch<OrderRecord>(`/api/v1/orders/${encodeURIComponent(order.id)}/status`, {
@@ -1917,6 +1995,7 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
     setUpdatingId(null)
     if (error) { toast.error(error); return }
     setRows((c) => c.map((item) => item.id === order.id ? { ...item, status: data?.status ?? status } : item))
+    setViewingOrder((current) => current && current.id === order.id ? { ...current, status: data?.status ?? status } : current)
     toast.success('Order status updated')
   }
 
@@ -1925,34 +2004,85 @@ function OrdersTab({ activeStore }: { activeStore: StoreData | null }) {
       <div className="mx-auto max-w-6xl px-6 py-10">
         <PageHeader tab="orders" title="Orders" subtitle="Every checkout your agent has processed." />
         <section className="overflow-hidden rounded-2xl border border-border bg-card/30">
-          <GridHeader cols="grid-cols-[1.2fr_1.4fr_.8fr_.8fr_.7fr_1fr]" items={['order ref', 'customer', 'items', 'amount', 'payment', 'status']} />
+          <div className="hidden md:block">
+            <GridHeader cols="grid-cols-[.9fr_1.3fr_.6fr_.8fr_1.1fr_.7fr]" items={['order ref', 'customer', 'items', 'amount', 'status', '']} />
+          </div>
           {loading ? <EmptyRows text="Loading orders…" /> : rows.length === 0 ? (
             <EmptyRows text={activeStore ? 'Orders appear after your first sale.' : 'Select or create a store first.'} />
           ) : (
             <div className="divide-y divide-border">
-              {visibleRows.map((order) => (
-                <div key={order.id} className="grid grid-cols-[1.2fr_1.4fr_.8fr_.8fr_.7fr_1fr] gap-3 px-5 py-4 text-sm">
-                  <div className="truncate font-mono text-xs">{order.paystackRef ?? order.id}</div>
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{order.customerName || order.customerEmail}</div>
-                    <div className="truncate font-mono text-[11px] text-muted-foreground">{order.customerEmail}</div>
+              {visibleRows.map((order) => {
+                const ref = order.paystackRef ?? order.id
+                return (
+                  <div key={order.id} className="px-4 py-4 text-sm md:grid md:grid-cols-[.9fr_1.3fr_.6fr_.8fr_1.1fr_.7fr] md:items-center md:gap-3 md:px-5">
+                    {/* ── Mobile card layout ── */}
+                    <div className="flex items-start justify-between gap-3 md:hidden">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{order.customerName || order.customerEmail}</div>
+                        <div className="truncate font-mono text-[11px] text-muted-foreground">{order.customerEmail}</div>
+                      </div>
+                      <span className="flex-shrink-0 font-mono text-xs text-muted-foreground" title={ref}>{shortOrderRef(ref)}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground md:hidden">
+                      <span>{order.items?.length ?? 0} items</span>
+                      <span className="font-semibold text-foreground">{money(order.totalAmount, order.currency)}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 md:hidden">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <StatusBadge status={hasConfirmedPayment(order) ? 'paid' : 'awaiting'} />
+                        <select value={order.status} disabled={updatingId === order.id}
+                          onChange={(e) => void updateOrderStatus(order, e.target.value)}
+                          className="h-8 rounded-lg border border-border bg-background px-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-50">
+                          {!ORDER_STATUSES.includes(order.status) && <option value={order.status}>{order.status}</option>}
+                          {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-full px-3" onClick={() => setViewingOrder(order)}>
+                        <Eye className="h-3.5 w-3.5" /> View
+                      </Button>
+                    </div>
+
+                    {/* ── Desktop grid cells ── */}
+                    <div className="hidden min-w-0 md:block">
+                      <span className="truncate font-mono text-xs" title={ref}>{shortOrderRef(ref)}</span>
+                    </div>
+                    <div className="hidden min-w-0 md:block">
+                      <div className="truncate font-medium">{order.customerName || order.customerEmail}</div>
+                      <div className="truncate font-mono text-[11px] text-muted-foreground">{order.customerEmail}</div>
+                    </div>
+                    <div className="hidden md:block">{order.items?.length ?? 0} items</div>
+                    <div className="hidden font-semibold md:block">{money(order.totalAmount, order.currency)}</div>
+                    <div className="hidden min-w-0 md:flex md:flex-col md:items-start md:gap-1.5">
+                      <StatusBadge status={hasConfirmedPayment(order) ? 'paid' : 'awaiting'} />
+                      <select value={order.status} disabled={updatingId === order.id}
+                        onChange={(e) => void updateOrderStatus(order, e.target.value)}
+                        className="h-8 w-full max-w-[130px] rounded-lg border border-border bg-background px-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-50">
+                        {!ORDER_STATUSES.includes(order.status) && <option value={order.status}>{order.status}</option>}
+                        {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div className="hidden md:flex md:items-center md:justify-end">
+                      <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-full px-3" onClick={() => setViewingOrder(order)}>
+                        <Eye className="h-3.5 w-3.5" /> View
+                      </Button>
+                    </div>
                   </div>
-                  <div>{order.items?.length ?? 0} items</div>
-                  <div className="font-semibold">{money(order.totalAmount, order.currency)}</div>
-                  <StatusBadge status={hasConfirmedPayment(order) ? 'paid' : 'awaiting'} />
-                  <select value={order.status} disabled={updatingId === order.id}
-                    onChange={(e) => void updateOrderStatus(order, e.target.value)}
-                    className="h-8 rounded-lg border border-border bg-background px-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring disabled:opacity-50">
-                    {!ORDER_STATUSES.includes(order.status) && <option value={order.status}>{order.status}</option>}
-                    {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
           <PaginationControls page={page} total={total} pageSize={pageSize} onPage={setPage} />
         </section>
       </div>
+      {viewingOrder && (
+        <OrderDetailModal
+          order={viewingOrder}
+          productImages={productImages}
+          updating={updatingId === viewingOrder.id}
+          onStatusChange={(status) => void updateOrderStatus(viewingOrder, status)}
+          onClose={() => setViewingOrder(null)}
+        />
+      )}
     </div>
   )
 }
@@ -1993,7 +2123,6 @@ function SalesTab({ activeStore }: { activeStore: StoreData | null }) {
   }, [range, rows])
   const revenue = filteredRows.reduce((s, o) => s + Number(o.merchantAmount ?? o.totalAmount ?? 0), 0)
   const average = filteredRows.length ? revenue / filteredRows.length : 0
-  // const storeUrl = activeStore && typeof window !== 'undefined' ? `${window.location.origin}/store/${activeStore.slug}` : ''
   const storeUrl = storefrontUrl(activeStore)
 
   return (
@@ -2792,6 +2921,12 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
   const [accountStoresPage, setAccountStoresPage] = useState(1)
   const accountStoresPageSize = 4
 
+  // ── Editable subdomain state (now edited via modal) ──
+  const [domainSlug, setDomainSlug] = useState(activeStore?.slug ?? '')
+  const [savingDomain, setSavingDomain] = useState(false)
+  const [domainError, setDomainError] = useState('')
+  const [editDomainOpen, setEditDomainOpen] = useState(false)
+
   useEffect(() => {
     setName(activeStore?.name ?? '')
     setBusinessType(activeStore?.businessType ?? '')
@@ -2806,11 +2941,12 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
       accountName: activeStore?.payoutAccountName ?? '',
     })
     setPayoutError('')
+    setDomainSlug(activeStore?.slug ?? '')
+    setDomainError('')
+    setEditDomainOpen(false)
   }, [activeStore])
 
   // ── Plan / tier (dynamic) ──────────────────────────────────────────────
-  // Heuristic based on what the client actually has: more than 1 store implies premium.
-  // Swap this for a real `user.plan` field from the API once it's exposed to the frontend.
   const isPremium = stores.length > 1
   const plan: 'free' | 'premium' = isPremium ? 'premium' : 'free'
   const storeLimit = isPremium ? 3 : 1
@@ -2857,6 +2993,45 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
     if (error || !data) { toast.error(error || 'Could not save account'); return }
     onStoreUpdated(data)
     toast.success(accountName ? `Account updated for ${accountName}` : 'Account updated')
+  }
+
+  // ── Save the merchant's chosen subdomain from the edit modal. Only touches
+  // slug/storeUrl on the tenant — products, orders, payments stay untouched. ──
+  const saveDomainSlug = async () => {
+    const id = storeIdOf(activeStore)
+    if (!id || savingDomain) return
+    const normalized = domainSlug.trim().toLowerCase()
+
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(normalized)) {
+      setDomainError('Use lowercase letters, numbers, and hyphens only — no leading, trailing, or double hyphens.')
+      return
+    }
+    if (normalized.length < 3 || normalized.length > 63) {
+      setDomainError('Subdomain must be between 3 and 63 characters.')
+      return
+    }
+    if (normalized === activeStore?.slug) {
+      setDomainError('')
+      setEditDomainOpen(false)
+      return
+    }
+
+    setDomainError('')
+    setSavingDomain(true)
+    const { data, error } = await apiFetch<StoreData>(`/api/v1/seltra/store/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ slug: normalized }),
+    })
+    setSavingDomain(false)
+    if (error || !data) {
+      setDomainError(error || 'Could not update subdomain')
+      toast.error(error || 'Could not update subdomain')
+      return
+    }
+    setDomainSlug(data.slug)
+    onStoreUpdated(data)
+    setEditDomainOpen(false)
+    toast.success('Subdomain updated')
   }
 
   const title = mode === 'billing' ? 'Billing' : mode === 'domains' ? 'Domains' : mode === 'help' ? 'Get Help' : 'Account'
@@ -3043,17 +3218,28 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
                     {activeStore.slug}.{ROOT_DOMAIN}
                   </a>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-shrink-0 rounded-full"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(storefrontUrl(activeStore))
-                    toast.success('Subdomain copied')
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" /> Copy
-                </Button>
+                <div className="flex flex-shrink-0 items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 rounded-full p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => { setDomainSlug(activeStore.slug); setDomainError(''); setEditDomainOpen(true) }}
+                    aria-label="Edit subdomain"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(storefrontUrl(activeStore))
+                      toast.success('Subdomain copied')
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Copy
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-dashed border-border bg-background/50 p-6 text-center text-sm text-muted-foreground">
@@ -3102,6 +3288,65 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
         )}
       </div>
 
+      {editDomainOpen && activeStore && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">Change subdomain</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Your products, orders, and settings stay exactly the same — only the link changes.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEditDomainOpen(false); setDomainSlug(activeStore.slug); setDomainError('') }}
+                className="rounded-xl p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <label className="mt-5 grid gap-1.5 text-sm">Subdomain
+              <div className="flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-ring">
+                <input
+                  value={domainSlug}
+                  onChange={(e) => { setDomainSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')); setDomainError('') }}
+                  className="min-w-0 flex-1 bg-transparent font-mono text-sm outline-none"
+                  placeholder="your-store-name"
+                  maxLength={63}
+                  autoFocus
+                />
+                <span className="flex-shrink-0 font-mono text-xs text-muted-foreground">.{ROOT_DOMAIN}</span>
+              </div>
+            </label>
+            {domainError ? (
+              <p className="mt-2 text-xs text-red-500">{domainError}</p>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only. 3–63 characters.</p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={() => { setEditDomainOpen(false); setDomainSlug(activeStore.slug); setDomainError('') }}
+                disabled={savingDomain}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="rounded-full"
+                onClick={() => void saveDomainSlug()}
+                disabled={savingDomain || !domainSlug.trim() || domainSlug.trim().toLowerCase() === activeStore.slug}
+              >
+                {savingDomain ? 'Saving…' : 'Save subdomain'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {upgradeOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
@@ -3129,82 +3374,82 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
   )
 }
 
-function SettingsTab({ activeStore, user, storesCount, onStoreUpdated }: {
-  activeStore: StoreData | null; user: { email: string; name: string; avatar: string; joinedAt?: string } | null
-  storesCount: number; onStoreUpdated: (s: StoreData) => void
-}) {
-  const [name, setName] = useState(activeStore?.name ?? '')
-  const [businessType, setBusinessType] = useState(activeStore?.businessType ?? '')
-  const [targetAudience, setTargetAudience] = useState(activeStore?.targetAudience ?? '')
-  const [saving, setSaving] = useState(false)
+// function SettingsTab({ activeStore, user, storesCount, onStoreUpdated }: {
+//   activeStore: StoreData | null; user: { email: string; name: string; avatar: string; joinedAt?: string } | null
+//   storesCount: number; onStoreUpdated: (s: StoreData) => void
+// }) {
+//   const [name, setName] = useState(activeStore?.name ?? '')
+//   const [businessType, setBusinessType] = useState(activeStore?.businessType ?? '')
+//   const [targetAudience, setTargetAudience] = useState(activeStore?.targetAudience ?? '')
+//   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    setName(activeStore?.name ?? ''); setBusinessType(activeStore?.businessType ?? ''); setTargetAudience(activeStore?.targetAudience ?? '')
-  }, [activeStore])
+//   useEffect(() => {
+//     setName(activeStore?.name ?? ''); setBusinessType(activeStore?.businessType ?? ''); setTargetAudience(activeStore?.targetAudience ?? '')
+//   }, [activeStore])
 
-  const save = async () => {
-    const id = storeIdOf(activeStore)
-    if (!id || saving) return
-    setSaving(true)
-    const { data, error } = await apiFetch<StoreData>(`/api/v1/seltra/store/${encodeURIComponent(id)}`, {
-      method: 'PATCH', body: JSON.stringify({ name, businessType, targetAudience }),
-    })
-    setSaving(false)
-    if (error || !data) { toast.error(error || 'Could not save settings'); return }
-    onStoreUpdated(data); toast.success('Settings saved')
-  }
+//   const save = async () => {
+//     const id = storeIdOf(activeStore)
+//     if (!id || saving) return
+//     setSaving(true)
+//     const { data, error } = await apiFetch<StoreData>(`/api/v1/seltra/store/${encodeURIComponent(id)}`, {
+//       method: 'PATCH', body: JSON.stringify({ name, businessType, targetAudience }),
+//     })
+//     setSaving(false)
+//     if (error || !data) { toast.error(error || 'Could not save settings'); return }
+//     onStoreUpdated(data); toast.success('Settings saved')
+//   }
 
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        <PageHeader tab="settings" title="Settings" subtitle="Account, merchant workspace and active tenant settings." />
-        <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
-          <section className="rounded-2xl border border-border bg-card/40 p-5">
-            <h2 className="text-sm font-semibold">Merchant</h2>
-            <div className="mt-4 space-y-3 text-sm">
-              <div className="flex items-center gap-3">
-                {user?.avatar && <img src={user.avatar} alt={user.name || 'Merchant'} className="h-14 w-14 rounded-full border border-border bg-muted object-cover" />}
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{user?.name || 'Merchant'}</div>
-                  <div className="truncate font-mono text-[11px] text-muted-foreground">{user?.email}</div>
-                </div>
-              </div>
-              {[{ label: 'name', value: user?.name || 'Merchant' }, { label: 'email', value: user?.email || 'Unknown' }].map(({ label, value }) => (
-                <div key={label}>
-                  <div className="font-mono text-[10px] text-muted-foreground">{label}</div>
-                  <div className="break-all">{value}</div>
-                </div>
-              ))}
-              <div>
-                <div className="font-mono text-[10px] text-muted-foreground">date joined</div>
-                <div className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-primary" />{user?.joinedAt ? new Date(user.joinedAt).toLocaleDateString() : 'Unknown'}</div>
-              </div>
-              <div><div className="font-mono text-[10px] text-muted-foreground">stores owned</div><div>{storesCount}</div></div>
-            </div>
-          </section>
-          <section className="rounded-2xl border border-border bg-card/40 p-5">
-            <h2 className="text-sm font-semibold">Active Store</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">{activeStore ? `${activeStore.slug}.seltra.co` : 'Create or select a store first.'}</p>
-            <div className="mt-5 grid gap-3">
-              {(['Store name', 'Business type'] as const).map((label) => (
-                <label key={label} className="grid gap-1.5 text-sm">{label}
-                  <input
-                    value={label === 'Store name' ? name : businessType}
-                    onChange={(e) => label === 'Store name' ? setName(e.target.value) : setBusinessType(e.target.value)}
-                    disabled={!activeStore}
-                    className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                  />
-                </label>
-              ))}
-              <label className="grid gap-1.5 text-sm">Target audience
-                <textarea value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} disabled={!activeStore} rows={3}
-                  className="resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
-              </label>
-              <Button onClick={() => void save()} disabled={!activeStore || saving} className="justify-self-start rounded-full">{saving ? 'Saving…' : 'Save settings'}</Button>
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
-  )
-}
+//   return (
+//     <div className="flex-1 overflow-y-auto">
+//       <div className="mx-auto max-w-5xl px-6 py-10">
+//         <PageHeader tab="settings" title="Settings" subtitle="Account, merchant workspace and active tenant settings." />
+//         <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
+//           <section className="rounded-2xl border border-border bg-card/40 p-5">
+//             <h2 className="text-sm font-semibold">Merchant</h2>
+//             <div className="mt-4 space-y-3 text-sm">
+//               <div className="flex items-center gap-3">
+//                 {user?.avatar && <img src={user.avatar} alt={user.name || 'Merchant'} className="h-14 w-14 rounded-full border border-border bg-muted object-cover" />}
+//                 <div className="min-w-0">
+//                   <div className="truncate font-medium">{user?.name || 'Merchant'}</div>
+//                   <div className="truncate font-mono text-[11px] text-muted-foreground">{user?.email}</div>
+//                 </div>
+//               </div>
+//               {[{ label: 'name', value: user?.name || 'Merchant' }, { label: 'email', value: user?.email || 'Unknown' }].map(({ label, value }) => (
+//                 <div key={label}>
+//                   <div className="font-mono text-[10px] text-muted-foreground">{label}</div>
+//                   <div className="break-all">{value}</div>
+//                 </div>
+//               ))}
+//               <div>
+//                 <div className="font-mono text-[10px] text-muted-foreground">date joined</div>
+//                 <div className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-primary" />{user?.joinedAt ? new Date(user.joinedAt).toLocaleDateString() : 'Unknown'}</div>
+//               </div>
+//               <div><div className="font-mono text-[10px] text-muted-foreground">stores owned</div><div>{storesCount}</div></div>
+//             </div>
+//           </section>
+//           <section className="rounded-2xl border border-border bg-card/40 p-5">
+//             <h2 className="text-sm font-semibold">Active Store</h2>
+//             <p className="mt-0.5 text-xs text-muted-foreground">{activeStore ? `${activeStore.slug}.seltra.co` : 'Create or select a store first.'}</p>
+//             <div className="mt-5 grid gap-3">
+//               {(['Store name', 'Business type'] as const).map((label) => (
+//                 <label key={label} className="grid gap-1.5 text-sm">{label}
+//                   <input
+//                     value={label === 'Store name' ? name : businessType}
+//                     onChange={(e) => label === 'Store name' ? setName(e.target.value) : setBusinessType(e.target.value)}
+//                     disabled={!activeStore}
+//                     className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+//                   />
+//                 </label>
+//               ))}
+//               <label className="grid gap-1.5 text-sm">Target audience
+//                 <textarea value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} disabled={!activeStore} rows={3}
+//                   className="resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
+//               </label>
+//               <Button onClick={() => void save()} disabled={!activeStore || saving} className="justify-self-start rounded-full">{saving ? 'Saving…' : 'Save settings'}</Button>
+//             </div>
+//           </section>
+//         </div>
+//       </div>
+//     </div>
+//   )
+// }

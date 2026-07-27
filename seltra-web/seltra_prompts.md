@@ -407,6 +407,334 @@ The merchant has used AI before and is comfortable with AI-assisted commerce but
 
 Create a premium, conversion-focused fashion store that is launch-ready, visually polished, and capable of scaling as Waffles & Co. grows.
 
+------------------------------------------
+Build a modern electronics ecommerce store for the following merchant.
+
+## Merchant Information
+
+Business Name: Cheap Laptop and Accessories
+Store Name: Cheap Laptop and Accessories
+Industry: Consumer Electronics
+Location: Accra, Ghana
+Business Stage: Just starting out (no sales yet)
+
+## Brand Overview
+
+Cheap Laptop and Accessories provides affordable new and UK-used laptops alongside essential computer accessories. The brand focuses on delivering reliable technology products at competitive prices for students, professionals, businesses, and everyday users.
+
+## Target Audience
+
+- University students
+- Office professionals
+- Small businesses
+- Remote workers
+- Gamers on a budget
+- Anyone looking for affordable and reliable laptops and accessories
+
+## Brand Personality
+
+- Affordable
+- Reliable
+- Professional
+- Modern
+- Trustworthy
+- Customer-focused
+
+## Store Theme
+
+Generate a clean, modern electronics storefront featuring:
+
+- Large hero banner
+- Featured products
+- Laptop categories
+- Accessories section
+- Best Sellers
+- New Arrivals
+- Special Deals
+- Customer testimonials
+- Newsletter signup
+- Mobile-first responsive layout
+- Clean white and blue color palette with subtle dark accents
+- Professional product-focused design
+
+## Collections
+
+Create the following collections:
+
+- New Laptops
+- UK-Used Laptops
+- Laptop Accessories
+- Storage Devices
+- Input Devices
+- Best Sellers
+- New Arrivals
+- Deals & Discounts
+
+## Initial Products
+
+Generate realistic products with names, descriptions, pricing, categories, specifications, and variants.
+
+Example product lineup should include items such as:
+
+- HP EliteBook 840 G8
+- Dell Latitude 5420
+- Lenovo ThinkPad T14
+- MacBook Air (UK Used)
+- Logitech Wireless Mouse
+- Mechanical Keyboard
+- Adjustable Laptop Stand
+- Laptop Cooling Pad
+- Laptop Battery Replacement
+- 1TB External HDD
+- 512GB External SSD
+- USB-C Docking Station
+
+### Pricing
+
+Use realistic Ghanaian pricing:
+
+- UK-Used Laptops: GHS 2,000–6,000
+- New Laptops: GHS 4,500–12,000
+- Keyboards: GHS 120–600
+- Mouse: GHS 50–300
+- Laptop Stands: GHS 100–350
+- Laptop Batteries: GHS 180–600
+- External HDD: GHS 450–1,000
+- External SSD: GHS 700–2,000
+
+Generate final prices naturally within these ranges.
+
+## Product Variants
+
+Generate realistic variants where applicable, including:
+
+- Brand
+- Storage capacity
+- RAM
+- Processor
+- Screen size
+- Color
+- Condition (New or UK-Used)
+- Warranty period
+
+## Important
+
+The AI agent should automatically determine:
+
+- Product quantities
+- Inventory levels
+- SKU values
+- Product images
+- Product weight
+- SEO metadata
+- Product tags
+
+Do not ask the merchant for these.
+
+## Payments
+
+Configure the store to support Paystack.
+
+## Shipping
+
+Generate standard shipping options for Ghana.
+
+## AI Permissions
+
+The merchant has basic familiarity with AI and has previously used GitHub Copilot. They find AI helpful but prefer to review AI-generated recommendations before changes are published. Configure the store so AI suggestions require merchant approval before major updates.
+
+## Overall Goal
+
+Create a professional, trustworthy, and conversion-focused electronics store that showcases affordable new and UK-used laptops and accessories, helping Cheap Laptop and Accessories establish a strong online presence and grow from its first sales.
+
+--------------------------------------------------------
+
+Build a premium food ordering and takeout ecommerce store for the following merchant.
+
+## Merchant Information
+
+Business Name: Takumi Gh
+Store Name: Takumi
+Industry: Food & Beverage
+Location: Tse Addo, Accra, Ghana
+Business Stage: Early-stage business (under GHS 1,000/month)
+
+## Brand Overview
+
+Takumi is a Japanese-inspired food brand offering freshly prepared meals for takeaway and delivery. The experience should feel authentic, modern, minimalist, and premium, bringing the aesthetics and quality associated with Japanese cuisine to customers in Ghana. The storefront should emphasize delicious food, fast ordering, and a clean dining experience.
+
+## Target Audience
+
+- Japanese food lovers
+- Young professionals
+- University students
+- Families
+- Food enthusiasts
+- Customers ordering lunch and dinner
+- Takeout and delivery customers
+
+## Brand Personality
+
+- Authentic
+- Modern
+- Minimal
+- Premium
+- Warm
+- Fresh
+- Fast
+- Elegant
+
+## Store Theme
+
+Generate a modern Japanese-inspired storefront featuring:
+
+- Full-width hero banner showcasing Japanese cuisine
+- Featured meals
+- Popular dishes
+- Chef's Recommendations
+- Lunch Specials
+- Dinner Menu
+- Drinks
+- Combo Meals
+- Customer testimonials
+- Instagram gallery section
+- Mobile-first responsive design
+- Clean white background with black typography and subtle red accents inspired by Japanese aesthetics
+- Smooth animations and premium food photography layout
+
+## Collections
+
+Create the following collections:
+
+- Signature Meals
+- Rice Bowls
+- Noodles
+- Sushi & Rolls
+- Bento Boxes
+- Starters
+- Sides
+- Desserts
+- Drinks
+- Combo Meals
+- Best Sellers
+- New Specials
+
+## Initial Products
+
+Generate realistic menu items with names, descriptions, pricing, ingredients, and options.
+
+Example menu should include items such as:
+
+- Chicken Katsu Curry
+- Beef Teriyaki Bowl
+- Chicken Teriyaki Bowl
+- Spicy Karaage Chicken
+- Takumi Bento Box
+- Chicken Yakisoba
+- Beef Yakisoba
+- Japanese Fried Rice
+- California Roll
+- Salmon Roll
+- Gyoza Dumplings
+- Takoyaki
+- Miso Soup
+- Matcha Cheesecake
+- Japanese Lemonade
+- Iced Matcha Latte
+
+### Pricing
+
+Use realistic Ghanaian pricing:
+
+- Rice Bowls: GHS 65–110
+- Noodle Dishes: GHS 60–100
+- Bento Boxes: GHS 95–150
+- Sushi Rolls: GHS 70–140
+- Starters: GHS 25–60
+- Desserts: GHS 30–60
+- Drinks: GHS 15–40
+- Combo Meals: GHS 120–180
+
+Generate final prices naturally within these ranges.
+
+## Product Options
+
+Generate realistic options where applicable:
+
+- Protein choice (Chicken, Beef, Salmon, Vegetarian)
+- Spice level
+- Extra protein
+- Extra rice
+- Extra sauce
+- Drink add-on
+- Portion size
+
+## Important
+
+The AI agent should automatically determine:
+
+- Menu availability
+- Product quantities
+- Daily inventory
+- Product images
+- SKU values
+- Preparation time
+- SEO metadata
+- Product tags
+
+Do not ask the merchant for these.
+
+## Payments
+
+Configure the store to support Paystack.
+
+## Fulfillment
+
+Configure the business primarily for:
+
+- Takeout / Pickup
+- Local Delivery within Accra
+
+Generate realistic delivery zones, delivery fees, preparation times, and pickup instructions suitable for a food business in Accra.
+
+## Social Presence
+
+Use the merchant's Instagram as inspiration for the store's branding, menu presentation, and visual style while maintaining a polished ecommerce experience.
+
+Instagram:
+https://www.instagram.com/takumi_gh
+
+## AI Permissions
+
+The merchant is highly comfortable with AI, actively uses ChatGPT, and has explicitly authorized Seltra AI to manage the business.
+
+Configure autonomous AI capabilities including:
+
+- Automatically generating seasonal menu promotions
+- Optimizing pricing recommendations
+- Recommending best-selling meals
+- Creating marketing campaigns
+- Managing homepage merchandising
+- Generating promotional banners
+- Scheduling discounts during low-demand periods
+- Suggesting inventory replenishment
+- Producing SEO content
+- Writing product descriptions
+- Generating email and SMS campaigns
+
+Major operational decisions should still be surfaced for visibility, but day-to-day merchandising and marketing may be automated.
+
+## Overall Goal
+
+Create a premium, Japanese-inspired food ordering experience that feels authentic, elegant, and fast. The store should be optimized for mobile ordering, takeout, and local delivery, while using Seltra AI to continuously improve merchandising, marketing, and customer engagement with minimal merchant intervention.
+
+
+
+
+
+
+
+
 //seltra context engineering MVP:
 - memory
 -

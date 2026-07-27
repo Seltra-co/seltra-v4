@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common'
+import { Injectable, NotFoundException, UnauthorizedException, BadRequestException, ConflictException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { generateBlueprint, generateProducts, classifyLayout, generateManifest, generateHeroNavSources } from '../ai'
 import { buildImagePromptPrefix, extractDNA } from '../ai/agents/dna.agent'
@@ -24,6 +24,20 @@ function emitFileChunks(ctx: BuildContext | undefined, file: string, content: st
   for (let i = 0; i < content.length; i += chunkSize) {
     ctx.emit({ type: 'chunk', file, content: content.slice(i, i + chunkSize) })
   }
+}
+
+// Slugs must be safe as a DNS label: lowercase letters, numbers, and single
+// hyphens, no leading/trailing hyphen, 3-63 chars.
+const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
+
+function normalizeAndValidateSlug(rawSlug: string): string {
+  const slug = rawSlug.trim().toLowerCase()
+  if (!SLUG_PATTERN.test(slug) || slug.length < 3 || slug.length > 63) {
+    throw new BadRequestException(
+      'Subdomain must be 3-63 characters: lowercase letters, numbers, and hyphens only (no leading, trailing, or double hyphens).',
+    )
+  }
+  return slug
 }
 
 @Injectable()
@@ -441,6 +455,7 @@ export class StoreService {
       payoutProvider?: string
       payoutProviderCode?: string
       payoutAccount?: string
+      slug?: string
     },
     authorization?: string,
   ) {
@@ -449,6 +464,21 @@ export class StoreService {
     if (!tenant || (tenant.ownerId && tenant.ownerId !== ownerId)) {
       throw new NotFoundException(`Store "${id}" not found`)
     }
+
+    // ── Subdomain rename: only touches slug/storeUrl, everything else on the
+    // tenant (products, orders, payments, etc.) is untouched and keyed by id. ──
+    let nextSlug: string | undefined
+    if (data.slug !== undefined && data.slug !== tenant.slug) {
+      nextSlug = normalizeAndValidateSlug(data.slug)
+      const taken = await prisma.tenant.findFirst({
+        where: { slug: nextSlug, NOT: { id } },
+        select: { id: true },
+      })
+      if (taken) {
+        throw new ConflictException('That subdomain is already taken. Please choose another.')
+      }
+    }
+
     const preferences = {
       ...((tenant.preferences as Record<string, unknown> | null) ?? {}),
       ...(data.region ? { region: data.region } : {}),
@@ -465,6 +495,7 @@ export class StoreService {
       payoutProviderCode: data.payoutProviderCode,
       payoutAccount: data.payoutAccount,
       ownerId: tenant.ownerId ?? ownerId,
+      ...(nextSlug ? { slug: nextSlug, storeUrl: `${nextSlug}.seltra.co` } : {}),
     }
     const updated = await prisma.tenant.update({
       where: { id },
