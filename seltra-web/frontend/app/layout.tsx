@@ -1,3 +1,4 @@
+//seltra-web/frontend/app/layout.tsx
 import type { Metadata } from 'next'
 import Script from 'next/script'
 import { GeistSans } from 'geist/font/sans'

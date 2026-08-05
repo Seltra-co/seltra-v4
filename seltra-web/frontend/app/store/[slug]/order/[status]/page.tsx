@@ -1,3 +1,4 @@
+//seltra-web/frontend/app/store/[slug]/order/[status]/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -138,16 +139,16 @@ export default function OrderStatusPage() {
           </div>
         )}
 
-        {/* <Button asChild className="w-full gap-2">
+        <Button asChild className="w-full gap-2">
           <Link href={`/store/${params.slug}`}>
             <ShoppingBag className="h-4 w-4" /> Continue shopping
           </Link>
-        </Button> */}
-        <Button asChild className="w-full gap-2">
+        </Button>
+        {/* <Button asChild className="w-full gap-2">
           <Link href="/">
             <ShoppingBag className="h-4 w-4" /> Continue shopping
           </Link>
-        </Button>
+        </Button> */}
         <p className="mt-5 text-xs text-muted-foreground">
           Checkout, receipt, and order updates powered by Seltra.
         </p>

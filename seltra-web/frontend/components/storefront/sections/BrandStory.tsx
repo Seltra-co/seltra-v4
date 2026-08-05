@@ -113,19 +113,20 @@ export function BrandStory({
 
                 </div>
 
-                {!centered && (
+                {(centered || !centered) && (
 
                     <motion.div
                         initial={{ opacity: 0, scale: .97 }}
                         whileInView={{ opacity: 1, scale: 1 }}
                         viewport={{ once: true }}
-                        className="relative hidden lg:block"
+                        className={`relative ${centered ? 'w-full max-w-3xl' : 'hidden lg:block'}`}
                     >
 
                         <div
-                            className="relative aspect-[4/3] overflow-hidden rounded-2xl"
+                            className="relative overflow-hidden rounded-2xl"
                             style={{
                                 background: 'var(--store-accent-soft)',
+                                aspectRatio: centered ? '16 / 9' : '4 / 3',
                             }}
                         >
 
@@ -133,7 +134,7 @@ export function BrandStory({
 
                                 <Image
                                     src={storyImageUrl}
-                                    alt={headline}
+                                    alt={headline || 'Brand story image'}
                                     fill
                                     className="object-cover"
                                 />
@@ -152,35 +153,37 @@ export function BrandStory({
 
                         </div>
 
-                        <div
-                            className="absolute -bottom-4 -right-4 rounded-xl border px-5 py-4"
-                            style={{
-                                background: 'var(--store-surface)',
-                                borderColor: 'var(--store-border)',
-                                boxShadow:
-                                    '0 8px 32px rgba(0,0,0,.08)',
-                            }}
-                        >
-
+                        {!centered && (
                             <div
-                                className="store-heading text-2xl font-black"
+                                className="absolute -bottom-4 -right-4 rounded-xl border px-5 py-4"
                                 style={{
-                                    color: 'var(--store-accent)',
+                                    background: 'var(--store-surface)',
+                                    borderColor: 'var(--store-border)',
+                                    boxShadow:
+                                        '0 8px 32px rgba(0,0,0,.08)',
                                 }}
                             >
-                                100%
-                            </div>
 
-                            <div
-                                className="store-eyebrow mt-1"
-                                style={{
-                                    color: 'var(--store-muted)',
-                                }}
-                            >
-                                Satisfaction
-                            </div>
+                                <div
+                                    className="store-heading text-2xl font-black"
+                                    style={{
+                                        color: 'var(--store-accent)',
+                                    }}
+                                >
+                                    100%
+                                </div>
 
-                        </div>
+                                <div
+                                    className="store-eyebrow mt-1"
+                                    style={{
+                                        color: 'var(--store-muted)',
+                                    }}
+                                >
+                                    Satisfaction
+                                </div>
+
+                            </div>
+                        )}
 
                     </motion.div>
 

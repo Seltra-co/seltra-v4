@@ -1,4 +1,4 @@
-// seltra-web/frontend/app/(dashboard)/dashboard/page.tsx
+//seltra-web/frontend/app/(dashboard)/dashboard/page.tsx
 'use client'
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
@@ -6,8 +6,8 @@ import Image from 'next/image'
 import {
   Send, Plus, LogOut, Package, BarChart3, Home,
   Store as StoreIcon, ShoppingBag, Users, Mail,
-  Settings, ChevronLeft, ChevronRight,
-  TrendingUp, Wallet, Menu, X, Trash2, Copy, CalendarDays,
+  ChevronLeft, ChevronRight,
+  TrendingUp, Wallet, Menu, X, Trash2, Copy,
   MessageSquare, Sparkles, ArrowRight, Palette, Megaphone,
   Zap, ShoppingCart, Bell, CreditCard, ShieldCheck, CheckCheck,
   FileText, Bot, UserCircle, HelpCircle, Globe2, Building2, LockKeyhole,
@@ -138,10 +138,72 @@ const NAV_TABS = [
   { id: 'home',      label: 'Agent',     icon: Bot        },
 ]
 
-type Msg = { role: 'user' | 'assistant'; content: string }
-type UserRecord = { id?: string; email: string; name?: string; created_at?: string; createdAt?: string; user_metadata?: Record<string, string | undefined> }
+// ── Business Planner Agent types (mirrors backend/src/ai/agents/business-planner.agent.ts) ──
+type PlannerQuestion = { id: string; question: string; why: string; options?: string[] }
+type PlannerResult = { readyToBuild: boolean; questions: PlannerQuestion[]; inferredSummary: string }
+
+// Msg now supports an inline 'planner-question' role so clarifying questions
+// render as part of the normal chat thread instead of a blocking modal.
+type Msg = { role: 'user' | 'assistant' | 'planner-question'; content: string; question?: PlannerQuestion }
+
+function UserPromptBubble({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = content.length > 240 || content.split('\n').length > 4
+
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[85%] rounded-2xl rounded-tr-md border border-border/60 bg-card/60 px-4 py-3">
+        <div className={`whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/90 ${isLong && !expanded ? 'line-clamp-6' : ''}`}>
+          {content}
+        </div>
+        {isLong && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+          >
+            {expanded ? 'Show less' : 'Show more'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AgentReply({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = content.length > 500 || content.split('\n').length > 6
+
+  return (
+    <div className="max-w-[92%] rounded-2xl border border-border/60 bg-card/20 px-4 py-3 text-[13px] leading-relaxed text-foreground/90">
+      <div className={`whitespace-pre-wrap ${isLong && !expanded ? 'line-clamp-6' : ''}`}>
+        {content}
+      </div>
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+type UserRecord = {
+  id?: string
+  email: string
+  name?: string
+  created_at?: string
+  createdAt?: string
+  plan?: 'free' | 'premium'
+  user_metadata?: Record<string, string | undefined>
+}
 type Conversation = { id: string; title: string; created_at?: string; updated_at?: string; user_id?: string }
 type MessageRecord = { id: string; conversation_id: string; role: 'user' | 'assistant'; content: string; created_at: string; user_id: string }
+
 type OrderRecord = {
   id: string; customerEmail: string; customerName?: string; customerPhone?: string | null
   shippingAddress?: string | null; shippingCity?: string | null; shippingCountry?: string | null
@@ -210,6 +272,7 @@ type ProductRecord = {
   currency: string
   category?: string | null
   images?: { url: string; isPrimary: boolean }[]
+  variants?: { id?: string; name: string; value: string }[]
 }
 
 const GHANA_TELCOS: PayoutOption[] = [
@@ -232,20 +295,38 @@ const GHANA_BANKS: PayoutOption[] = [
   { label: 'United Bank for Africa Ghana', code: 'uba' },
 ]
 
-function buildFeedback(store: StoreData): string {
-  const c = (store as unknown as { canonical: Record<string, unknown> }).canonical ?? {}
+function buildFeedback(store?: StoreData | null): string {
+  const safeStore = store ?? {
+    name: 'Your store',
+    slug: 'your-store',
+    targetAudience: 'your customers',
+    products: [],
+  } as StoreData
+  const c = (safeStore as unknown as { canonical: Record<string, unknown> }).canonical ?? {}
   const cats = Array.isArray(c.productCategories) ? (c.productCategories as string[]).join(', ') : 'your catalog'
-  const prodCount = Array.isArray(store.products) ? store.products.length : 0
+  const prodCount = Array.isArray(safeStore.products) ? safeStore.products.length : 0
   return [
-    `**${store.name}** is ready.`,
-    `Positioned for ${store.targetAudience ?? 'your customers'} with ${prodCount} products across ${cats}.`,
-    `Payment is wired for checkout. Your store is live at \`${store.slug}.seltra.co\`.`,
+    `**${safeStore.name}** is ready.`,
+    `Positioned for ${safeStore.targetAudience ?? 'your customers'} with ${prodCount} products across ${cats}.`,
+    `Payment is wired for checkout. Your store is live at \`${safeStore.slug}.seltra.co\`.`,
     `Ask me to add products, update colors, refine copy, or attach a logo file.`,
   ].join('\n\n')
 }
 
+// ── Merges the merchant's planner answers back into a single enriched prompt string.
+// Mirrors mergeAnswersIntoPrompt() in the backend planner agent, kept client-side so
+// the enriched prompt can be sent straight into the existing /store/build endpoint
+// with zero backend changes. ──
+function mergeAnswersIntoPrompt(originalPrompt: string, answers: Record<string, string>): string {
+  const lines = Object.values(answers)
+    .map((v) => (v ?? '').trim())
+    .filter(Boolean)
+  if (lines.length === 0) return originalPrompt
+  return `${originalPrompt}\n\nAdditional details from merchant:\n${lines.join('\n')}`
+}
+
 type SidebarSharedProps = {
-  user: { id?: string; email: string; name: string; avatar: string; joinedAt?: string } | null
+  user: { id?: string; email: string; name: string; avatar: string; joinedAt?: string; plan?: 'free' | 'premium' } | null
   tab: string
   setTab: (t: string) => void
   onSignOut: () => void
@@ -262,7 +343,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const { activeStore, setActiveStore } = useStore()
 
-  const [user, setUser] = useState<{ id?: string; email: string; name: string; avatar: string; joinedAt?: string } | null>(null)
+  const [user, setUser] = useState<{ id?: string; email: string; name: string; avatar: string; joinedAt?: string; plan?: 'free' | 'premium' } | null>(null)
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -279,9 +360,28 @@ export default function DashboardPage() {
   const [credits, setCredits] = useState<{ used: number; limit: number; resetsAt: string } | null>(null)
   const [buildConversationId, setBuildConversationId] = useState<string | undefined>()
 
+  // ── Business Planner Agent state — an inline chat thread that asks one
+  // clarifying question at a time (Claude-style), instead of a blocking modal. ──
+  const [plannerQueue, setPlannerQueue] = useState<PlannerQuestion[]>([])
+  const [plannerIndex, setPlannerIndex] = useState(0)
+  const [plannerPrompt, setPlannerPrompt] = useState('')
+  const [plannerAnswers, setPlannerAnswers] = useState<Record<string, string>>({})
+
   useEffect(() => { if (sending) setSidebarOpen(false) }, [sending])
 
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Asks the planner agent whether the prompt needs clarifying questions before build.
+  // Returns null when nothing needs asking (ready to build immediately), or the
+  // PlannerResult (with questions) when the merchant should be prompted first.
+  const runPlanner = useCallback(async (prompt: string): Promise<PlannerResult | null> => {
+    const { data } = await apiFetch<PlannerResult>('/api/v1/seltra/store/plan', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    })
+    if (!data || data.readyToBuild || data.questions.length === 0) return null
+    return data
+  }, [])
 
   useEffect(() => {
     if (!getToken()) { router.replace('/auth'); return }
@@ -295,6 +395,7 @@ export default function DashboardPage() {
         name: m.full_name || m.name || u.email?.split('@')[0] || '',
         avatar: m.avatar_url || m.picture || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.email}`,
         joinedAt: u.created_at || u.createdAt,
+        plan: (u.plan === 'premium' ? 'premium' : 'free') as 'free' | 'premium',
       }
       setUser(resolvedUser)
     }
@@ -309,14 +410,21 @@ export default function DashboardPage() {
       setStores(existing)
 
       if (existing.length > 0) {
-        setActiveStore(existing[0])
+        const current = activeStore && existing.find((store) => store.id === activeStore.id || store.slug === activeStore.slug)
+        setActiveStore(current ?? existing[0])
       } else if (pending) {
         setSending(true)
         const { data: conv } = await createConversation(pending, resolvedUser?.id)
         if (conv) { setConvId(conv.id); setConversations((c) => [conv, ...c]) }
         setMsgs([{ role: 'user', content: pending }])
         await saveMessage(conv?.id, 'user', pending, resolvedUser?.id)
-        await beginBuild(pending, conv?.id)
+
+        const plan = await runPlanner(pending)
+        if (plan) {
+          beginPlannerThread(pending, plan)
+        } else {
+          await beginBuild(pending, conv?.id)
+        }
       }
     }
 
@@ -341,11 +449,19 @@ export default function DashboardPage() {
   return () => { cancelled = true }
 }, [activeStore])
 
-  const loadStores = async () => {
+  const loadStores = useCallback(async () => {
     const { data } = await apiFetch<StoreData[]>('/api/v1/seltra/store')
-    setStores(data ?? [])
-    if (data?.length && !activeStore) setActiveStore(data[0])
-  }
+    const stores = data ?? []
+    setStores(stores)
+    if (stores.length === 0) return
+
+    const current = activeStore && stores.find((store) => store.id === activeStore.id || store.slug === activeStore.slug)
+    if (current) {
+      setActiveStore(current)
+    } else if (!activeStore) {
+      setActiveStore(stores[0])
+    }
+  }, [activeStore])
 
   const loadConversations = async () => {
     const { data } = await apiFetch<Conversation[]>('/api/v1/conversations?order=updated_at:desc')
@@ -362,12 +478,24 @@ export default function DashboardPage() {
     setTab('home')
   }
 
-  const beginBuild = useCallback(async (prompt: string, conversationId?: string) => {
+  // beginBuild now accepts an optional plannerAnswersSnapshot so structured
+  // planner answers (fulfillment mode, delivery tiers, variants, etc.) reach the backend
+  // as real fields on CreateStoreDto.plannerAnswers, not just folded into prose.
+  const beginBuild = useCallback(async (prompt: string, conversationId?: string, plannerAnswersSnapshot?: Record<string, string>) => {
     setBuildId(null)
     setBuildConversationId(conversationId)
     const { data, error } = await apiFetch<{ buildId: string }>('/api/v1/seltra/store/build', {
       method: 'POST',
-      body: JSON.stringify({ name: prompt.slice(0, 48), prompt }),
+      body: JSON.stringify({
+        name: prompt.slice(0, 48),
+        prompt,
+        plannerAnswers: plannerAnswersSnapshot ? {
+          fulfillment_mode: plannerAnswersSnapshot['fulfillment_mode'],
+          contact_number: plannerAnswersSnapshot['contact_number'],
+          delivery_tiers: plannerAnswersSnapshot['delivery_tiers'],
+          product_variants: plannerAnswersSnapshot['product_variants'],
+        } : undefined,
+      }),
     })
     if (error || !data?.buildId) {
       toast.error(error || 'Could not start build')
@@ -437,13 +565,74 @@ export default function DashboardPage() {
     return reply
   }, [convId])
 
+  // ── Runs the planner before kicking off a fresh build. If the planner comes
+  // back with questions, we start the inline planner thread and wait for the
+  // merchant to answer (or skip) before calling beginBuild. ──
   const startConv = async (prompt: string) => {
+    const limitCheck = await apiFetch<{ allowed: boolean; reason?: string }>('/api/v1/seltra/store/check-limit')
+    if (!limitCheck.data?.allowed) {
+      toast.error(limitCheck.data?.reason || 'Store limit reached for your plan')
+      setSending(false)
+      return
+    }
+
     setSending(true)
     const { data: conversation } = await createConversation(prompt, user?.id)
     if (conversation) { setConvId(conversation.id); setConversations((c) => [conversation, ...c]) }
     setMsgs([{ role: 'user', content: prompt }])
     await saveMessage(conversation?.id, 'user', prompt, user?.id)
+
+    const plan = await runPlanner(prompt)
+    if (plan) {
+      beginPlannerThread(prompt, plan)
+      return
+    }
     await beginBuild(prompt, conversation?.id)
+  }
+
+  // ── Planner thread: pushes the summary + first question into the message
+  // list, then advances one question at a time as the merchant answers. ──
+  const beginPlannerThread = (prompt: string, result: PlannerResult) => {
+    setPlannerPrompt(prompt)
+    setPlannerQueue(result.questions)
+    setPlannerIndex(0)
+    setPlannerAnswers({})
+    setMsgs((prev) => [
+      ...prev,
+      { role: 'assistant', content: result.inferredSummary },
+      { role: 'planner-question', content: '', question: result.questions[0] },
+    ])
+    setSending(false)
+  }
+
+  const answerPlannerQuestion = async (value: string) => {
+    const q = plannerQueue[plannerIndex]
+    if (!q) return
+    const updatedAnswers = { ...plannerAnswers, [q.id]: value }
+    setPlannerAnswers(updatedAnswers)
+    // Replace the just-answered question bubble with the merchant's answer,
+    // exactly like a normal chat turn.
+    setMsgs((prev) => [...prev.slice(0, -1), { role: 'user', content: value }])
+
+    const nextIndex = plannerIndex + 1
+    if (nextIndex < plannerQueue.length) {
+      setPlannerIndex(nextIndex)
+      setMsgs((prev) => [...prev, { role: 'planner-question', content: '', question: plannerQueue[nextIndex] }])
+    } else {
+      setPlannerQueue([])
+      setPlannerIndex(0)
+      const enriched = mergeAnswersIntoPrompt(plannerPrompt, updatedAnswers)
+      setSending(true)
+      await beginBuild(enriched, convId, updatedAnswers)
+    }
+  }
+
+  const skipPlannerThread = async () => {
+    if (!plannerPrompt) return
+    setPlannerQueue([])
+    setPlannerIndex(0)
+    setSending(true)
+    await beginBuild(plannerPrompt, convId)
   }
 
 const send = async () => {
@@ -497,15 +686,55 @@ const send = async () => {
   useEffect(() => { setMounted(true) }, [])
   const hasStore = mounted && (Boolean(activeStore) || msgs.length > 0)
   const storeTitle = activeStore?.name ?? msgs[0]?.content?.slice(0, 40) ?? 'My Store'
+  const normalizeSlug = useCallback((value: string) =>
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 30)
+      .replace(/^-+|-+$/g, '') || 'my-store'
+  , [])
+
   const storeSlug = useMemo(
-    () => activeStore?.slug ?? storeTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30),
-    [activeStore?.slug, storeTitle]
+    () => activeStore?.slug ?? normalizeSlug(storeTitle),
+    [activeStore?.slug, normalizeSlug, storeTitle]
   )
-  const handleBuildDone = useCallback(async (store: StoreData) => {
+  const previewKey = `${storeSlug}:${rev}:${activeStore?.id ?? 'pending'}:${activeStore?.heroSource ? 'hero' : 'no-hero'}:${activeStore?.manifest ? 'manifest' : 'no-manifest'}`
+  const handleBuildPreview = useCallback((store?: StoreData | null) => {
+    if (!store) return
     setActiveStore(store)
     setStores((prev) => [store, ...prev.filter((item) => item.id !== store.id && item.slug !== store.slug)])
     setRev((v) => v + 1)
-    const reply = buildFeedback(store)
+  }, [])
+
+  const handleBuildDone = useCallback(async (store?: StoreData | null) => {
+    let confirmedStore = store ?? null
+    const hasGeneratedAssets = (candidate?: StoreData | null) =>
+      Boolean(candidate?.manifest && candidate.heroSource && candidate.navSource)
+
+    for (let attempt = 0; attempt < 6 && !hasGeneratedAssets(confirmedStore); attempt++) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 500 * attempt))
+      try {
+        const { data } = await apiFetch<StoreData[]>('/api/v1/seltra/store')
+        const list = data ?? []
+        const match = confirmedStore
+          ? list.find((item) => item.id === confirmedStore!.id || item.slug === confirmedStore!.slug)
+          : list[0]
+        if (hasGeneratedAssets(match)) confirmedStore = match ?? null
+        else if (match && !confirmedStore) confirmedStore = match
+      } catch {
+        // retry until generated assets are visible or we run out of attempts.
+      }
+    }
+
+    if (confirmedStore) {
+      setActiveStore(confirmedStore)
+      setStores((prev) => [confirmedStore!, ...prev.filter((item) => item.id !== confirmedStore!.id && item.slug !== confirmedStore!.slug)])
+    }
+
+    setRev((v) => v + 1)
+    const reply = buildFeedback(confirmedStore)
     setMsgs((prev) => [...prev, { role: 'assistant', content: reply }])
     await saveMessage(buildConversationId ?? convId, 'assistant', reply, user?.id)
     setSending(false)
@@ -513,7 +742,7 @@ const send = async () => {
     setBuildConversationId(undefined)
     setTimeout(() => setSidebarOpen(true), 1200)
     void loadStores()
-  }, [buildConversationId, convId, setActiveStore, user?.id])
+  }, [buildConversationId, convId, user?.id])
 
   const handleBuildError = useCallback((message: string) => {
     toast.error(message)
@@ -595,6 +824,8 @@ const handleAgentAttach = async (f: File) => {
             input={input} setInput={setInput} send={send} sending={sending} name={user?.name ?? ''}
             conversations={conversations}
             onLoadConversation={loadConversationMessages}
+            stores={stores}
+            hasHistory={conversations.length > 0 || stores.length > 0}
             onAttach={(f) => {
               setInput((p) => p ? `${p}\nI uploaded "${f.name}".` : `I uploaded "${f.name}".`)
               toast.success(`${f.name} attached`, { duration: 1400 })
@@ -639,13 +870,6 @@ const handleAgentAttach = async (f: File) => {
                        {credits.used}/{credits.limit} credits
                      </span>
                    )}
-                   {sending ? (
-                     <span className="flex items-center gap-1.5 rounded-full bg-yellow-500/10 px-2.5 py-1 font-mono text-[10px] text-yellow-500">
-                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-400" /> WORKING
-                     </span>
-                   ) : (
-                     <span className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 font-mono text-[10px] text-primary">READY</span>
-                   )}
                  </div>
               </div>
 
@@ -658,19 +882,65 @@ const handleAgentAttach = async (f: File) => {
                       : 'Describe your store and your agent will build it in seconds.'}
                   </div>
                 )}
-                {msgs.map((m, i) => (
-                  <div key={i}>
-                    <div className={`mb-1.5 font-mono text-[10px] uppercase tracking-wider ${m.role === 'user' ? 'text-muted-foreground' : 'text-primary'}`}>
-                      {m.role === 'user' ? 'you' : 'agent'}
-                    </div>
-                    <div className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-foreground/90">{m.content}</div>
-                  </div>
-                ))}
+                {msgs.map((m, i) => {
+                  if (m.role === 'planner-question' && m.question) {
+                    const isLatest = i === msgs.length - 1
+                    const q = m.question
+                    return (
+                      <div key={i} className="max-w-[92%] rounded-2xl border border-border/60 bg-card/20 p-4">
+                        <div className="text-[13px] font-medium text-foreground">{q.question}</div>
+                        <p className="mt-1 text-xs text-muted-foreground">{q.why}</p>
+                        {isLatest && (
+                          <>
+                            {q.options && q.options.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {q.options.map((opt) => (
+                                  <button
+                                    key={opt}
+                                    type="button"
+                                    onClick={() => void answerPlannerQuestion(opt)}
+                                    className="rounded-full border border-border bg-background/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                                  >
+                                    {opt}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <div className="mt-2 flex items-center gap-2">
+                              <input
+                                className="flex-1 rounded-xl border border-border bg-background px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+                                placeholder="Type your answer…"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                                    void answerPlannerQuestion(e.currentTarget.value.trim())
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void skipPlannerThread()}
+                                className="flex-shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                              >
+                                Skip all
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )
+                  }
+
+                  if (m.role === 'user') {
+                    return <UserPromptBubble key={i} content={m.content} />
+                  }
+
+                  return <AgentReply key={i} content={m.content} />
+                })}
                 {sending && msgs[msgs.length - 1]?.role === 'user' && (
-                  <div className="flex items-center gap-1.5">
-                    {[0, 150, 300].map((delay) => (
-                      <span key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: `${delay}ms` }} />
-                    ))}
+                  <div className="flex justify-start">
+                    <div className="rounded-full border border-border/60 bg-card/20 px-3 py-2">
+                      <span className="agent-thinking-text text-[13px]">Thinking…</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -689,9 +959,9 @@ const handleAgentAttach = async (f: File) => {
             <div className={mobileView === 'chat' ? 'hidden lg:block' : 'block'}>
               <StorefrontShell slug={storeSlug} isStream={Boolean(buildId)}>
                 {buildId ? (
-                  <AgentBuildStream storeName={storeTitle} buildId={buildId} onDone={handleBuildDone} onError={handleBuildError} />
+                  <AgentBuildStream storeName={storeTitle} buildId={buildId} onPreview={handleBuildPreview} onDone={handleBuildDone} onError={handleBuildError} />
                 ) : (
-                  <StorefrontPreview key={storeSlug} storeSlug={storeSlug} suppressFallback={!activeStore} rev={rev} />
+                  <StorefrontPreview key={previewKey} storeSlug={storeSlug} suppressFallback={!activeStore} rev={rev} />
                 )}
               </StorefrontShell>
             </div>
@@ -1137,10 +1407,11 @@ function MobileSidebarDrawer({
 }
 
 // ── Empty state ────────────────────────────────────────────────────────────────
-function EmptyState({ input, setInput, send, sending, name, onAttach, conversations, onLoadConversation }: {
+function EmptyState({ input, setInput, send, sending, name, onAttach, conversations, onLoadConversation, stores, hasHistory }: {
   input: string; setInput: (v: string) => void; send: () => void
   sending: boolean; name: string; onAttach: (f: File) => void
   conversations: Conversation[]; onLoadConversation: (c: Conversation) => void
+  stores: StoreData[]; hasHistory: boolean
 }) {
   const GETTING_STARTED = [
     {
@@ -1184,73 +1455,46 @@ function EmptyState({ input, setInput, send, sending, name, onAttach, conversati
     },
   ]
 
+  const firstName = name?.split(' ')[0] || ''
+  const welcomeHeadline = firstName ? `Welcome back, ${firstName}.` : 'Welcome back.'
+  const welcomeSubline = stores.length === 0
+    ? 'Pick up a previous conversation, or describe a new store to get started.'
+    : stores.length === 1
+      ? `${stores[0]?.name || 'Your store'} is live with ${stores[0]?.products?.length ?? 0} products. What should we work on next?`
+      : `You have ${stores.length} stores live. Select one, or tell your agent what to build next.`
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[900px] px-8 py-12">
           <div className="mb-10">
             <h1 className="text-[28px] font-bold tracking-tight">
-              {name ? `Welcome to Seltra, ${name.split(' ')[0]}.` : 'Welcome to Seltra.'}
+              {hasHistory ? welcomeHeadline : (firstName ? `Welcome to Seltra, ${firstName}.` : 'Welcome to Seltra.')}
             </h1>
             <p className="mt-1.5 text-[15px] text-muted-foreground">
-              Describe your business and your agent builds the store, products, and checkout in seconds.
+              {hasHistory ? welcomeSubline : 'Describe your business and your agent builds the store, products, and checkout in seconds.'}
             </p>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
-            <div>
-              <div className="mb-4">
-                <span className="text-[13px] font-semibold text-foreground">Getting started</span>
-              </div>
-              <div className="space-y-2.5">
-                {GETTING_STARTED.map((item) => (
-                  <button
-                    key={item.title}
-                    onClick={() => setInput(item.prompt)}
-                    className="group flex w-full items-start gap-3.5 rounded-2xl border border-border bg-card/40 p-4 text-left transition-all hover:border-primary/40 hover:bg-card/70"
-                  >
-                    <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors group-hover:border-primary/30 group-hover:bg-primary/5 group-hover:text-primary">
-                      <item.icon className="h-4 w-4" />
+          {hasHistory ? (
+            <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="rounded-2xl border border-border bg-card/40 p-5">
+                <div className="mb-4 text-[13px] font-semibold text-foreground">Pick up where you left off</div>
+                <div className="space-y-2.5">
+                  {stores.length > 0 ? stores.slice(0, 4).map((store) => (
+                    <div key={store.id ?? store.slug} className="rounded-2xl border border-border bg-background/60 p-3">
+                      <div className="text-sm font-semibold">{store.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{store.slug}.seltra.co • {store.products?.length ?? 0} products</div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[13px] font-semibold">{item.title}</span>
-                        <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                      </div>
-                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{item.desc}</p>
+                  )) : (
+                    <div className="rounded-2xl border border-dashed border-border bg-background/50 p-4 text-sm text-muted-foreground">
+                      You have conversations but no active store yet. Start a new build to create one.
                     </div>
-                  </button>
-                ))}
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div>
-              <div className="mb-4">
-                <span className="text-[13px] font-semibold text-foreground">Quick launches</span>
-              </div>
-              <div className="space-y-2.5">
-                {QUICK_ACTIONS.map((item) => (
-                  <button
-                    key={item.title}
-                    onClick={() => setInput(item.prompt)}
-                    className="group flex w-full items-center gap-3.5 rounded-2xl border border-border bg-card/40 p-4 text-left transition-all hover:border-primary/40 hover:bg-card/70"
-                  >
-                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors group-hover:border-primary/30 group-hover:bg-primary/5 group-hover:text-primary">
-                      <item.icon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[13px] font-semibold">{item.title}</span>
-                        <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.desc}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-6">
-                <div className="mb-3 text-[13px] font-semibold">Recent chats</div>
+              <div className="rounded-2xl border border-border bg-card/40 p-5">
+                <div className="mb-4 text-[13px] font-semibold text-foreground">Recent chats</div>
                 {conversations.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-border bg-card/20 px-5 py-6 text-center">
                     <p className="text-xs text-muted-foreground">Start a chat to brainstorm, draft, and build with your agent.</p>
@@ -1277,7 +1521,89 @@ function EmptyState({ input, setInput, send, sending, name, onAttach, conversati
                 )}
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
+              <div>
+                <div className="mb-4">
+                  <span className="text-[13px] font-semibold text-foreground">Getting started</span>
+                </div>
+                <div className="space-y-2.5">
+                  {GETTING_STARTED.map((item) => (
+                    <button
+                      key={item.title}
+                      onClick={() => setInput(item.prompt)}
+                      className="group flex w-full items-start gap-3.5 rounded-2xl border border-border bg-card/40 p-4 text-left transition-all hover:border-primary/40 hover:bg-card/70"
+                    >
+                      <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors group-hover:border-primary/30 group-hover:bg-primary/5 group-hover:text-primary">
+                        <item.icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[13px] font-semibold">{item.title}</span>
+                          <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                        </div>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{item.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-4">
+                  <span className="text-[13px] font-semibold text-foreground">Quick launches</span>
+                </div>
+                <div className="space-y-2.5">
+                  {QUICK_ACTIONS.map((item) => (
+                    <button
+                      key={item.title}
+                      onClick={() => setInput(item.prompt)}
+                      className="group flex w-full items-center gap-3.5 rounded-2xl border border-border bg-card/40 p-4 text-left transition-all hover:border-primary/40 hover:bg-card/70"
+                    >
+                      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors group-hover:border-primary/30 group-hover:bg-primary/5 group-hover:text-primary">
+                        <item.icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[13px] font-semibold">{item.title}</span>
+                          <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-6">
+                  <div className="mb-3 text-[13px] font-semibold">Recent chats</div>
+                  {conversations.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border bg-card/20 px-5 py-6 text-center">
+                      <p className="text-xs text-muted-foreground">Start a chat to brainstorm, draft, and build with your agent.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {conversations.slice(0, 4).map((conv) => (
+                        <button
+                          key={conv.id}
+                          onClick={() => onLoadConversation(conv)}
+                          className="group flex w-full items-center gap-3 rounded-2xl border border-border bg-card/40 px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-card/70"
+                        >
+                          <MessageSquare className="h-4 w-4 flex-shrink-0 text-muted-foreground group-hover:text-primary" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[13px] font-medium">{conv.title || 'Conversation'}</div>
+                            <div className="font-mono text-[10px] text-muted-foreground opacity-60">
+                              {conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : 'agent chat'}
+                            </div>
+                          </div>
+                          <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1333,8 +1659,9 @@ function ChatInput({ input, setInput, send, sending, onAttach, compact = false, 
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
           rows={1}
+          wrap="off"
           placeholder={pendingAttachment ? `Describe what to do with ${pendingAttachment.name}…` : 'Message your agent…'}
-          className="flex-1 resize-none bg-transparent py-1.5 px-1 text-sm outline-none placeholder:text-muted-foreground leading-[1.5]"
+          className="flex-1 resize-none bg-transparent py-1.5 px-1 text-sm outline-none placeholder:text-muted-foreground leading-[1.5] overflow-x-auto whitespace-pre composer-textarea"
           style={{ minHeight: 36, maxHeight: compact ? 120 : 160, overflowY: 'auto' }}
         />
         <button
@@ -2338,7 +2665,7 @@ function PaymentsTab({ activeStore }: { activeStore: StoreData | null }) {
 function ProductsTab({ activeStore }: { activeStore: StoreData | null }) {
   const [products, setProducts] = useState<ProductRecord[]>([])
   const [loading, setLoading]   = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingProduct, setEditingProduct] = useState<ProductRecord | null>(null)
   const [editBuf, setEditBuf]   = useState<Partial<ProductRecord>>({})
   const [saving, setSaving]     = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -2350,35 +2677,54 @@ function ProductsTab({ activeStore }: { activeStore: StoreData | null }) {
 
   const storeId = storeIdOf(activeStore)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!storeId) { setProducts([]); setTotal(0); return }
     setLoading(true)
     const { data } = await apiFetch<Paginated<ProductRecord>>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products?page=${page}&perPage=${pageSize}`)
     setLoading(false)
     setProducts(data?.data ?? [])
     setTotal(data?.total ?? 0)
-  }
+  }, [page, pageSize, storeId])
 
-  useEffect(() => { void load() }, [activeStore, page])
+  useEffect(() => { void load() }, [load])
   useEffect(() => { setPage(1) }, [activeStore])
 
   const startEdit = (p: ProductRecord) => {
-    setEditingId(p.id)
-    setEditBuf({ name: p.name, price: p.price, description: p.description ?? '', category: p.category ?? '' })
+    setEditingProduct(p)
+    setEditBuf({
+      name: p.name,
+      price: p.price,
+      description: p.description ?? '',
+      category: p.category ?? '',
+      variants: p.variants?.map((variant) => ({ id: variant.id, name: variant.name, value: variant.value })) ?? [],
+    })
   }
-  const cancelEdit = () => { setEditingId(null); setEditBuf({}) }
+  const cancelEdit = () => { setEditingProduct(null); setEditBuf({}) }
 
-  const saveEdit = async (id: string) => {
-    if (!storeId) return
+  const saveEdit = async () => {
+    if (!storeId || !editingProduct) return
     setSaving(true)
-    const { error } = await apiFetch<ProductRecord>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products/${encodeURIComponent(id)}`, {
+    const { data, error } = await apiFetch<ProductRecord>(`/api/v1/seltra/store/${encodeURIComponent(storeId)}/products/${encodeURIComponent(editingProduct.id)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name: editBuf.name, price: String(editBuf.price), description: editBuf.description, category: editBuf.category }),
+      body: JSON.stringify({
+        name: editBuf.name,
+        price: String(editBuf.price),
+        description: editBuf.description,
+        category: editBuf.category,
+        ...(editBuf.variants !== undefined && {
+          variants: editBuf.variants
+            .filter((variant) => variant.name?.trim() && variant.value?.trim())
+            .map(({ id, ...variant }) => ({
+              name: variant.name,
+              value: variant.value,
+            })),
+        }),
+      }),
     })
     setSaving(false)
-    if (error) { toast.error(error); return }
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...editBuf, price: String(editBuf.price ?? p.price) } : p))
-    setEditingId(null)
+    if (error || !data) { toast.error(error || 'Could not save product'); return }
+    setProducts(prev => prev.map((p) => p.id === editingProduct.id ? data : p))
+    setEditingProduct(null)
     toast.success('Product updated')
   }
 
@@ -2396,6 +2742,10 @@ const uploadImage = async (productId: string, file: File) => {
       ? { ...p, images: [{ url: data.url, isPrimary: true }] }
       : p
     ))
+    setEditingProduct((current) => current?.id === productId
+      ? { ...current, images: [{ url: data.url, isPrimary: true }] }
+      : current
+    )
     toast.success('Image updated')
   } catch {
     toast.error('Upload failed')
@@ -2474,7 +2824,6 @@ const uploadImage = async (productId: string, file: File) => {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {products.map((product) => {
               const image = product.images?.find(i => i.isPrimary)?.url ?? product.images?.[0]?.url
-              const isEditing = editingId === product.id
               return (
                 <div key={product.id} className="overflow-hidden rounded-2xl border border-border bg-card/40 flex flex-col">
                   <div className="relative aspect-[16/10] bg-card/60 overflow-hidden">
@@ -2484,71 +2833,158 @@ const uploadImage = async (productId: string, file: File) => {
                           <Package className="h-10 w-10" />
                         </div>
                     }
-                    {isEditing && (
-                      <label className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1.5 bg-black/50 text-white opacity-0 transition-opacity hover:opacity-100">
-                        {uploading
-                          ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          : <>
-                              <Plus className="h-5 w-5" />
-                              <span className="text-xs font-medium">Change image</span>
-                            </>
-                        }
-                        <input type="file" className="hidden" accept="image/*"
-                          onChange={e => { const f = e.target.files?.[0]; if (f) void uploadImage(product.id, f); e.target.value = '' }} />
-                      </label>
-                    )}
                   </div>
 
                   <div className="p-4 flex-1 flex flex-col gap-2">
-                    {isEditing ? (
-                      <>
-                        <label className="grid gap-1 text-xs text-muted-foreground">Name
-                          <input value={editBuf.name ?? ''} onChange={e => setEditBuf(b => ({ ...b, name: e.target.value }))}
-                            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
-                        </label>
-                        <label className="grid gap-1 text-xs text-muted-foreground">Price (GHS)
-                          <input value={editBuf.price ?? ''} onChange={e => setEditBuf(b => ({ ...b, price: e.target.value }))} type="number" step="0.01"
-                            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
-                        </label>
-                        <label className="grid gap-1 text-xs text-muted-foreground">Category
-                          <input value={editBuf.category ?? ''} onChange={e => setEditBuf(b => ({ ...b, category: e.target.value }))}
-                            className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
-                        </label>
-                        <label className="grid gap-1 text-xs text-muted-foreground">Description
-                          <textarea value={editBuf.description ?? ''} onChange={e => setEditBuf(b => ({ ...b, description: e.target.value }))} rows={2}
-                            className="resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
-                        </label>
-                        <p className="text-[11px] text-muted-foreground">Hover the image above to change it.</p>
-                        <div className="flex gap-2 mt-1">
-                          <Button size="sm" className="rounded-full h-7 text-xs px-3" onClick={() => void saveEdit(product.id)} disabled={saving || uploading}>
-                            {saving ? 'Saving…' : 'Save'}
-                          </Button>
-                          <Button size="sm" variant="outline" className="rounded-full h-7 text-xs px-3" onClick={cancelEdit}>Cancel</Button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-start justify-between gap-2">
-                          <h2 className="font-semibold text-sm leading-tight">{product.name}</h2>
-                          <span className="font-mono text-xs text-primary flex-shrink-0">{money(product.price, product.currency ?? 'GHS')}</span>
-                        </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h2 className="font-semibold text-sm leading-tight truncate">{product.name}</h2>
                         {product.description && <p className="line-clamp-2 text-xs text-muted-foreground">{product.description}</p>}
                         <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{product.category ?? 'catalog'}</div>
-                        <div className="flex gap-1.5 mt-auto pt-2">
-                          <Button size="sm" variant="outline" className="rounded-full h-7 text-xs px-3 flex-1" onClick={() => startEdit(product)}>Edit</Button>
-                          <Button size="sm" variant="ghost" className="rounded-full h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => void deleteProduct(product.id, product.name)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </>
-                    )}
+                      </div>
+                      <span className="font-mono text-xs text-primary flex-shrink-0">{money(product.price, product.currency ?? 'GHS')}</span>
+                    </div>
+                    <div className="flex gap-1.5 mt-auto pt-2">
+                      <Button size="sm" variant="outline" className="rounded-full h-7 text-xs px-3 flex-1" onClick={() => startEdit(product)}>Edit</Button>
+                      <Button size="sm" variant="ghost" className="rounded-full h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => void deleteProduct(product.id, product.name)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )
             })}
           </div>
           <PaginationControls page={page} total={total} pageSize={pageSize} onPage={setPage} />
+
+          {editingProduct && (
+            <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 py-5 backdrop-blur-sm">
+              <div className="w-full max-w-3xl max-h-[calc(100vh-3rem)] overflow-y-auto rounded-3xl border border-border bg-card p-5 shadow-2xl">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold">Edit product</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Update the product details and image in one modal.</p>
+                  </div>
+                  <button type="button" onClick={cancelEdit} className="rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,320px)]">
+                  <div className="min-w-0 space-y-4">
+                    <div className="overflow-hidden rounded-3xl border border-border bg-card/70">
+                      {editingProduct.images?.[0]?.url ? (
+                        <div className="relative aspect-[16/10] w-full overflow-hidden">
+                          <img src={editingProduct.images[0].url} alt={editingProduct.name} className="h-full w-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="flex aspect-[16/10] items-center justify-center bg-muted/10 text-muted-foreground">
+                          No image yet
+                        </div>
+                      )}
+                    </div>
+                    <label className="grid gap-2 rounded-2xl border border-border bg-background/80 p-4 text-sm">
+                      <span className="font-medium">Change image</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file && editingProduct) void uploadImage(editingProduct.id, file)
+                          e.target.value = ''
+                        }}
+                        className="w-full min-w-0 text-sm"
+                      />
+                      {uploading && <span className="text-xs text-muted-foreground">Uploading image…</span>}
+                    </label>
+                  </div>
+
+                  <div className="min-w-0 space-y-4">
+                    <label className="grid gap-2 text-sm">
+                      <span className="font-medium">Name</span>
+                      <input
+                        value={editBuf.name ?? ''}
+                        onChange={(e) => setEditBuf((b) => ({ ...b, name: e.target.value }))}
+                        className="h-11 w-full min-w-0 rounded-2xl border border-border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm">
+                      <span className="font-medium">Price (GHS)</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editBuf.price ?? ''}
+                        onChange={(e) => setEditBuf((b) => ({ ...b, price: e.target.value }))}
+                        className="h-11 w-full min-w-0 rounded-2xl border border-border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm">
+                      <span className="font-medium">Category</span>
+                      <input
+                        value={editBuf.category ?? ''}
+                        onChange={(e) => setEditBuf((b) => ({ ...b, category: e.target.value }))}
+                        className="h-11 w-full min-w-0 rounded-2xl border border-border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm">
+                      <span className="font-medium">Description</span>
+                      <textarea
+                        rows={4}
+                        value={editBuf.description ?? ''}
+                        onChange={(e) => setEditBuf((b) => ({ ...b, description: e.target.value }))}
+                        className="min-h-[9rem] w-full min-w-0 resize-none rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {editBuf.variants?.length ? (
+                  <div className="mt-6 rounded-3xl border border-border bg-background/80 p-5">
+                    <div className="mb-4">
+                      <p className="text-sm font-semibold">Variants</p>
+                      <p className="text-xs text-muted-foreground">Edit existing variant options only.</p>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {editBuf.variants.map((variant, index) => (
+                        <div key={`${variant.id ?? variant.name}-${index}`} className="grid gap-3">
+                          <label className="grid gap-2 text-sm">
+                            <span className="font-medium">Option</span>
+                            <input
+                              value={variant.name}
+                              onChange={(e) => setEditBuf((buf) => ({
+                                ...buf,
+                                variants: (buf.variants ?? []).map((item, idx) => idx === index ? { ...item, name: e.target.value } : item),
+                              }))}
+                              className="h-11 rounded-2xl border border-border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm">
+                            <span className="font-medium">Value</span>
+                            <input
+                              value={variant.value}
+                              onChange={(e) => setEditBuf((buf) => ({
+                                ...buf,
+                                variants: (buf.variants ?? []).map((item, idx) => idx === index ? { ...item, value: e.target.value } : item),
+                              }))}
+                              className="h-11 w-full rounded-2xl border border-border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-ring"
+                            />
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-6 flex items-center justify-end gap-3">
+                  <Button size="sm" variant="outline" className="rounded-full" onClick={cancelEdit}>Cancel</Button>
+                  <Button size="sm" className="rounded-full" onClick={() => void saveEdit()} disabled={saving || uploading}>
+                    {saving ? 'Saving…' : 'Save changes'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           </>
         )}
       </div>
@@ -2903,7 +3339,7 @@ function AnalyticsTab({ activeStore }: { activeStore: StoreData | null }) {
 function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpdated }: {
   mode: 'account' | 'billing' | 'domains' | 'help'
   activeStore: StoreData | null
-  user: { email: string; name: string; avatar: string; joinedAt?: string } | null
+  user: { email: string; name: string; avatar: string; joinedAt?: string; plan?: 'free' | 'premium' } | null
   stores: StoreData[]
   credits: { used: number; limit: number; resetsAt: string } | null
   onStoreUpdated: (s: StoreData) => void
@@ -2947,10 +3383,9 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
   }, [activeStore])
 
   // ── Plan / tier (dynamic) ──────────────────────────────────────────────
-  const isPremium = stores.length > 1
-  const plan: 'free' | 'premium' = isPremium ? 'premium' : 'free'
-  const storeLimit = isPremium ? 3 : 1
-  const productLimit = isPremium ? 100 : 50
+  const plan: 'free' | 'premium' = user?.plan === 'premium' ? 'premium' : 'free'
+  const storeLimit = plan === 'premium' ? 3 : 1
+  const productLimit = plan === 'premium' ? 100 : 50
   const payoutOptions = payout.method === 'bank' ? GHANA_BANKS : GHANA_TELCOS
   const accountStores = stores.slice((accountStoresPage - 1) * accountStoresPageSize, accountStoresPage * accountStoresPageSize)
   useEffect(() => { setAccountStoresPage(1) }, [stores.length])
@@ -3189,7 +3624,7 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
               </div>
               {plan === 'premium' ? (
                 <div className="mt-5 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-500">
-                  <CheckCheck className="h-4 w-4" /> You're on Premium
+                  <CheckCheck className="h-4 w-4" /> You&apos;re on Premium
                 </div>
               ) : (
                 <Button className="mt-5 w-full rounded-full" onClick={() => setUpgradeOpen(true)}>Upgrade to Premium</Button>
@@ -3209,7 +3644,7 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
               <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <Globe2 className="h-4 w-4 flex-shrink-0 text-primary" />
-                  <a
+                    <a
                     href={storefrontUrl(activeStore)}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -3373,83 +3808,3 @@ function ProfileCenterTab({ mode, activeStore, user, stores, credits, onStoreUpd
     </div>
   )
 }
-
-// function SettingsTab({ activeStore, user, storesCount, onStoreUpdated }: {
-//   activeStore: StoreData | null; user: { email: string; name: string; avatar: string; joinedAt?: string } | null
-//   storesCount: number; onStoreUpdated: (s: StoreData) => void
-// }) {
-//   const [name, setName] = useState(activeStore?.name ?? '')
-//   const [businessType, setBusinessType] = useState(activeStore?.businessType ?? '')
-//   const [targetAudience, setTargetAudience] = useState(activeStore?.targetAudience ?? '')
-//   const [saving, setSaving] = useState(false)
-
-//   useEffect(() => {
-//     setName(activeStore?.name ?? ''); setBusinessType(activeStore?.businessType ?? ''); setTargetAudience(activeStore?.targetAudience ?? '')
-//   }, [activeStore])
-
-//   const save = async () => {
-//     const id = storeIdOf(activeStore)
-//     if (!id || saving) return
-//     setSaving(true)
-//     const { data, error } = await apiFetch<StoreData>(`/api/v1/seltra/store/${encodeURIComponent(id)}`, {
-//       method: 'PATCH', body: JSON.stringify({ name, businessType, targetAudience }),
-//     })
-//     setSaving(false)
-//     if (error || !data) { toast.error(error || 'Could not save settings'); return }
-//     onStoreUpdated(data); toast.success('Settings saved')
-//   }
-
-//   return (
-//     <div className="flex-1 overflow-y-auto">
-//       <div className="mx-auto max-w-5xl px-6 py-10">
-//         <PageHeader tab="settings" title="Settings" subtitle="Account, merchant workspace and active tenant settings." />
-//         <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
-//           <section className="rounded-2xl border border-border bg-card/40 p-5">
-//             <h2 className="text-sm font-semibold">Merchant</h2>
-//             <div className="mt-4 space-y-3 text-sm">
-//               <div className="flex items-center gap-3">
-//                 {user?.avatar && <img src={user.avatar} alt={user.name || 'Merchant'} className="h-14 w-14 rounded-full border border-border bg-muted object-cover" />}
-//                 <div className="min-w-0">
-//                   <div className="truncate font-medium">{user?.name || 'Merchant'}</div>
-//                   <div className="truncate font-mono text-[11px] text-muted-foreground">{user?.email}</div>
-//                 </div>
-//               </div>
-//               {[{ label: 'name', value: user?.name || 'Merchant' }, { label: 'email', value: user?.email || 'Unknown' }].map(({ label, value }) => (
-//                 <div key={label}>
-//                   <div className="font-mono text-[10px] text-muted-foreground">{label}</div>
-//                   <div className="break-all">{value}</div>
-//                 </div>
-//               ))}
-//               <div>
-//                 <div className="font-mono text-[10px] text-muted-foreground">date joined</div>
-//                 <div className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-primary" />{user?.joinedAt ? new Date(user.joinedAt).toLocaleDateString() : 'Unknown'}</div>
-//               </div>
-//               <div><div className="font-mono text-[10px] text-muted-foreground">stores owned</div><div>{storesCount}</div></div>
-//             </div>
-//           </section>
-//           <section className="rounded-2xl border border-border bg-card/40 p-5">
-//             <h2 className="text-sm font-semibold">Active Store</h2>
-//             <p className="mt-0.5 text-xs text-muted-foreground">{activeStore ? `${activeStore.slug}.seltra.co` : 'Create or select a store first.'}</p>
-//             <div className="mt-5 grid gap-3">
-//               {(['Store name', 'Business type'] as const).map((label) => (
-//                 <label key={label} className="grid gap-1.5 text-sm">{label}
-//                   <input
-//                     value={label === 'Store name' ? name : businessType}
-//                     onChange={(e) => label === 'Store name' ? setName(e.target.value) : setBusinessType(e.target.value)}
-//                     disabled={!activeStore}
-//                     className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-//                   />
-//                 </label>
-//               ))}
-//               <label className="grid gap-1.5 text-sm">Target audience
-//                 <textarea value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} disabled={!activeStore} rows={3}
-//                   className="resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
-//               </label>
-//               <Button onClick={() => void save()} disabled={!activeStore || saving} className="justify-self-start rounded-full">{saving ? 'Saving…' : 'Save settings'}</Button>
-//             </div>
-//           </section>
-//         </div>
-//       </div>
-//     </div>
-//   )
-// }

@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/registry.ts
 import { AnnouncementBar }  from './AnnouncementBar'
 import { HeroSection }      from './HeroSection'
 import { ProductGrid }      from './ProductGrid'

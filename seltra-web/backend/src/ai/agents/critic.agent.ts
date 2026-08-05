@@ -5,6 +5,8 @@
 // that the refinement engine uses to patch the manifest.
 
 import type { CanonicalStore } from '../../types'
+import { type HeroDesignSpec } from '../design-system/contracts'
+import { isResponsiveHeroPattern, isResponsiveNavPattern } from '../design-system/guards'
 
 export type CriticDimension = 'business' | 'design' | 'content'
 export type CriticSeverity  = 'critical' | 'warning' | 'suggestion'
@@ -102,6 +104,79 @@ function checkHero(sections: Section[], blueprint: CanonicalStore): CriticIssue[
   return issues
 }
 
+function checkHeroLayering(source: string, spec?: Partial<HeroDesignSpec>): CriticIssue[] {
+  const issues: CriticIssue[] = []
+  if (!spec) return issues
+  const layeredArchetypes = ['editorial-commerce', 'product-spotlight-floating', 'lifestyle-scrim-cart']
+  const impliesLayering = layeredArchetypes.includes(spec.archetype ?? '')
+  if (!impliesLayering) return issues
+  const hasLayeringHooks = /seltra-hero-secondary|z-index|zIndex|data-position/i.test(source)
+  if (!hasLayeringHooks) {
+    issues.push({
+      id: 'hero-missing-layering',
+      dimension: 'design',
+      severity: 'critical',
+      section: 'hero',
+      message: 'Layered hero archetypes need explicit secondary card or z-index structure to preserve the intended composition.',
+      fix: 'RETRY_CODING_AGENT:ADD_LAYERING',
+    })
+  }
+  return issues
+}
+
+function checkHeroMotionProfile(source: string, spec?: Partial<HeroDesignSpec>): CriticIssue[] {
+  const issues: CriticIssue[] = []
+  if (!spec) return issues
+  if (spec.motionProfile !== 'staggered-reveal') return issues
+  const hasMotionPattern = /motion\.div|motionDiv|stagger|container|item/i.test(source)
+  if (!hasMotionPattern) {
+    issues.push({
+      id: 'hero-missing-motion-profile',
+      dimension: 'design',
+      severity: 'warning',
+      section: 'hero',
+      message: 'Staggered reveal hero motion was requested, but the source does not show the expected motion pattern.',
+      fix: 'RETRY_CODING_AGENT:ADD_MOTION_PATTERN',
+    })
+  }
+  return issues
+}
+
+function checkResponsiveHero(source: string, spec?: Partial<HeroDesignSpec>): CriticIssue[] {
+  const issues: CriticIssue[] = []
+  if (!spec) return issues
+  const shouldCheck = (spec.archetype === 'centered-stacked' || spec.archetype === 'editorial-commerce') &&
+    (spec.imageTreatment === 'framed-panel' || spec.imageTreatment === 'scrim-gradient')
+  if (!shouldCheck) return issues
+  if (!isResponsiveHeroPattern(source)) {
+    issues.push({
+      id: 'hero-no-responsive-rule',
+      dimension: 'design',
+      severity: 'warning',
+      section: 'hero',
+      message: 'Hero layout lacks a mobile responsive breakpoint for stacked framing or scrim treatment.',
+      fix: 'ADD_HERO_MOBILE_BREAKPOINT',
+    })
+  }
+  return issues
+}
+
+function checkResponsiveNav(source: string): CriticIssue[] {
+  const issues: CriticIssue[] = []
+  if (!source) return issues
+  if (!isResponsiveNavPattern(source)) {
+    issues.push({
+      id: 'nav-no-responsive-pattern',
+      dimension: 'design',
+      severity: 'warning',
+      section: 'nav',
+      message: 'Navigation lacks the responsive hamburger/desktop-category pattern required for mobile and desktop layouts.',
+      fix: 'ADD_NAV_RESPONSIVE_PATTERN',
+    })
+  }
+  return issues
+}
+
 function checkProductGrid(sections: Section[], blueprint: CanonicalStore): CriticIssue[] {
   const issues: CriticIssue[] = []
   const grid = getSection<{ type: string; sectionLabel?: string; columns?: number; style?: string }>(sections, 'product-grid')
@@ -137,7 +212,7 @@ function checkProductGrid(sections: Section[], blueprint: CanonicalStore): Criti
   return issues
 }
 
-function checkTrustSignals(sections: Section[]): CriticIssue[] {
+function checkTrustSignals(sections: Section[], blueprint: CanonicalStore): CriticIssue[] {
   const issues: CriticIssue[] = []
 
   if (!hasSection(sections, 'trust-bar')) {
@@ -151,17 +226,25 @@ function checkTrustSignals(sections: Section[]): CriticIssue[] {
   } else {
     const tb = getSection<{ type: string; items?: string[] }>(sections, 'trust-bar')
     const items = tb?.items ?? []
+    const rawFeatures = (blueprint.storeFeatures ?? []).map(f => f.toLowerCase().trim())
+    const itemsMatchRawFeatures = items.length > 0 && items.every(item =>
+      rawFeatures.includes(item.toLowerCase().trim())
+    )
+
     const WEAK_ITEMS = ['secure checkout', 'fast delivery', 'easy returns', 'local support']
-    const allGeneric = items.every(item =>
+    const allGeneric = items.length > 0 && items.every(item =>
       WEAK_ITEMS.some(w => item.toLowerCase().includes(w))
     )
-    if (allGeneric && items.length > 0) {
+
+    if ((itemsMatchRawFeatures || allGeneric) && items.length > 0) {
       issues.push({
         id: 'trust-bar-generic',
         dimension: 'content',
         severity: 'suggestion',
         section: 'trust-bar',
-        message: 'Trust bar items are all generic defaults. Industry-specific signals convert better.',
+        message: itemsMatchRawFeatures
+          ? 'Trust bar items are the raw storeFeatures array, unedited for the storefront.'
+          : 'Trust bar items are all generic defaults. Industry-specific signals convert better.',
         fix: 'IMPROVE_TRUST_BAR_ITEMS',
       })
     }
@@ -357,18 +440,31 @@ export interface ManifestForCritic {
   sections: Array<{ type: string; [key: string]: unknown }>
   palette:  Record<string, string>
   typography: { headingFont: string; bodyFont: string }
+  heroSpec?: Partial<HeroDesignSpec>
+  heroSource?: string
+  navSource?: string
+}
+
+export interface CriticRunOptions {
+  expectHero?: boolean
 }
 
 export function runCritic(
   manifest: ManifestForCritic,
   blueprint: CanonicalStore,
+  options: CriticRunOptions = {},
 ): CriticReport {
   const { sections, palette, typography } = manifest
+  const expectHero = options.expectHero ?? true
 
   const issues: CriticIssue[] = [
-    ...checkHero(sections, blueprint),
+    ...(expectHero ? checkHero(sections, blueprint) : []),
+    ...checkHeroLayering(manifest.heroSource ?? '', manifest.heroSpec),
+    ...checkHeroMotionProfile(manifest.heroSource ?? '', manifest.heroSpec),
+    ...checkResponsiveHero(manifest.heroSource ?? '', manifest.heroSpec),
+    ...checkResponsiveNav(manifest.navSource ?? ''),
     ...checkProductGrid(sections, blueprint),
-    ...checkTrustSignals(sections),
+    ...checkTrustSignals(sections, blueprint),
     ...checkSocialProof(sections),
     ...checkSectionOrder(sections),
     ...checkSectionCount(sections),

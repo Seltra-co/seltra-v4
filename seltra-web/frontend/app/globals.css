@@ -44,6 +44,37 @@
   .fade-in { animation: fadeIn 0.6s ease-out both; }
   .pulse-glow { animation: pulseGlow 2.2s ease-in-out infinite; }
   .trust-logo-track { animation: trustLogoSlide 34s linear infinite; }
+  @keyframes agent-thinking-shimmer {
+    0%   { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+  @keyframes agent-glow-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(1); }
+    50%      { opacity: 0.65; transform: scale(1.04); }
+  }
+  .agent-thinking-text {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted-foreground)) 0%,
+      hsl(var(--primary)) 35%,
+      hsl(var(--muted-foreground)) 60%,
+      hsl(var(--muted-foreground)) 100%
+    );
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: agent-thinking-shimmer 2.4s ease-in-out infinite;
+  }
+  .agent-glow-backdrop {
+    position: absolute;
+    inset: -20% -10%;
+    background: radial-gradient(closest-side, hsl(var(--primary) / 0.18), transparent 70%);
+    filter: blur(24px);
+    animation: agent-glow-pulse 3.2s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
   .bg-radial-fade {
     background: radial-gradient(ellipse at top, hsl(var(--primary) / 0.12), transparent 60%);
   }
@@ -74,6 +105,8 @@
   --store-radius:           0.5rem;
   --store-section-spacing:  5rem;
   --store-shadow:           none;
+  --store-radius-media:     1.5rem;
+  --store-shadow-hero:      0 24px 60px -20px rgba(0,0,0,0.25);
   --store-radius-sm:   calc(var(--store-radius) * 0.5);
   --store-radius-lg:   calc(var(--store-radius) * 1.5);
   --store-radius-xl:   calc(var(--store-radius) * 2);
@@ -105,6 +138,187 @@
   color: var(--store-text);
   line-height: 0.93;
   letter-spacing: -0.02em;
+}
+.seltra-hero-headline {
+  font-size: clamp(2.75rem, 5.5vw, 4.5rem);
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  max-width: 14ch;
+  margin-bottom: 1rem;
+}
+.seltra-hero-tagline {
+  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
+  line-height: 1.5;
+  max-width: 38ch;
+  opacity: 0.75;
+  margin-bottom: var(--store-hero-stack-gap, 1.25rem);
+}
+.seltra-hero-brand {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--store-accent);
+  margin-bottom: 0.75rem;
+  display: inline-block;
+}
+.seltra-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: clamp(1.5rem, 3vw, 2rem);
+  padding: clamp(2rem, 5vw, 6rem);
+}
+.seltra-hero[data-archetype="split-image-right"],
+.seltra-hero[data-archetype="split-image-left"],
+.seltra-hero[data-archetype="editorial-commerce"] {
+  flex-direction: row;
+}
+.seltra-hero[data-archetype="split-image-left"] {
+  flex-direction: row-reverse;
+}
+.seltra-hero-content {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+  align-items: flex-start;
+}
+.seltra-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: var(--store-hero-stack-gap, 1.25rem);
+  flex-wrap: wrap;
+}
+.seltra-hero-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.75rem;
+  background: var(--store-accent);
+  color: var(--store-accent-text);
+  border: none;
+  border-radius: var(--store-radius-card, 0.5rem);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.seltra-hero-cta-primary:hover { opacity: 0.88; }
+.seltra-hero-cta-primary:active { transform: scale(0.97); }
+.seltra-hero-cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.5rem;
+  background: transparent;
+  color: var(--store-text);
+  border: 1.5px solid var(--store-border);
+  border-radius: var(--store-radius-card, 0.5rem);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.seltra-hero-cta-secondary:hover { border-color: var(--store-accent); color: var(--store-accent); }
+.seltra-hero-media {
+  position: relative;
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  max-height: 60vh;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--store-radius-media, 1.5rem);
+  overflow: hidden;
+  box-shadow: var(--store-shadow-hero, 0 24px 60px -20px rgba(0,0,0,0.25));
+}
+.seltra-hero-image { width: 100%; height: 100%; object-fit: cover; display: block; }
+.seltra-hero-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.seltra-hero-secondary {
+  position: absolute;
+  z-index: 2;
+  max-width: 220px;
+  padding: 1rem;
+  background: var(--store-surface);
+  border: 1px solid var(--store-border);
+  border-radius: var(--store-radius-card);
+  box-shadow: var(--store-shadow);
+}
+.seltra-hero-secondary[data-position="float-right"] {
+  right: -1rem;
+  bottom: 1.5rem;
+}
+.seltra-hero-secondary[data-position="overlap-bottom-left"] {
+  left: -1rem;
+  bottom: -1.5rem;
+}
+.seltra-hero-secondary[data-position="overlap-bottom-right"] {
+  right: -1rem;
+  bottom: -1.5rem;
+}
+.seltra-hero-secondary[data-position="float-below"] {
+  position: static;
+  margin-top: 1rem;
+  max-width: 100%;
+}
+.seltra-hero[data-archetype="hero-fullbleed"] .seltra-hero-media,
+.seltra-hero[data-archetype="fullbleed-bottom-text"] .seltra-hero-media {
+  border-radius: 0;
+  box-shadow: none;
+}
+.seltra-hero[data-archetype="editorial-commerce"],
+.seltra-hero[data-archetype="split-image-right"],
+.seltra-hero[data-archetype="split-image-left"] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  align-items: center;
+  padding: clamp(3rem, 6vw, 5rem) clamp(1.5rem, 4vw, 4rem);
+}
+@media (max-width: 900px) {
+  .seltra-hero[data-archetype="editorial-commerce"],
+  .seltra-hero[data-archetype="split-image-right"],
+  .seltra-hero[data-archetype="split-image-left"] {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}
+.hero-title {
+  font-size: clamp(2rem, 8vw, 3rem) !important;
+  line-height: 1.05;
+}
+@media (max-width: 768px) {
+  .seltra-hero {
+    flex-direction: column !important;
+    gap: 1.5rem;
+    padding: 2rem 1.25rem;
+  }
+  .seltra-hero-content {
+    align-items: center;
+    text-align: center;
+  }
+  .seltra-hero-secondary {
+    position: static !important;
+    margin-top: 1rem;
+    max-width: 100%;
+  }
+  .seltra-hero-media {
+    width: 100%;
+    max-height: 55vh;
+  }
+}
+@media (max-width: 480px) {
+  .seltra-hero-media {
+    border-radius: 0.75rem;
+  }
 }
 .store-eyebrow {
   font-family: monospace;
@@ -151,22 +365,14 @@
   box-shadow: 0 12px 36px rgba(0,0,0,0.11), 0 2px 8px rgba(0,0,0,0.06);
 }
 
-/* ── Hero mesh gradient background ───────────────────────────────────── */
+/* ── Hero surfaces ─────────────────────────────────────────────────── */
 .store-hero-mesh {
-  background:
-    radial-gradient(at 15% 15%, color-mix(in srgb, var(--store-accent) 22%, transparent) 0px, transparent 55%),
-    radial-gradient(at 85% 5%,  color-mix(in srgb, var(--store-accent-secondary, var(--store-accent)) 16%, transparent) 0px, transparent 50%),
-    radial-gradient(at 0%  70%, color-mix(in srgb, var(--store-accent-secondary, var(--store-accent)) 12%, transparent) 0px, transparent 55%),
-    radial-gradient(at 95% 85%, color-mix(in srgb, var(--store-accent) 10%, transparent) 0px, transparent 45%),
-    var(--store-bg);
+  background: var(--store-bg);
 }
 
-/* Rounded gradient hero card — the Epoche/child.com reference look:
-   a large, softly-rounded panel with a two-tone gradient, not a flat rect. */
 .store-hero-gradient-card {
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--store-accent) 92%, black 3%) 0%,
-    color-mix(in srgb, var(--store-accent-secondary, var(--store-accent)) 88%, black 3%) 100%);
+  background: var(--store-bg);
+  border: 1px solid var(--store-border);
   border-radius: var(--store-radius-2xl);
 }
 
@@ -221,7 +427,24 @@
 }
 .store-shelf-track::-webkit-scrollbar { display: none; }
 
-/* ── Trust item ──────────────────────────────────────────────────────── */
+.composer-textarea {
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.45) transparent;
+}
+.composer-textarea::-webkit-scrollbar {
+  height: 8px;
+}
+.composer-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+.composer-textarea::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.35);
+  border-radius: 9999px;
+}
+
 .store-trust-item {
   display: flex; align-items: center; gap: 0.4rem;
   font-size: 0.73rem; opacity: 0.65; color: var(--store-text);
@@ -250,6 +473,21 @@
   color: var(--store-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.seltra-hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.seltra-desktop-cats {
+  display: none;
+  align-items: center;
+  gap: 1rem;
+}
+@media (min-width: 768px) {
+  .seltra-hamburger { display: none; }
+  .seltra-desktop-cats { display: flex; }
 }
 
 /* ── Bestseller badge ───────────────────────────────────────────────── */

@@ -9,6 +9,7 @@ class InitializePaymentDto {
     name?: string
     quantity: number
     price?: string | number
+    selectedVariants?: Record<string, string>
   }>
   customerEmail!: string
   customerName?: string
@@ -17,6 +18,7 @@ class InitializePaymentDto {
   shippingCity?: string
   shippingCountry?: string
   marketingOptIn?: boolean
+  deliveryTier?: { id: string; label: string; priceFrom: number; currency: string }
   callbackUrl?: string
 }
 
@@ -55,6 +57,7 @@ export class PaymentController {
         shippingCity: body.shippingCity,
         shippingCountry: body.shippingCountry,
         marketingOptIn: body.marketingOptIn,
+        deliveryTier: body.deliveryTier,
       },
       body.callbackUrl,
     )

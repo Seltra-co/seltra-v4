@@ -1,4 +1,4 @@
-//frontend/app/store/[slug]/page.tsx
+//seltra-web/frontend/app/store/[slug]/page.tsx
 import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { StorefrontCanvas } from '@/components/storefront/StorefrontCanvas'
@@ -18,10 +18,37 @@ type StoreRouteProps = { params: Promise<{ slug: string }> }
 export async function generateMetadata({ params }: StoreRouteProps): Promise<Metadata> {
   const { slug } = await params
   const store = await getStore(slug)
-  if (!store) return { title: 'Store — Seltra' }
+  if (!store) return {}
+
+  const displayName = store.brandName?.trim() || store.name
+  const description = store.targetAudience
+    ? `${displayName} — ${store.businessType ?? 'shop online'} for ${store.targetAudience}.`
+    : `Shop ${displayName} online.`
+
+  const heroImage = store.canonical?.heroImageUrl
+    ?? store.products?.find((product: { images?: Array<{ isPrimary?: boolean; url?: string }> }) => product.images?.some((image: { isPrimary?: boolean; url?: string }) => image.isPrimary))?.images?.find((image: { isPrimary?: boolean; url?: string }) => image.isPrimary)?.url
+    ?? store.products?.[0]?.images?.[0]?.url
+
   return {
-    title: `${store.name} — Powered by Seltra`,
-    description: store.targetAudience ? `${store.name} — for ${store.targetAudience}.` : `${store.name} — shop online.`,
+    title: displayName,
+    description,
+    openGraph: {
+      title: displayName,
+      description,
+      url: `https://${store.slug}.seltra.co`,
+      siteName: displayName,
+      images: heroImage ? [{ url: heroImage, width: 1200, height: 630 }] : undefined,
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: displayName,
+      description,
+      images: heroImage ? [heroImage] : undefined,
+    },
+    alternates: {
+      canonical: `https://${store.slug}.seltra.co`,
+    },
   }
 }
 

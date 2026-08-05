@@ -10,6 +10,16 @@ export interface StoreProduct {
   images?: Array<{ url: string; isPrimary?: boolean }>
   variants?: Array<{ name: string; value: string }>
 }
+export type SelectedVariants = Record<string, string>
+export interface DeliveryTier {
+  id: string
+  label: string
+  description: string
+  priceFrom: number
+  currency: string
+  areas?: string[]
+  etaLabel?: string
+}
 export interface StoreManifest { sections: ManifestSection[]; palette: StorePalette; typography: StoreTypography }
 export type ManifestSection =
   | { type: 'hero-centered';   headline: string; tagline: string; subtext: string; eyebrow?: string; ctaLabel?: string }

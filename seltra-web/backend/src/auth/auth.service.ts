@@ -210,7 +210,7 @@ export class AuthService {
   //   })
   // }
 
-  private authPayload(user: { id: string; email: string; name: string | null; createdAt?: Date }) {
+  private authPayload(user: { id: string; email: string; name: string | null; createdAt?: Date; plan?: string | null }) {
     const publicUser = this.publicUser(user)
     const token = this.jwtService.sign({ sub: user.id, email: user.email })
     return {
@@ -220,11 +220,12 @@ export class AuthService {
     }
   }
 
-  private publicUser(user: { id: string; email: string; name: string | null; createdAt?: Date }) {
+  private publicUser(user: { id: string; email: string; name: string | null; createdAt?: Date; plan?: string | null }) {
     return {
       id: user.id,
       email: user.email,
       name: user.name,
+      plan: user.plan ?? 'free',
       created_at: user.createdAt?.toISOString(),
       createdAt: user.createdAt?.toISOString(),
       user_metadata: {

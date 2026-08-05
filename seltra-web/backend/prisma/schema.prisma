@@ -75,6 +75,16 @@ model Tenant {
   aiCreditsUsed         Int      @default(0)
   aiCreditsWindowStart  DateTime @default(now())
 
+  fulfillmentMode      String?  @default("delivery") // "delivery" | "pickup" | "both"
+  contactPhone         String?
+  pickupAddress        String?
+  pickupInstructions   String?
+  deliveryDays         String?  // e.g. "Tuesdays and Thursdays" — free text, merchant-set
+  deliveryEstimate     String?  // e.g. "2-5 business days" — free text
+  deliveryFeeNote      String?  // e.g. "Affordable rates based on your location"
+  // Array<{ id: string, label: string, description: string, priceFrom: number, currency: string, areas?: string[], etaLabel?: string }>
+  deliveryTiers        Json?
+
   @@index([ownerId])
 }
 

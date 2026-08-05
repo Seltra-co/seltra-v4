@@ -1,3 +1,4 @@
+//store/build-events.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common'
 import type { MessageEvent } from '@nestjs/common'
 import { Observable } from 'rxjs'
@@ -8,7 +9,9 @@ export type BuildEvent =
   | { type: 'plan'; items: Array<{ label: string; detail: string }> }
   | { type: 'file'; name: string; status: 'started' | 'completed' | 'failed' }
   | { type: 'chunk'; file: string; content: string }
+  | { type: 'image'; role: 'hero' | 'product'; url: string; label?: string }
   | { type: 'preview'; url: string; store?: unknown }
+  | { type: 'heartbeat' }
   | { type: 'done'; store?: unknown }
   | { type: 'error'; message: string }
 
@@ -98,7 +101,15 @@ export class BuildEventsService {
       }
 
       session.subscribers.add(send)
+
+      const heartbeat = setInterval(() => {
+        if (session.status === 'running') {
+          observer.next({ type: 'heartbeat', data: { type: 'heartbeat' } })
+        }
+      }, 8000)
+
       return () => {
+        clearInterval(heartbeat)
         session.subscribers.delete(send)
       }
     })

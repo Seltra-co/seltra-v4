@@ -1,3 +1,4 @@
+//backend/src/ai/context-engine.service.ts
 import { Injectable } from '@nestjs/common'
 import { prisma } from '../db'
 import { loadMerchantContext } from './agents/merchants-context'

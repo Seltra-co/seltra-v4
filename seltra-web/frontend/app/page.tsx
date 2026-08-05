@@ -438,8 +438,8 @@ function Hero() {
                   }}
                   aria-label="Describe your business and what you want to sell"
                   placeholder=""
-                  className="relative z-10 h-[52px] w-full resize-none bg-transparent text-base leading-relaxed text-foreground focus:outline-none sm:h-[60px] sm:text-lg"
-                  rows={2}
+                  wrap="off"
+                  className="relative z-10 h-[52px] w-full resize-none bg-transparent text-base leading-relaxed text-foreground focus:outline-none overflow-x-auto whitespace-pre sm:h-[60px] sm:text-lg composer-textarea"
                 />
               </div>
 

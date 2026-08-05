@@ -1,7 +1,8 @@
+//seltra-web/frontend/components/storefront/sections/HeroSection.tsx
 'use client'
 import { motion } from 'framer-motion'
 import { SafeImage } from './SafeImage'
-import { ArrowRight, Star } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { StoreProduct } from './types'
@@ -20,54 +21,20 @@ function isValidImageUrl(url?: string | null) {
   )
 }
 
-function getHeroImg(products: StoreProduct[]) {
-  for (const p of products) {
-    const u =
-      p.images?.find((i) => i.isPrimary)?.url ??
-      p.images?.[0]?.url
-
-    if (isValidImageUrl(u)) return u
-  }
-
-  return null
-}
-
 function Eyebrow({ text }: { text: string }) {
   return <motion.div variants={item}><Badge variant="secondary" className="font-mono text-[0.6rem] uppercase tracking-widest px-2.5 py-1" style={{ background:'var(--store-accent-soft)', color:'var(--store-accent)', borderRadius:'var(--store-radius-full)' }}>{text}</Badge></motion.div>
 }
 
-function Pills({ features }: { features: string[] }) {
-  if (!features.length) return null
-  return <motion.div variants={item} className="flex flex-wrap gap-2 pt-1">{features.slice(0,4).map((f) => <span key={f} className="rounded-full border px-2.5 py-0.5 text-[0.68rem] opacity-60" style={{ borderColor:'var(--store-border)', color:'var(--store-text)', borderRadius:'var(--store-radius-full)' }}>{f}</span>)}</motion.div>
-}
-
-function CTA({ label = 'Shop now' }: { label?: string }) {
+function CTA({ label = 'Shop now', onClick }: { label?: string; onClick?: () => void }) {
   return (
     <motion.div variants={item}>
-      <Button className="store-btn-primary gap-2 px-6 py-2.5 text-sm" style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', borderRadius:'var(--store-radius-full)' }}>
+      <Button
+        className="store-btn-primary gap-2 px-6 py-2.5 text-sm"
+        style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', borderRadius:'var(--store-radius-full)' }}
+        onClick={onClick}
+      >
         {label} <ArrowRight className="h-3.5 w-3.5" />
       </Button>
-    </motion.div>
-  )
-}
-
-function FloatingStatCard({ position = 'bottom-left' }: { position?: 'bottom-left' | 'top-right' }) {
-  const pos = position === 'top-right'
-    ? { top: '1.25rem', right: '1.25rem' }
-    : { bottom: '1.25rem', left: '1.25rem' }
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.94 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.5, delay: 0.5, ease: [0.4, 0, 0.2, 1] }}
-      className="store-stat-card absolute hidden md:flex"
-      style={{ ...pos, minWidth: '10rem' }}
-    >
-      <div className="flex items-center gap-1" style={{ color: 'var(--store-accent)' }}>
-        {[...Array(5)].map((_, i) => <Star key={i} className="h-3 w-3 fill-current" />)}
-      </div>
-      <span className="store-stat-card__number" style={{ fontSize: '1.1rem' }}>Loved by customers</span>
-      <span className="store-stat-card__label">Real reviews, real orders</span>
     </motion.div>
   )
 }
@@ -92,102 +59,107 @@ interface Props {
   features: string[]
   storeName: string
   heroImageUrl?: string
+  heroImageUrls?: string[]
+  onShopNow?: () => void
 }
 
 export function HeroSection({
     section,
-    products,
-    features,
     heroImageUrl,
+    heroImageUrls,
+    onShopNow,
 }: Props) {
-  const imgUrl = isValidImageUrl(heroImageUrl)
-  ? heroImageUrl
-  : getHeroImg(products)
+  const galleryUrls = (heroImageUrls?.filter(isValidImageUrl) ?? []).slice(0, 5)
+  const imgUrl = isValidImageUrl(heroImageUrl) ? heroImageUrl : galleryUrls[0] ?? null
   const t = section.type
+  const heroSurfaceTextColor = imgUrl ? 'rgba(255,255,255,0.92)' : 'var(--store-text)'
+  const heroSurfaceSubtextColor = imgUrl ? 'rgba(255,255,255,0.82)' : 'var(--store-text)'
 
   if (t === 'hero-minimal') return (
-    <section className="flex min-h-[380px] sm:min-h-[clamp(40vh,50vh,65vh)] items-center border-b" style={{ background:'var(--store-bg)', borderColor:'var(--store-border)' }}>
-      <motion.div variants={container} initial="hidden" animate="show" className="flex max-w-2xl flex-col gap-3 px-[clamp(1.5rem,5vw,4rem)]">
+    <section className="seltra-hero flex min-h-[380px] sm:min-h-[clamp(40vh,50vh,65vh)] items-center border-b" data-archetype="minimal-typographic" style={{ background:'var(--store-bg)', borderColor:'var(--store-border)' }}>
+      <motion.div variants={container} initial="hidden" animate="show" className="seltra-hero-content flex max-w-2xl flex-col gap-3 px-[clamp(1.5rem,5vw,4rem)]">
         {section.eyebrow && <Eyebrow text={section.eyebrow} />}
-        <motion.h1 variants={item} className="store-heading text-[clamp(2.5rem,5vw,4rem)] font-light tracking-tighter">{section.headline}</motion.h1>
-        {section.subtext && <motion.p variants={item} className="text-sm leading-relaxed" style={{ color:'var(--store-muted)' }}>{section.subtext}</motion.p>}
-        <CTA label={section.ctaLabel} />
+        <motion.h1 variants={item} className="hero-title store-heading text-[clamp(2.5rem,5vw,4rem)] font-light tracking-tighter">{section.headline}</motion.h1>
+        {section.subtext && <motion.p variants={item} className="text-sm leading-relaxed" style={{ color: heroSurfaceSubtextColor }}>{section.subtext}</motion.p>}
+        <CTA label={section.ctaLabel} onClick={onShopNow} />
       </motion.div>
     </section>
   )
 
   if (t === 'hero-split') return (
-    <section className="relative grid min-h-[520px] sm:min-h-[clamp(55vh,70vh,85vh)] overflow-hidden border-b md:grid-cols-2" style={{ background:'var(--store-bg)', borderColor:'var(--store-border)' }}>
+    <section className="seltra-hero relative grid min-h-[520px] sm:min-h-[clamp(55vh,70vh,85vh)] overflow-hidden border-b md:grid-cols-2" data-archetype="split-image-right" style={{ background:'var(--store-bg)', borderColor:'var(--store-border)' }}>
       <HeroBlob className="pointer-events-none absolute -left-16 -top-16 h-64 w-64 md:h-80 md:w-80" />
 
-      <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex flex-col justify-center gap-5 px-[clamp(1.5rem,5vw,4rem)] py-16">
-        <motion.div variants={item}>
-          <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium" style={{ borderColor:'var(--store-border)', background:'var(--store-surface)', color:'var(--store-muted)', borderRadius:'var(--store-radius-full)' }}>
-            <span style={{ color:'var(--store-accent)' }}>✦</span>
-            {section.eyebrow ?? 'Trusted by customers'}
-          </span>
-        </motion.div>
+      <motion.div variants={container} initial="hidden" animate="show" className="seltra-hero-content relative z-10 flex flex-col justify-center gap-5 px-[clamp(1.5rem,5vw,4rem)] py-16">
+        {section.eyebrow && (
+          <motion.div variants={item}>
+            <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium" style={{ borderColor:'var(--store-border)', background:'var(--store-surface)', color:'var(--store-muted)', borderRadius:'var(--store-radius-full)' }}>
+              <span style={{ color:'var(--store-accent)' }}>✦</span>
+              {section.eyebrow}
+            </span>
+          </motion.div>
+        )}
 
-        <motion.h1 variants={item} className="store-heading text-[clamp(2.75rem,5.5vw,4.5rem)] font-black text-balance">
+        <motion.h1 variants={item} className="hero-title store-heading text-[clamp(2.75rem,5.5vw,4.5rem)] font-black text-balance">
           {section.headline}
         </motion.h1>
 
         {section.tagline && (
-          <motion.p variants={item} className="text-base font-semibold" style={{ color:'var(--store-muted)' }}>
+          <motion.p variants={item} className="text-base font-semibold" style={{ color: heroSurfaceTextColor }}>
             {section.tagline}
           </motion.p>
         )}
         {section.subtext && (
-          <motion.p variants={item} className="max-w-md text-sm leading-relaxed" style={{ color:'var(--store-muted)' }}>
+          <motion.p variants={item} className="max-w-md text-sm leading-relaxed" style={{ color: heroSurfaceSubtextColor }}>
             {section.subtext}
           </motion.p>
         )}
 
-        <Pills features={features} />
-
         <motion.div variants={item} className="flex flex-wrap items-center gap-3 pt-1">
-          <Button className="store-btn-primary gap-2 px-6 py-2.5 text-sm" style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', borderRadius:'var(--store-radius-full)' }}>
+          <Button className="store-btn-primary gap-2 px-6 py-2.5 text-sm" style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', borderRadius:'var(--store-radius-full)' }} onClick={onShopNow}>
             {section.ctaLabel ?? 'Shop now'} <ArrowRight className="h-3.5 w-3.5" />
-          </Button>
-          <Button className="store-btn-outline gap-2 px-5 py-2.5 text-sm" style={{ borderRadius:'var(--store-radius-full)' }}>
-            See collection
           </Button>
         </motion.div>
 
         <motion.div variants={item} className="flex flex-wrap gap-4 pt-1">
-          {['Free delivery', 'Secure checkout', 'Easy returns'].map((label) => (
-            <span key={label} className="store-trust-item">
-              <span style={{ color:'var(--store-accent)' }}>✓</span> {label}
-            </span>
-          ))}
+          <span className="store-hero-note" style={{ color: heroSurfaceSubtextColor }}>
+            Built to match your brand and products.
+          </span>
         </motion.div>
       </motion.div>
 
-      <motion.div variants={imgReveal} initial="hidden" animate="show" className="relative min-h-[300px] p-4 md:p-6">
+      <motion.div variants={imgReveal} initial="hidden" animate="show" className="seltra-hero-media relative min-h-[300px] p-4 md:p-6">
         <div
           className="relative h-full w-full overflow-hidden"
           style={{ borderRadius: 'var(--store-radius-2xl)', boxShadow: 'var(--store-shadow)' }}
         >
-          {imgUrl
+          {galleryUrls.length > 1
+            ? <div className="grid h-full grid-cols-2 gap-2">
+                {galleryUrls.map((url, index) => (
+                  <div key={`${url}-${index}`} className={`relative min-h-32 overflow-hidden ${index === 0 ? 'row-span-2' : ''}`}>
+                    <SafeImage src={url} alt={`${section.headline} ${index + 1}`} fill className="object-cover" priority={index === 0} />
+                  </div>
+                ))}
+              </div>
+            : imgUrl
             ? <SafeImage src={imgUrl} alt={section.headline} fill className="object-cover" priority />
-            : <div className="absolute inset-0" style={{ background:`linear-gradient(135deg, var(--store-accent-soft), var(--store-surface))` }} />
+            : <div className="absolute inset-0" style={{ background:'var(--store-surface)' }} />
           }
         </div>
-        <FloatingStatCard position="bottom-left" />
       </motion.div>
     </section>
   )
 
   if (t === 'hero-fullbleed') return (
-    <section className="relative flex min-h-[520px] sm:min-h-[clamp(70vh,85vh,100vh)] items-end justify-center overflow-hidden text-center">
-      <div className="absolute inset-0 z-0" style={{ background:'linear-gradient(to top, #050505 0%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.2) 100%)' }} />
+    <section className="seltra-hero relative flex min-h-[520px] sm:min-h-[clamp(70vh,85vh,100vh)] items-end justify-center overflow-hidden text-center" data-archetype="fullbleed-bottom-text">
+      <div className="absolute inset-0 z-0" style={{ background:'rgba(0,0,0,0.42)' }} />
       {imgUrl && <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-[-1]"><SafeImage src={imgUrl} alt="" fill className="object-cover opacity-40" priority aria-hidden /></motion.div>}
-      <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex max-w-5xl flex-col items-center gap-5 px-6 pb-16 pt-24" style={{ color:'#ffffff' }}>
+      <motion.div variants={container} initial="hidden" animate="show" className="seltra-hero-content relative z-10 flex max-w-5xl flex-col items-center gap-5 px-6 pb-16 pt-24" style={{ color:'#ffffff' }}>
         {section.eyebrow && <motion.div variants={item}><span className="font-mono text-[0.65rem] uppercase tracking-widest opacity-60">{section.eyebrow}</span></motion.div>}
-        <motion.h1 variants={item} className="font-black leading-none tracking-tight" style={{ fontFamily:'var(--store-heading-font), serif', fontSize:'clamp(4rem,14vw,10rem)', textShadow:'0 2px 32px rgba(0,0,0,0.3)' }}>{section.headline}</motion.h1>
+        <motion.h1 variants={item} className="hero-title font-black leading-none tracking-tight" style={{ fontFamily:'var(--store-heading-font), serif', fontSize:'clamp(4rem,14vw,10rem)', textShadow:'0 2px 32px rgba(0,0,0,0.3)' }}>{section.headline}</motion.h1>
         {section.tagline && <motion.p variants={item} className="text-[clamp(0.95rem,2vw,1.1rem)] font-semibold opacity-80">{section.tagline}</motion.p>}
         {section.subtext  && <motion.p variants={item} className="max-w-lg text-sm leading-relaxed opacity-60">{section.subtext}</motion.p>}
-        <Button className="store-btn-primary gap-2 px-6 py-2.5 text-sm" style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', borderRadius:'var(--store-radius-full)' }}>
+        <Button className="store-btn-primary gap-2 px-6 py-2.5 text-sm" style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', borderRadius:'var(--store-radius-full)' }} onClick={onShopNow}>
           {section.ctaLabel ?? 'Shop now'} <ArrowRight className="h-3.5 w-3.5" />
         </Button>
       </motion.div>
@@ -195,51 +167,58 @@ export function HeroSection({
   )
 
   if (t === 'hero-editorial') return (
-    <section className="relative flex min-h-[480px] sm:min-h-[clamp(60vh,75vh,90vh)] items-center overflow-hidden" style={{ background:'var(--store-bg)' }}>
+    <section className="seltra-hero relative flex min-h-[480px] sm:min-h-[clamp(60vh,75vh,90vh)] items-center overflow-hidden" data-archetype="editorial-commerce" style={{ background:'var(--store-bg)' }}>
       {imgUrl ? (
         <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-0">
-          <SafeImage src={imgUrl} alt="" fill className="object-cover object-right" priority aria-hidden />
-          <div className="absolute inset-0" style={{ background:`linear-gradient(to right, var(--store-bg) 30%, color-mix(in srgb, var(--store-bg) 60%, transparent) 60%, transparent 100%)` }} />
+          {galleryUrls.length > 1 ? (
+            <div className="grid h-full grid-cols-3 gap-1 opacity-80">
+              {galleryUrls.map((url, index) => (
+                <div key={`${url}-${index}`} className="relative min-h-full overflow-hidden">
+                  <SafeImage src={url} alt="" fill className="object-cover object-right" priority={index === 0} aria-hidden />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <SafeImage src={imgUrl} alt="" fill className="object-cover object-right" priority aria-hidden />
+          )}
+          <div className="absolute inset-0" style={{ background:'rgba(0,0,0,0.36)' }} />
         </motion.div>
       ) : <div className="store-hero-mesh absolute inset-0 z-0" />}
-      <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex max-w-2xl flex-col gap-5 px-[clamp(1.5rem,5vw,4rem)] py-20">
+      <motion.div variants={container} initial="hidden" animate="show" className="seltra-hero-content relative z-10 flex max-w-2xl flex-col gap-5 px-[clamp(1.5rem,5vw,4rem)] py-20" style={{ color: heroSurfaceTextColor }}>
         {section.eyebrow && <Eyebrow text={section.eyebrow} />}
-        <motion.h1 variants={item} className="store-heading text-[clamp(2.75rem,6vw,5rem)] font-black" style={{ fontStyle:'italic' }}>{section.headline}</motion.h1>
-        {section.tagline && <motion.p variants={item} className="text-lg font-medium" style={{ color:'var(--store-muted)' }}>{section.tagline}</motion.p>}
-        {section.subtext  && <motion.p variants={item} className="text-sm leading-relaxed" style={{ color:'var(--store-muted)' }}>{section.subtext}</motion.p>}
-        <Pills features={features} />
-        <CTA label={section.ctaLabel} />
+        <motion.h1 variants={item} className="hero-title store-heading text-[clamp(2.75rem,6vw,5rem)] font-black" style={{ fontStyle:'italic' }}>{section.headline}</motion.h1>
+        {section.tagline && <motion.p variants={item} className="text-lg font-medium" style={{ color: heroSurfaceTextColor }}>{section.tagline}</motion.p>}
+        {section.subtext  && <motion.p variants={item} className="text-sm leading-relaxed" style={{ color: heroSurfaceSubtextColor }}>{section.subtext}</motion.p>}
+        <CTA label={section.ctaLabel} onClick={onShopNow} />
       </motion.div>
     </section>
   )
 
   return (
-    <section className="relative overflow-hidden px-4 pt-6 md:px-6" style={{ background:'var(--store-bg)' }}>
+    <section className="seltra-hero relative overflow-hidden px-0 sm:px-4 sm:pt-6 md:px-6" data-archetype="centered-stacked" style={{ background:'var(--store-bg)' }}>
       <div
-        className="store-hero-gradient-card store-hero-mesh relative flex min-h-[480px] sm:min-h-[clamp(60vh,75vh,88vh)] items-center justify-center overflow-hidden text-center"
-        style={{ borderRadius: 'var(--store-radius-2xl)', boxShadow: 'var(--store-shadow)' }}
+        className="store-hero-gradient-card store-hero-mesh seltra-hero-content relative flex min-h-[420px] sm:min-h-[clamp(60vh,75vh,88vh)] items-center justify-center overflow-hidden text-center rounded-none sm:rounded-[var(--store-radius-2xl)]"
+        style={{ boxShadow: 'var(--store-shadow)' }}
       >
         {imgUrl && (
-          <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-0">
-            <SafeImage src={imgUrl} alt="" fill className="object-cover object-center opacity-[0.14]" priority aria-hidden />
-          </motion.div>
+          <>
+            <motion.div variants={imgReveal} initial="hidden" animate="show" className="absolute inset-0 z-0">
+              <SafeImage src={imgUrl} alt="" fill className="object-cover object-center opacity-[0.22]" priority aria-hidden />
+            </motion.div>
+            <div className="absolute inset-0 z-0" style={{ backgroundColor: 'rgba(0,0,0,0.38)' }} />
+          </>
         )}
-        <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex max-w-3xl flex-col items-center gap-4 px-6 py-20">
+        <motion.div variants={container} initial="hidden" animate="show" className="relative z-10 flex max-w-3xl flex-col items-center gap-3 px-4 py-8 sm:gap-4 sm:px-8 sm:py-16 md:py-20" style={{ color: heroSurfaceTextColor }}>
           {section.eyebrow && <Eyebrow text={section.eyebrow} />}
-          <motion.h1 variants={item} className="store-heading text-[clamp(3rem,9vw,6.5rem)] font-black leading-none">{section.headline}</motion.h1>
-          {section.tagline && <motion.p variants={item} className="text-[clamp(0.95rem,2vw,1.15rem)] font-semibold" style={{ color:'var(--store-muted)' }}>{section.tagline}</motion.p>}
-          {section.subtext  && <motion.p variants={item} className="max-w-prose text-[0.9375rem] leading-relaxed" style={{ color:'var(--store-muted)' }}>{section.subtext}</motion.p>}
-          <Pills features={features} />
-          <motion.div variants={item} className="flex flex-wrap items-center justify-center gap-3">
-            <Button className="store-btn-primary gap-2 px-6 py-2.5 text-sm" style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', borderRadius:'var(--store-radius-full)' }}>
+          <motion.h1 variants={item} className="hero-title store-heading text-[clamp(2.25rem,8.5vw,6.5rem)] font-black leading-[1.05] sm:leading-none">{section.headline}</motion.h1>
+          {section.tagline && <motion.p variants={item} className="text-[clamp(0.875rem,3vw,1.15rem)] font-semibold" style={{ color: heroSurfaceTextColor }}>{section.tagline}</motion.p>}
+          {section.subtext  && <motion.p variants={item} className="max-w-prose text-[0.875rem] leading-relaxed sm:text-[0.9375rem]" style={{ color: heroSurfaceSubtextColor }}>{section.subtext}</motion.p>}
+          <motion.div variants={item} className="flex flex-wrap items-center justify-center gap-2.5 pt-1 sm:gap-3">
+            <Button className="store-btn-primary gap-2 px-5 py-2.5 text-sm sm:px-6" style={{ background:'var(--store-accent)', color:'var(--store-accent-text)', borderRadius:'var(--store-radius-full)' }} onClick={onShopNow}>
               {section.ctaLabel ?? 'Shop now'} <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-            <Button className="store-btn-outline gap-2 px-5 py-2.5 text-sm" style={{ borderRadius:'var(--store-radius-full)' }}>
-              Browse all
             </Button>
           </motion.div>
         </motion.div>
-        <FloatingStatCard position="top-right" />
       </div>
     </section>
   )

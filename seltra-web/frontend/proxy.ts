@@ -1,3 +1,4 @@
+//seltra-web/frontend/proxy.ts
 import { NextResponse } from 'next/server'
 
 export function proxy() {

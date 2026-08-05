@@ -1,8 +1,9 @@
 //seltra-web/backend/src/ai/agents/blueprint.agent.ts
 import { chat } from '../client'
 import type { CanonicalStore } from '../../types'
+import { cleanJSON, repairTruncatedJSON } from '../utils/json-repair.util'
 
-const SYSTEM_PROMPT = `You are Seltra's Store Builder AI.
+const SYSTEM_PROMPT = `You are Seltra's Store Builder AI. Creator: Seltra Inc.
 Given a user description of a business, design a comprehensive store blueprint.
 
 Rules:
@@ -40,41 +41,11 @@ Rules:
   "estimatedLaunchTime": "15 minutes"
 }`
 
-function cleanJSON(raw: string): string {
-  let cleaned = raw.trim()
-  if (cleaned.startsWith('```json')) cleaned = cleaned.slice(7)
-  else if (cleaned.startsWith('```')) cleaned = cleaned.slice(3)
-  if (cleaned.endsWith('```')) cleaned = cleaned.slice(0, -3)
-  return cleaned.trim()
-}
-
 function generateSlug(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-}
-
-function repairTruncatedJSON(raw: string): string {
-  let s = raw.trim()
-  s = s.replace(/,\s*$/, '')
-  const quotePositions: number[] = []
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '"' && (i === 0 || s[i - 1] !== '\\')) {
-      quotePositions.push(i)
-    }
-  }
-  if (quotePositions.length % 2 !== 0) {
-    s = s + '"'
-  }
-  s = s.replace(/,\s*"?\s*$/, '')
-  const unclosedArrays =
-    (s.match(/\[/g) ?? []).length - (s.match(/\]/g) ?? []).length
-  const unclosedObjects =
-    (s.match(/\{/g) ?? []).length - (s.match(/\}/g) ?? []).length
-  s += ']'.repeat(Math.max(0, unclosedArrays))
-  s += '}'.repeat(Math.max(0, unclosedObjects))
-  return s
 }
 
 function inferBrandName(prompt: string): string {
@@ -102,8 +73,6 @@ function inferBrandName(prompt: string): string {
   return 'My Store'
 }
 
-// P0.4 — rule-based brand voice fallback, mirrors inferBrandName's approach:
-// cheap, deterministic, only used when the LLM path fails or omits it.
 function inferBrandVoice(prompt: string): string {
   const lower = prompt.toLowerCase()
   if (/luxury|premium|refined|elegant|high.end/.test(lower)) return 'refined and understated'

@@ -1,8 +1,10 @@
+//seltra-web/frontend/components/storefront/sections/ProductCard.tsx
 'use client'
 import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { SafeImage } from './SafeImage'
 import { ShoppingBag, Heart } from 'lucide-react'
-import type { StoreProduct } from './types'
+import type { SelectedVariants, StoreProduct } from './types'
 
 export type ProductCardVariant = 'default' | 'editorial' | 'overlay'
 
@@ -37,7 +39,7 @@ interface Props {
   index?: number
   isBestseller?: boolean
   variant?: ProductCardVariant
-  onAddToCart: (p: StoreProduct) => void
+  onAddToCart: (p: StoreProduct, selectedVariants?: SelectedVariants) => void
   onViewDetail?: (p: StoreProduct) => void
 }
 
@@ -47,9 +49,16 @@ export function ProductCard({
   onAddToCart, onViewDetail,
 }: Props) {
   const imgUrl = product.images?.find((i) => i.isPrimary)?.url ?? product.images?.[0]?.url ?? ''
-  const hasImg = imgUrl && !imgUrl.startsWith('data:')
+  const hasImg = Boolean(imgUrl) && !imgUrl.startsWith('data:')
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [imageError, setImageError] = useState(false)
   const price = Number(product.price).toFixed(2)
   const displayName = trimProductName(product.name)
+
+  useEffect(() => {
+    setImageLoaded(false)
+    setImageError(false)
+  }, [imgUrl])
 
   const handleClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
@@ -69,8 +78,23 @@ export function ProductCard({
         style={{ aspectRatio: '3 / 4', borderRadius: 'var(--store-radius-card)', boxShadow: 'var(--store-shadow)', cursor: onViewDetail ? 'pointer' : 'default' }}
         onClick={handleClick}
       >
-        {hasImg ? (
-          <SafeImage src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.05]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
+        {hasImg && !imageError ? (
+          <>
+            <SafeImage
+              src={imgUrl}
+              alt={displayName}
+              fill
+              className="object-cover transition-transform duration-500 group-hover:scale-[1.05]"
+              sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageError(true)}
+            />
+            {!imageLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+                <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" />
+              </div>
+            )}
+          </>
         ) : (
           <GradientTile name={product.name} seed={product.id} />
         )}
@@ -121,8 +145,23 @@ export function ProductCard({
         onClick={handleClick}
       >
         <div className="relative overflow-hidden" style={{ aspectRatio: '4 / 5', borderRadius: 'var(--store-radius-card)', background: 'var(--store-accent-soft)' }}>
-          {hasImg ? (
-            <SafeImage src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.03]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
+          {hasImg && !imageError ? (
+            <>
+              <SafeImage
+                src={imgUrl}
+                alt={displayName}
+                fill
+                className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw"
+                onLoad={() => setImageLoaded(true)}
+                onError={() => setImageError(true)}
+              />
+              {!imageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+                  <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" />
+                </div>
+              )}
+            </>
           ) : (
             <GradientTile name={product.name} seed={product.id} />
           )}
@@ -158,8 +197,23 @@ export function ProductCard({
       style={{ cursor: onViewDetail ? 'pointer' : 'default' }}
     >
       <div className="relative overflow-hidden" style={{ aspectRatio: '1 / 1', background: 'var(--store-accent-soft)', borderTopLeftRadius: 'var(--store-radius-card)', borderTopRightRadius: 'var(--store-radius-card)' }}>
-        {hasImg ? (
-          <SafeImage src={imgUrl} alt={displayName} fill className="object-cover transition-transform duration-500 group-hover:scale-[1.04]" sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw" />
+        {hasImg && !imageError ? (
+          <>
+            <SafeImage
+              src={imgUrl}
+              alt={displayName}
+              fill
+              className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+              sizes="(max-width:640px) 50vw,(max-width:1024px) 33vw,25vw"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageError(true)}
+            />
+            {!imageLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+                <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" />
+              </div>
+            )}
+          </>
         ) : (
           <GradientTile name={product.name} seed={product.id} />
         )}

@@ -136,6 +136,7 @@ async function bootstrap() {
   logger.log(`Seltra API is running on port ${port}`)
   logger.log(`Health endpoint: ${baseUrl}/api/v1/health`)
   logger.log(`Internal ops Swagger: ${baseUrl}/internal/docs`)
+  logger.log(`[Config] SELTRA_HERO_SECONDARY_CARD = ${process.env.SELTRA_HERO_SECONDARY_CARD}`)
   logger.log(`Keep-alive cron: self-ping every 14 minutes`)
 }
 

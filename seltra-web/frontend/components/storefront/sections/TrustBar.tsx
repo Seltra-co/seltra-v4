@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/TrustBar.tsx
 'use client'
 import {
   Leaf, Droplets, Sparkles, Heart,

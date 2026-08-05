@@ -1,12 +1,12 @@
 //seltra-web/frontend/components/storefront/sections/ProductShelf.tsx
 'use client'
 import { ProductCard } from './ProductCard'
-import type { StoreProduct } from './types'
+import type { SelectedVariants, StoreProduct } from './types'
 
 interface Props {
   section: { headline: string; subtext?: string; limit?: number }
   products: StoreProduct[]
-  onAddToCart: (p: StoreProduct) => void
+  onAddToCart: (p: StoreProduct, selectedVariants?: SelectedVariants) => void
   storeName: string
   onViewDetail?: (p: StoreProduct) => void
 }

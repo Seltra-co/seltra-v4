@@ -1,3 +1,4 @@
+//store/products.controller.ts
 import {
   BadRequestException,
   Body, Controller, Delete, Get, Headers, HttpCode,
@@ -9,6 +10,12 @@ import { UnauthorizedException, NotFoundException } from '@nestjs/common'
 import { TenantEventsService } from '../internal-ops/events/tenant-events.service'
 import { planLimits } from '../common/plan-limits'
 
+class ProductVariantDto {
+  id?: string
+  name!: string
+  value!: string
+}
+
 class UpsertProductDto {
   name!: string
   description?: string
@@ -16,6 +23,7 @@ class UpsertProductDto {
   currency?: string
   category?: string
   sku?: string
+  variants?: ProductVariantDto[]
 }
 
 class BulkProductActionDto {
@@ -145,6 +153,17 @@ export class ProductsController {
         ...(body.currency !== undefined && { currency: body.currency }),
         ...(body.category !== undefined && { category: body.category }),
         ...(body.sku !== undefined && { sku: body.sku }),
+        ...(body.variants !== undefined && {
+          variants: {
+            deleteMany: {},
+            createMany: {
+              data: body.variants.map((variant) => ({
+                name: variant.name,
+                value: variant.value,
+              })),
+            },
+          },
+        }),
       },
       include: { images: true, variants: true },
     })

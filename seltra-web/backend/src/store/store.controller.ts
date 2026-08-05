@@ -1,12 +1,23 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Sse } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Sse } from '@nestjs/common'
 import { StoreService } from './store.service'
 import { BuildEventsService } from './build-events.service'
+import { planFromPrompt } from '../ai/agents/business-planner.agent'
+
+class PlannerAnswersDto {
+  fulfillment_mode?: string
+  contact_number?: string
+  delivery_tiers?: string
+  product_variants?: string
+}
 
 class CreateStoreDto {
   name!: string
   businessType?: string
   targetAudience?: string
   prompt!: string
+  plannerAnswers?: PlannerAnswersDto
+  requestedProductCount?: number
+  requestedCategories?: string[]
 }
 
 class UpdateStoreDto {
@@ -20,6 +31,41 @@ class UpdateStoreDto {
   payoutProvider?: string
   payoutProviderCode?: string
   payoutAccount?: string
+  fulfillmentMode?: string
+  contactPhone?: string
+  pickupAddress?: string
+  pickupInstructions?: string
+  deliveryDays?: string
+  deliveryEstimate?: string
+  deliveryFeeNote?: string
+  deliveryTiers?: Array<{
+    id: string
+    label: string
+    description: string
+    priceFrom: number
+    currency: string
+    areas?: string[]
+    etaLabel?: string
+  }> | null
+}
+
+class UpdateFulfillmentDto {
+  fulfillmentMode?: string
+  contactPhone?: string
+  pickupAddress?: string
+  pickupInstructions?: string
+  deliveryDays?: string
+  deliveryEstimate?: string
+  deliveryFeeNote?: string
+  deliveryTiers?: Array<{
+    id: string
+    label: string
+    description: string
+    priceFrom: number
+    currency: string
+    areas?: string[]
+    etaLabel?: string
+  }> | null
 }
 
 @Controller('seltra/store')
@@ -42,13 +88,28 @@ export class StoreController {
     ctx.emit({ type: 'log', message: `Build session ${ctx.buildId} started.` })
     this.storeService.create(body, authorization, ctx)
       .then((store) => {
-        ctx.emit({ type: 'preview', url: store.storeUrl ?? `${store.slug}.seltra.co`, store })
-        ctx.emit({ type: 'done', store })
+        return this.storeService.findByIdOrSlug(store.id ?? store.slug)
+      })
+      .then((freshStore) => {
+        ctx.emit({ type: 'preview', url: freshStore.storeUrl ?? `${freshStore.slug}.seltra.co`, store: freshStore })
+        ctx.emit({ type: 'done', store: freshStore })
       })
       .catch((error) => {
         ctx.emit({ type: 'error', message: error instanceof Error ? error.message : String(error) })
       })
     return { buildId: ctx.buildId }
+  }
+
+  @Post('plan')
+  async plan(@Body() body: { prompt: string }) {
+    if (!body?.prompt?.trim()) throw new BadRequestException('Prompt is required')
+    return planFromPrompt(body.prompt)
+  }
+
+  @Get('check-limit')
+  async checkLimit(@Headers('authorization') authorization?: string) {
+    const result = await this.storeService.checkStoreCreationLimit(authorization)
+    return result
   }
 
   @Sse('build/:id/events')
@@ -86,6 +147,18 @@ export class StoreController {
   update(
     @Param('id') id: string,
     @Body() body: UpdateStoreDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.storeService.update(id, body, authorization)
+  }
+
+  // Dedicated endpoint merchants hit from Settings to fill in / edit
+  // delivery-day copy, pickup address, or switch fulfillment mode after
+  // the store's already live — not just at creation time.
+  @Patch(':id/fulfillment')
+  updateFulfillment(
+    @Param('id') id: string,
+    @Body() body: UpdateFulfillmentDto,
     @Headers('authorization') authorization?: string,
   ) {
     return this.storeService.update(id, body, authorization)

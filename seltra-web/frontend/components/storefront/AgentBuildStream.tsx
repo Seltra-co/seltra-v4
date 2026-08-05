@@ -1,275 +1,445 @@
+//seltra-web/frontend/components/storefront/AgentBuildStream.tsx
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Loader2, Brain, Package, Palette, CreditCard, Rocket, Zap, FileCode2, AlertCircle, Sparkles } from 'lucide-react'
+import { Loader2, Sparkles } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { StoreData } from './StorefrontPreview'
-
-type PlanItem = { label: string; detail: string }
 
 type BuildEvent =
   | { type: 'step'; step: string; status: 'started' | 'completed' | 'failed'; label?: string }
   | { type: 'log'; message: string }
-  | { type: 'plan'; items: PlanItem[] }
+  | { type: 'plan'; items: Array<{ label: string; detail: string }> }
   | { type: 'file'; name: string; status: 'started' | 'completed' | 'failed' }
   | { type: 'chunk'; file: string; content: string }
-  | { type: 'preview'; url: string; store?: StoreData }
-  | { type: 'done'; store?: StoreData }
+  | { type: 'image'; role: 'hero' | 'product'; url: string; label?: string }
+  | { type: 'preview'; url: string; store?: StoreData | null }
+  | { type: 'heartbeat' }
+  | { type: 'done'; store?: StoreData | null }
   | { type: 'error'; message: string }
 
-type StepState = { key: string; label: string; status: 'pending' | 'started' | 'completed' | 'failed' }
-type FileState = { name: string; status: 'started' | 'completed' | 'failed'; content: string }
+type CurrentMoment =
+  | { kind: 'thinking'; text: string }
+  | { kind: 'action'; title: string; subtext: string; imageUrl?: string; resolved: boolean }
+  | { kind: 'image'; title: string; imageUrl?: string; galleryUrls?: string[]; caption?: string }
+  | { kind: 'error'; text: string }
+  | { kind: 'done' }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
-
-const STEP_DEFS = [
-  { key: 'intent', label: 'Business intent', icon: Brain },
-  { key: 'blueprint', label: 'Blueprint', icon: Zap },
-  { key: 'dna', label: 'Brand DNA', icon: Palette },
-  { key: 'products', label: 'Products', icon: Package },
-  { key: 'payments', label: 'Payments', icon: CreditCard },
-  { key: 'manifest', label: 'Manifest', icon: FileCode2 },
-  { key: 'critique', label: 'Design review', icon: Sparkles },
-  { key: 'hero', label: 'Hero', icon: FileCode2 },
-  { key: 'nav', label: 'Navigation', icon: FileCode2 },
-  { key: 'compile', label: 'Compile', icon: Zap },
-  { key: 'deploy', label: 'Preview', icon: Rocket },
-]
-
-function initialSteps(): StepState[] {
-  return STEP_DEFS.map((step) => ({ key: step.key, label: step.label, status: 'pending' }))
+const STEP_LABELS: Record<string, { active: string; done: string }> = {
+  hero: { active: 'Designing your hero section', done: 'Hero section ready' },
+  nav: { active: 'Building your navigation', done: 'Navigation ready' },
+  manifest: { active: 'Structuring your storefront layout', done: 'Layout structured' },
+  critique: { active: 'Reviewing design quality', done: 'Design reviewed' },
+  blueprint: { active: 'Mapping your business into a plan', done: 'Plan mapped' },
+  dna: { active: 'Reading your brand personality', done: 'Brand DNA extracted' },
+  products: { active: 'Building your product catalog', done: 'Catalog ready' },
+  payments: { active: 'Setting up checkout', done: 'Checkout ready' },
+  compile: { active: 'Compiling your storefront', done: 'Rendering storefront preview' },
+  deploy: { active: 'Publishing your store', done: 'Store published' },
 }
 
 function eventSourceUrl(buildId: string) {
   return `${API_BASE}/api/v1/seltra/store/build/${encodeURIComponent(buildId)}/events`
 }
 
+function formatThoughtLabel(startedAt: number | null) {
+  if (!startedAt) return null
+  const seconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000))
+  return `Thought for ${seconds}s`
+}
+
+function deriveActionTitle(step: string, label?: string) {
+  const key = step.toLowerCase()
+  const mapped = STEP_LABELS[key]
+  if (mapped) return mapped.active
+  return label ?? step
+}
+
+function deriveDoneTitle(step: string, label?: string) {
+  const key = step.toLowerCase()
+  const mapped = STEP_LABELS[key]
+  if (mapped) return mapped.done
+  return label ?? step
+}
+
 export function AgentBuildStream({
   storeName,
   buildId,
   onDone,
+  onPreview,
   onError,
 }: {
   storeName: string
   buildId?: string | null
-  onDone?: (store: StoreData) => void
+  onDone?: (store?: StoreData | null) => void
+  onPreview?: (store?: StoreData | null) => void
   onError?: (message: string) => void
 }) {
-  const [steps, setSteps] = useState<StepState[]>(() => initialSteps())
-  const [plan, setPlan] = useState<PlanItem[]>([])
-  const [logs, setLogs] = useState<string[]>([])
-  const [files, setFiles] = useState<Record<string, FileState>>({})
-  const [status, setStatus] = useState<'idle' | 'working' | 'done' | 'error'>('idle')
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  // Guards source.onerror from overwriting a real terminal event (done/build-error)
-  // that already arrived — the browser can still fire a connection-level onerror
-  // right after the server closes the stream on purpose.
+  const [priorThought, setPriorThought] = useState<string | null>(null)
+  const [current, setCurrent] = useState<CurrentMoment | null>(null)
+  const currentRef = useRef<CurrentMoment | null>(null)
+  const lastEventAt = useRef<number | null>(null)
   const finishedRef = useRef(false)
+  const keepAliveTimeout = useRef<number | null>(null)
+  const reconnectTimeout = useRef<number | null>(null)
+  const reconnectAttempts = useRef(0)
+  const productImageGalleryRef = useRef<string[]>([])
+
+  useEffect(() => {
+    currentRef.current = current
+  }, [current])
 
   useEffect(() => {
     if (!buildId) return
-    setSteps(initialSteps())
-    setPlan([])
-    setLogs([])
-    setFiles({})
-    setPreviewUrl(null)
-    setStatus('working')
-    finishedRef.current = false
 
-    const source = new EventSource(eventSourceUrl(buildId))
+    setPriorThought(null)
+    setCurrent(null)
+    currentRef.current = null
+    lastEventAt.current = Date.now()
+    finishedRef.current = false
+    reconnectAttempts.current = 0
+
+    let source: EventSource | null = null
+    const MAX_RECONNECTS = 6
+    const RECONNECT_DELAY_MS = 3000
+
+    const clearKeepAlive = () => {
+      if (keepAliveTimeout.current) {
+        window.clearTimeout(keepAliveTimeout.current)
+        keepAliveTimeout.current = null
+      }
+    }
+
+    const clearReconnect = () => {
+      if (reconnectTimeout.current) {
+        window.clearTimeout(reconnectTimeout.current)
+        reconnectTimeout.current = null
+      }
+    }
+
+    const scheduleReconnect = () => {
+      if (finishedRef.current) return
+      if (reconnectAttempts.current >= MAX_RECONNECTS) {
+        const disconnected = { kind: 'error' as const, text: 'Build stream disconnected and could not reconnect.' }
+        setCurrent(disconnected)
+        currentRef.current = disconnected
+        onError?.('Build stream disconnected and could not reconnect.')
+        return
+      }
+
+      reconnectAttempts.current += 1
+      const reconnecting = {
+        kind: 'action' as const,
+        title: 'Reconnecting build stream',
+        subtext: `Retrying connection (${reconnectAttempts.current}/${MAX_RECONNECTS})`,
+        resolved: false,
+      }
+      setCurrent(reconnecting)
+      currentRef.current = reconnecting
+
+      clearReconnect()
+      reconnectTimeout.current = window.setTimeout(() => {
+        if (finishedRef.current) return
+        source = createSource()
+      }, RECONNECT_DELAY_MS)
+    }
+
+    const resetTimeout = () => {
+      clearKeepAlive()
+      keepAliveTimeout.current = window.setTimeout(() => {
+        if (finishedRef.current) return
+        const disconnected = { kind: 'error' as const, text: 'Build stream timed out' }
+        setCurrent(disconnected)
+        currentRef.current = disconnected
+        source?.close()
+        scheduleReconnect()
+      }, 45000)
+    }
+
+    const handleParseError = (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err)
+      const disconnected = { kind: 'error' as const, text: `Build stream parse error: ${message}` }
+      setCurrent(disconnected)
+      currentRef.current = disconnected
+      onError?.(`Build stream parse error: ${message}`)
+    }
 
     const handle = (event: MessageEvent<string>) => {
-      const parsed = JSON.parse(event.data) as BuildEvent
+      try {
+        const parsed = JSON.parse(event.data) as BuildEvent
 
-      if (parsed.type === 'log') {
-        setLogs((prev) => [...prev.slice(-80), `> ${parsed.message}`])
+        if (parsed.type === 'log') {
+          const message = typeof parsed.message === 'string' ? parsed.message.trim() : ''
+          if (!message) return
+          const thought = formatThoughtLabel(lastEventAt.current)
+          const currentThoughtText = currentRef.current?.kind === 'thinking' ? currentRef.current.text : null
+          if (currentThoughtText) {
+            setPriorThought((prev) => prev ?? (thought ? `${thought}: ${currentThoughtText}` : null))
+          }
+          const next = { kind: 'thinking' as const, text: message }
+          setCurrent(next)
+          currentRef.current = next
+          lastEventAt.current = Date.now()
+          resetTimeout()
+          return
+        }
+
+        if (parsed.type === 'step') {
+          const label = parsed.label ?? parsed.step
+          const previousThoughtText = formatThoughtLabel(lastEventAt.current)
+          const currentThoughtText = currentRef.current?.kind === 'thinking' ? currentRef.current.text : null
+          if (currentThoughtText) {
+            setPriorThought((prev) => prev ?? (previousThoughtText ? `${previousThoughtText}: ${currentThoughtText}` : null))
+          }
+
+          if (parsed.status === 'started') {
+            const next = {
+              kind: 'action' as const,
+              title: deriveActionTitle(parsed.step, label),
+              subtext: 'Working on the current build step',
+              resolved: false,
+            }
+            setCurrent(next)
+            currentRef.current = next
+          }
+
+          if (parsed.status === 'completed') {
+            setCurrent((prev) => {
+              if (prev?.kind !== 'action') return prev
+              const next = {
+                kind: 'action' as const,
+                title: deriveDoneTitle(parsed.step, prev.title),
+                subtext: 'Completed',
+                imageUrl: prev.imageUrl,
+                resolved: true,
+              }
+              currentRef.current = next
+              return next
+            })
+          }
+
+          lastEventAt.current = Date.now()
+          resetTimeout()
+          return
+        }
+
+        if (parsed.type === 'image') {
+          if (parsed.role === 'product') {
+            const nextGallery = [...productImageGalleryRef.current, parsed.url]
+              .filter((url, index, arr) => arr.indexOf(url) === index)
+              .slice(-5)
+            productImageGalleryRef.current = nextGallery
+            const next = {
+              kind: 'image' as const,
+              title: 'Product previews',
+              galleryUrls: nextGallery,
+              caption: `${nextGallery.length} curated product images`,
+            }
+            setCurrent(next)
+            currentRef.current = next
+            lastEventAt.current = Date.now()
+            resetTimeout()
+            return
+          }
+
+          const next = {
+            kind: 'image' as const,
+            title: parsed.label ?? 'Generated image',
+            imageUrl: parsed.url,
+            caption: 'Hero image generated',
+          }
+          setCurrent(next)
+          currentRef.current = next
+          lastEventAt.current = Date.now()
+          resetTimeout()
+          return
+        }
+
+        if (parsed.type === 'preview') {
+          const previewStore = parsed.store && typeof parsed.store === 'object' ? (parsed.store as StoreData) : undefined
+          const next = {
+            kind: 'action' as const,
+            title: 'Rendering storefront preview',
+            subtext: 'The storefront preview is being assembled',
+            imageUrl: parsed.url,
+            resolved: true,
+          }
+          setCurrent(next)
+          currentRef.current = next
+          onPreview?.(previewStore)
+          lastEventAt.current = Date.now()
+          resetTimeout()
+          return
+        }
+
+        if (parsed.type === 'heartbeat') {
+          lastEventAt.current = Date.now()
+          resetTimeout()
+          return
+        }
+
+        if (parsed.type === 'file' || parsed.type === 'chunk') {
+          if (parsed.type === 'file' && parsed.status === 'completed') {
+            setCurrent((prev) => {
+              if (prev?.kind !== 'action') return prev
+              const next = { ...prev, resolved: true, subtext: 'Generated successfully' }
+              currentRef.current = next
+              return next
+            })
+            lastEventAt.current = Date.now()
+            resetTimeout()
+            return
+          }
+          setCurrent((prev) => {
+            if (prev?.kind !== 'action') return prev
+            const next = { ...prev, subtext: 'Generating assets for review', resolved: false }
+            currentRef.current = next
+            return next
+          })
+          lastEventAt.current = Date.now()
+          resetTimeout()
+          return
+        }
+
+        if (parsed.type === 'done') {
+          finishedRef.current = true
+          clearKeepAlive()
+          clearReconnect()
+          setCurrent({ kind: 'done' })
+          currentRef.current = { kind: 'done' }
+          setPriorThought((prev) => prev ?? null)
+          source?.close()
+          const nextStore = parsed.store && typeof parsed.store === 'object' ? (parsed.store as StoreData) : undefined
+          onDone?.(nextStore)
+          return
+        }
+
+        if (parsed.type === 'error') {
+          finishedRef.current = true
+          clearKeepAlive()
+          clearReconnect()
+          setCurrent({ kind: 'error', text: parsed.message })
+          currentRef.current = { kind: 'error', text: parsed.message }
+          setPriorThought(null)
+          source?.close()
+          onError?.(parsed.message)
+          return
+        }
+
+        resetTimeout()
+      } catch (err) {
+        if (finishedRef.current) return
+        handleParseError(err)
       }
+    }
 
-      if (parsed.type === 'plan') {
-        setPlan(parsed.items)
-      }
-
-      if (parsed.type === 'step') {
-        setSteps((prev) => prev.map((step) =>
-          step.key === parsed.step
-            ? { ...step, label: parsed.label ?? step.label, status: parsed.status }
-            : step,
-        ))
-        if (parsed.status === 'started') setLogs((prev) => [...prev.slice(-80), `> ${parsed.label ?? parsed.step} started`])
-        if (parsed.status === 'completed') setLogs((prev) => [...prev.slice(-80), `✓ ${parsed.label ?? parsed.step} completed`])
-      }
-
-      if (parsed.type === 'file') {
-        setFiles((prev) => ({
-          ...prev,
-          [parsed.name]: {
-            name: parsed.name,
-            status: parsed.status,
-            content: prev[parsed.name]?.content ?? '',
-          },
-        }))
-      }
-
-      if (parsed.type === 'chunk') {
-        setFiles((prev) => ({
-          ...prev,
-          [parsed.file]: {
-            name: parsed.file,
-            status: prev[parsed.file]?.status ?? 'started',
-            content: (prev[parsed.file]?.content ?? '') + parsed.content,
-          },
-        }))
-      }
-
-      if (parsed.type === 'preview') {
-        setPreviewUrl(parsed.url)
-        setLogs((prev) => [...prev.slice(-80), `✓ Preview updated: ${parsed.url}`])
-      }
-
-      if (parsed.type === 'done') {
-        finishedRef.current = true
-        setStatus('done')
-        setLogs((prev) => [...prev.slice(-80), '✓ Build successful'])
+    const createSource = () => {
+      if (source) {
         source.close()
-        if (parsed.store) onDone?.(parsed.store)
       }
 
-      if (parsed.type === 'error') {
-        finishedRef.current = true
-        setStatus('error')
-        setLogs((prev) => [...prev.slice(-80), `! ${parsed.message}`])
-        source.close()
-        onError?.(parsed.message)
+      const nextSource = new EventSource(eventSourceUrl(buildId))
+      nextSource.onmessage = handle
+      for (const eventName of ['step', 'log', 'plan', 'file', 'chunk', 'image', 'preview', 'heartbeat', 'done', 'build-error']) {
+        nextSource.addEventListener(eventName, handle as EventListener)
       }
+      nextSource.onerror = () => {
+        if (finishedRef.current) return
+        clearKeepAlive()
+        const disconnected = { kind: 'error' as const, text: 'Build stream disconnected' }
+        setCurrent(disconnected)
+        currentRef.current = disconnected
+        nextSource.close()
+        scheduleReconnect()
+      }
+      return nextSource
     }
 
-    source.onmessage = handle
-    // Listen for 'build-error' on the wire (not 'error' — that name is reserved by
-    // EventSource for connection-level failures and won't reliably deliver custom data).
-    for (const eventName of ['step', 'log', 'plan', 'file', 'chunk', 'preview', 'done', 'build-error']) {
-      source.addEventListener(eventName, handle as EventListener)
+    source = createSource()
+    resetTimeout()
+
+    return () => {
+      finishedRef.current = true
+      clearKeepAlive()
+      clearReconnect()
+      source?.close()
     }
-    source.onerror = () => {
-      if (finishedRef.current) return
-      setStatus('error')
-      setLogs((prev) => [...prev.slice(-80), '! Build stream disconnected'])
-      source.close()
-      onError?.('Build stream disconnected')
-    }
-
-    return () => source.close()
-  }, [buildId, onDone, onError])
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [logs, files])
-
-  const doneCount = steps.filter((step) => step.status === 'completed').length
-  const pct = Math.round((doneCount / Math.max(steps.length, 1)) * 100)
-  const fileList = useMemo(() => Object.values(files), [files])
-  const activeFile = fileList.find((file) => file.status === 'started') ?? fileList[fileList.length - 1]
+  }, [buildId, onDone, onPreview, onError])
 
   return (
-    <div className="grid h-full min-h-0 gap-4 p-6 lg:grid-cols-[minmax(260px,.8fr)_minmax(360px,1.2fr)]">
-      <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
-        <div className="flex items-center justify-between">
-          <div className="min-w-0">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-primary opacity-70">{'// live build stream'}</div>
-            <div className="mt-0.5 truncate text-base font-semibold">{storeName || 'Your store'}</div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className={`h-2 w-2 rounded-full ${status === 'done' ? 'bg-primary' : status === 'error' ? 'bg-red-400' : 'animate-pulse bg-yellow-400'}`} />
-            <span className={`font-mono text-[11px] ${status === 'error' ? 'text-red-400' : status === 'done' ? 'text-primary' : 'text-yellow-400'}`}>
-              {status === 'done' ? 'DONE' : status === 'error' ? 'ERROR' : 'WORKING'}
-            </span>
-          </div>
-        </div>
-
-        <div className="h-1.5 overflow-hidden rounded-full bg-border">
-          <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${pct}%` }} />
-        </div>
-
-        {plan.length > 0 && (
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
-            <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-primary">
-              <Sparkles className="h-3 w-3" /> Building this store
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden p-6">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div className="flex h-full flex-col justify-center gap-3">
+          {priorThought && (
+            <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              {priorThought}
             </div>
-            <div className="space-y-1.5">
-              {plan.map((item) => (
-                <div key={item.label} className="flex items-start gap-2 text-xs">
-                  <span className="mt-1 h-1 w-1 flex-shrink-0 rounded-full bg-primary" />
-                  <div className="min-w-0">
-                    <span className="font-medium text-foreground">{item.label}</span>
-                    <span className="text-muted-foreground"> — {item.detail}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
 
-        <div className="space-y-2">
-          {steps.map((def) => {
-            const meta = STEP_DEFS.find((step) => step.key === def.key)
-            const Icon = meta?.icon ?? Zap
-            const isDone = def.status === 'completed'
-            const isActive = def.status === 'started'
-            const isFailed = def.status === 'failed'
-            return (
-              <div
-                key={def.key}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm transition-all ${
-                  isDone ? 'opacity-60' :
-                  isActive ? 'border border-primary/25 bg-primary/10' :
-                  isFailed ? 'border border-red-500/25 bg-red-500/10' :
-                  'opacity-35'
-                }`}
-              >
-                <div className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border ${
-                  isDone ? 'border-primary/40 text-primary' :
-                  isActive ? 'border-primary text-primary' :
-                  isFailed ? 'border-red-400 text-red-400' :
-                  'border-border text-muted-foreground'
-                }`}>
-                  {isDone ? <Check className="h-3.5 w-3.5" /> :
-                   isActive ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> :
-                   isFailed ? <AlertCircle className="h-3.5 w-3.5" /> :
-                   <Icon className="h-3.5 w-3.5" />}
-                </div>
-                <div className="min-w-0 flex-1 truncate font-medium">{def.label}</div>
+          {current?.kind === 'thinking' && (
+            <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/20 p-5">
+              <div className="agent-glow-backdrop" />
+              <div className="relative z-[1] flex items-center gap-2">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span className="agent-thinking-text text-base font-medium">{current.text}</span>
               </div>
-            )
-          })}
-        </div>
-
-        <div
-          ref={scrollRef}
-          className="min-h-[150px] overflow-y-auto rounded-xl border border-border bg-card/30 p-4 font-mono text-[11px]"
-        >
-          {logs.length === 0 && <span className="text-muted-foreground">$ waiting for build events...</span>}
-          {logs.map((line, i) => (
-            <div key={i} className={line.startsWith('✓') ? 'text-primary' : line.startsWith('!') ? 'text-red-400' : 'text-muted-foreground'}>
-              {line}
             </div>
-          ))}
-          {previewUrl && <div className="mt-2 text-primary">preview: {previewUrl}</div>}
-        </div>
-      </div>
+          )}
 
-      <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card/30">
-        <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
-          {fileList.length === 0 ? (
-            <span className="font-mono text-[11px] text-muted-foreground">No generated files yet</span>
-          ) : fileList.map((file) => (
-            <span key={file.name} className={`rounded-md border px-2 py-1 font-mono text-[10px] ${
-              file.status === 'completed' ? 'border-primary/30 text-primary' : 'border-border text-muted-foreground'
-            }`}>
-              {file.name}
-            </span>
-          ))}
+          {current?.kind === 'action' && (
+            <div className="rounded-2xl border border-border/60 bg-card/20 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-base font-semibold text-foreground">{current.title}</div>
+                {!current.resolved && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
+              </div>
+              <div className="mt-2 text-sm text-muted-foreground">{current.subtext}</div>
+              {current.imageUrl && (
+                <div className="mt-4 overflow-hidden rounded-xl border border-border/60 bg-background/40">
+                  <img src={current.imageUrl} alt={current.title} className="aspect-[4/3] w-full object-cover" />
+                </div>
+              )}
+            </div>
+          )}
+
+          {current?.kind === 'image' && (
+            <div className="rounded-2xl border border-border/60 bg-card/20 p-4">
+              <div className="text-sm font-medium text-foreground">{current.title}</div>
+              {current.galleryUrls && current.galleryUrls.length > 0 ? (
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {current.galleryUrls.map((url, index) => (
+                    <div key={`${url}-${index}`} className="overflow-hidden rounded-xl border border-border/50 bg-background/40">
+                      <img src={url} alt={`${current.title} ${index + 1}`} className="h-24 w-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              ) : current.imageUrl ? (
+                <div className="mt-3 overflow-hidden rounded-xl">
+                  <img src={current.imageUrl} alt={current.title} className="w-full object-cover" />
+                </div>
+              ) : null}
+              {current.caption && <p className="mt-2 text-xs text-muted-foreground">{current.caption}</p>}
+            </div>
+          )}
+
+          {current?.kind === 'error' && (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-5">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-red-400">Build failed</div>
+              <div className="mt-2 text-sm text-red-200">{current.text}</div>
+            </div>
+          )}
+
+          {current?.kind === 'done' && (
+            <div className="flex items-center gap-2 rounded-2xl border border-primary/30 bg-primary/5 p-4 text-sm text-foreground">
+              <span className="text-primary">✓</span>
+              <span>Your store is ready.</span>
+            </div>
+          )}
+
+          {!current && (
+            <div className="rounded-2xl border border-dashed border-border bg-card/20 p-5 text-sm text-muted-foreground">
+              Waiting for the build stream to begin…
+            </div>
+          )}
         </div>
-        <pre className="min-h-0 flex-1 overflow-auto p-4 text-[11px] leading-relaxed text-muted-foreground">
-          <code>{activeFile?.content || '// generated code and data will stream here'}</code>
-        </pre>
       </div>
     </div>
   )

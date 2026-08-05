@@ -1,12 +1,16 @@
+//seltra-web/frontend/components/storefront/sections/ProductGrid.tsx
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { ProductCard, type ProductCardVariant } from './ProductCard'
-import type { StoreProduct } from './types'
+import type { SelectedVariants, StoreProduct } from './types'
 
 interface Props {
   section: { columns: 2 | 3 | 4; style: string; limit?: number; showCategory?: boolean; sectionLabel?: string }
   products: StoreProduct[]
-  onAddToCart: (p: StoreProduct) => void
+  categories: string[]
+  activeCategory: string
+  onCategoryChange: (category: string) => void
+  onAddToCart: (p: StoreProduct, selectedVariants?: SelectedVariants) => void
   onViewDetail?: (p: StoreProduct) => void
 }
 
@@ -19,12 +23,10 @@ const VARIANT_BY_STYLE: Record<string, ProductCardVariant> = {
   magazine: 'editorial',
 }
 
-export function ProductGrid({ section, products, onAddToCart, onViewDetail }: Props) {
-  const [activeCategory, setActiveCategory] = useState('All')
-  const categories = useMemo(() => {
-    const values = products.map((p) => p.category).filter(Boolean) as string[]
-    return [...new Set(values)]
-  }, [products])
+export function ProductGrid({ section, products, categories, activeCategory, onCategoryChange, onAddToCart, onViewDetail }: Props) {
+  const uniqueCategories = useMemo(() => {
+    return [...new Set(categories)]
+  }, [categories])
   const filtered = activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory)
   const limited  = filtered.slice(0, section.limit ?? 9)
   const colClass = section.columns === 4 ? 'grid-cols-2 md:grid-cols-4' : section.columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3'
@@ -45,14 +47,14 @@ export function ProductGrid({ section, products, onAddToCart, onViewDetail }: Pr
           <span className="store-eyebrow">{limited.length} items</span>
         </div>
 
-        {categories.length > 1 && (
+        {uniqueCategories.length > 1 && (
           <div className="mb-7 flex flex-wrap gap-2">
-            {['All', ...categories].map((category) => {
+            {['All', ...uniqueCategories].map((category) => {
               const active = activeCategory === category
               return (
                 <button
                   key={category}
-                  onClick={() => setActiveCategory(category)}
+                  onClick={() => onCategoryChange(category)}
                   className="rounded-full border px-4 py-2 text-xs font-semibold transition-colors"
                   style={{
                     background: active ? 'var(--store-accent)' : 'var(--store-bg)',

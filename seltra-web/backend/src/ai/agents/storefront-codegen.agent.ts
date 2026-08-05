@@ -143,25 +143,7 @@ function sectionBgClass(type: string): string {
 }
 
 // ── Theme / typography maps ───────────────────────────────────────────────────
-const THEME_PALETTES: Record<string, StoreManifest['palette']> = {
-  luxury:          { bg: '#faf9f7', surface: '#ffffff', border: '#e8e4df', text: '#1a1a1a', muted: '#7a7060', accent: '#b8860b', accentText: '#ffffff', accentSoft: '#fdf5e4' },
-  'bold-dark':     { bg: '#0d0d0d', surface: '#141414', border: '#2a2a2a', text: '#f0f0f0', muted: '#888888', accent: '#ff3c00', accentText: '#ffffff', accentSoft: '#1f1008' },
-  'minimal-light': { bg: '#fafafa', surface: '#ffffff', border: '#e5e5e5', text: '#1a1a1a', muted: '#717171', accent: '#2563eb', accentText: '#ffffff', accentSoft: '#eff6ff' },
-  editorial:       { bg: '#f8f6f3', surface: '#ffffff', border: '#e0d8ce', text: '#1c1815', muted: '#8c7b6b', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f9ede8' },
-  'warm-earth':    { bg: '#faf7f2', surface: '#ffffff', border: '#e8dfd0', text: '#2d2419', muted: '#8a7560', accent: '#c4622d', accentText: '#ffffff', accentSoft: '#f5ece6' },
-  'cool-modern':   { bg: '#f0f4f8', surface: '#ffffff', border: '#dde3ea', text: '#0f1923', muted: '#627282', accent: '#0070f3', accentText: '#ffffff', accentSoft: '#e8f0fe' },
-  vibrant:         { bg: '#0a0a0a', surface: '#111111', border: '#1f1f1f', text: '#ffffff', muted: '#888888', accent: '#00e676', accentText: '#000000', accentSoft: '#00e67615' },
-}
-
-const THEME_TYPOGRAPHY: Record<string, { headingFont: string; bodyFont: string }> = {
-  luxury:          { headingFont: 'Playfair Display', bodyFont: 'DM Sans' },
-  'bold-dark':     { headingFont: 'Bebas Neue',       bodyFont: 'Inter' },
-  'minimal-light': { headingFont: 'Syne',             bodyFont: 'Inter' },
-  editorial:       { headingFont: 'Fraunces',         bodyFont: 'DM Sans' },
-  'warm-earth':    { headingFont: 'Fraunces',         bodyFont: 'DM Sans' },
-  'cool-modern':   { headingFont: 'Inter',            bodyFont: 'Inter' },
-  vibrant:         { headingFont: 'Syne',             bodyFont: 'Inter' },
-}
+import { THEME_PALETTES, THEME_TYPOGRAPHY } from '../design-system/theme'
 
 // ── Fallback + sanitise (unchanged logic, uses getDisplayName) ────────────────
 function fallbackManifest(input: StorefrontCodegenInput): StoreManifest {

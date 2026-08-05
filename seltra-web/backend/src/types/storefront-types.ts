@@ -1,3 +1,4 @@
+//seltra-web/backend/src/types/storefront-types.ts
 export interface StorePalette {
   bg: string
   surface: string

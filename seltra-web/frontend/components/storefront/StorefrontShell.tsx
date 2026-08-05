@@ -6,7 +6,26 @@ import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 
 const DESIGN_WIDTH = 1280
-const BASE = process.env.NEXT_PUBLIC_STOREFRONT_URL ?? ''
+const BASE = process.env.NEXT_PUBLIC_STOREFRONT_URL?.replace(/\/$/, '') ?? ''
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.co'
+const ROOT_HOST = ROOT_DOMAIN.replace(/^https?:\/\//, '').replace(/\/$/, '')
+const ROOT_PROTOCOL = ROOT_HOST.includes('localhost') || ROOT_HOST.startsWith('127.') ? 'http' : 'https'
+
+function getPreviewStoreUrl(slug: string) {
+  if (BASE) {
+    return `${BASE}/store/${slug}`
+  }
+
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname
+    const isLocalHost = hostname === 'localhost' || hostname.startsWith('127.')
+    if (isLocalHost) {
+      return `/store/${slug}`
+    }
+  }
+
+  return `https://${slug}.${ROOT_HOST}`
+}
 
 const PreviewContent = memo(function PreviewContent({ children }: { children: ReactNode }) {
   return <>{children}</>
@@ -61,10 +80,16 @@ export function StorefrontShell({
     <div className="flex h-full min-h-0 flex-col bg-card/20">
       {/* ── Toolbar ── */}
       <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card/40 px-3 py-2">
-        <div className="min-w-0">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-primary">{'// your store'}</div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">{slug}.seltra.co</div>
-        </div>
+        {isStream ? (
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-medium text-foreground">Building your store…</div>
+          </div>
+        ) : (
+          <div className="min-w-0">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-primary">{'// your store'}</div>
+            <div className="truncate font-mono text-[11px] text-muted-foreground">{slug}.seltra.co</div>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {!isStream && (
             <div className="flex rounded-md border border-border bg-background/70 p-0.5">
@@ -81,16 +106,14 @@ export function StorefrontShell({
               ))}
             </div>
           )}
-          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" asChild>
-            {/* local*/}
-            {/* <Link href={`${BASE}/store/${slug}`} target="_blank" rel="noopener noreferrer">
-            Open Store
-            </Link> */}
-             {/* prod */}
-               <Link href={`https://${slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'seltra.co'}`} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-3.5 w-3.5" /> Open store
-            </Link>
-          </Button>
+          {!isStream && (
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" asChild>
+              <Link href={getPreviewStoreUrl(slug)} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open Store
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 

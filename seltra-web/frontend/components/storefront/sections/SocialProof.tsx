@@ -2,15 +2,6 @@
 'use client'
 import { motion } from 'framer-motion'
 
-const REVIEWS = [
-  { text: 'Exceptional quality, fast delivery. Already on my second order.', author: 'Ama K.' },
-  { text: 'My go-to store. Always consistent, always fresh.', author: 'Kofi A.' },
-  { text: 'Best experience shopping local. Will definitely reorder.', author: 'Nana B.' },
-  { text: 'Arrived beautifully packaged. Exactly as described.', author: 'Efua M.' },
-  { text: 'Great product, quick shipping, superb service.', author: 'Kwame O.' },
-  { text: 'Highly recommend to anyone who values quality.', author: 'Abena S.' },
-]
-
 const STARS = '★★★★★'
 
 export function SocialProof({ style, headline, subtext, reviews }: {
@@ -19,7 +10,8 @@ export function SocialProof({ style, headline, subtext, reviews }: {
   subtext?: string
   reviews?: Array<{ text: string; author: string }>
 }) {
-  const items = reviews?.length ? reviews : REVIEWS
+  if (!reviews?.length) return null
+  const items = reviews
   if (style === 'marquee') return (
     <section
       className="border-t"

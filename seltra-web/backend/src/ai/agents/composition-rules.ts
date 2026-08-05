@@ -21,6 +21,7 @@ export interface CompositionRule {
   layout: LayoutKey
   sectionVariantOverrides?: Record<string, string>
   includeSections?: string[]
+  navStyle?: 'flat' | 'mega-dropdown'
 }
 
 export interface IndustryIcons {
@@ -185,11 +186,13 @@ export const COMPOSITION_RULES: Record<string, CompositionRule> = {
     theme: 'cool-modern',
     layout: 'catalog',
     includeSections: ['comparison-table', 'faq', 'trust-bar'],
+    navStyle: 'mega-dropdown',
   },
   tech: {
     theme: 'cool-modern',
     layout: 'catalog',
     includeSections: ['comparison-table', 'faq'],
+    navStyle: 'mega-dropdown',
   },
   artisan: {
     theme: 'warm-earth',
@@ -202,6 +205,7 @@ export const COMPOSITION_RULES: Record<string, CompositionRule> = {
     layout: 'conversion',
     sectionVariantOverrides: { hero: 'centered' },
     includeSections: ['trust-bar', 'faq'],
+    navStyle: 'mega-dropdown',
   },
   general: {
     theme: 'minimal-light',
@@ -213,22 +217,22 @@ export const COMPOSITION_RULES: Record<string, CompositionRule> = {
 export function detectIndustry(corpus: string): string {
   const lower = corpus.toLowerCase()
   const keywords: [string, string][] = [
-    ['beauty', 'beauty|makeup|cosmetic|lipstick|foundation|blush|eyeshadow'],
-    ['skincare', 'skincare|skin care|serum|moisturizer|lotion|toner|retinol|spf|sunscreen'],
-    ['jewelry', 'jewelry|jewellery|necklace|bracelet|ring|earring|gold|silver|diamond'],
-    ['candles', 'candle|wax|fragrance|scent|wick|diffuser'],
-    ['wellness', 'wellness|supplement|vitamin|herbal|yoga|meditation|mindfulness|detox'],
-    ['food', 'food|bakery|pastry|snack|chocolate|coffee|tea|grocery|meal|cuisine'],
-    ['restaurant', 'restaurant|cafe|catering|eatery|dining|takeout|takeaway'],
-    ['streetwear', 'streetwear|hype|drip|sneaker|hypebeast|limited|drop|hoodie|urban'],
-    ['fashion', 'fashion|boutique|apparel|clothing|dress|skirt|blouse|collection'],
-    ['apparel', 'shirt|trouser|jacket|wear|outfit'],
-    ['electronics', 'electronics|gadget|device|phone|laptop|tablet|charger|cable'],
-    ['tech', 'tech|software|hardware|accessory|smart'],
+    ['beauty', '\\b(beauty|makeup|cosmetic|lipstick|foundation|blush|eyeshadow)\\b'],
+    ['skincare', '\\b(skincare|skin care|skincare|serum|moisturizer|lotion|toner|retinol|spf|sunscreen)\\b'],
+    ['jewelry', '\\b(jewelry|jewellery|necklace|bracelet|earring|gold|silver|diamond)\\b'],
+    ['candles', '\\b(candle|candles|wax|fragrance|scent|wick|diffuser)\\b'],
+    ['wellness', '\\b(wellness|supplement|vitamin|herbal|yoga|meditation|mindfulness|detox)\\b'],
+    ['food', '\\b(food|bakery|pastry|snack|chocolate|coffee|tea|grocery|meal|cuisine)\\b'],
+    ['restaurant', '\\b(restaurant|cafe|catering|eatery|dining|takeout|takeaway)\\b'],
+    ['streetwear', '\\b(streetwear|hype|drip|sneaker|hypebeast|limited|drop|hoodie|urban)\\b'],
+    ['fashion', '\\b(fashion|boutique|apparel|clothing|dress|skirt|blouse|collection)\\b'],
+    ['apparel', '\\b(shirt|trouser|jacket|wear|outfit)\\b'],
+    ['electronics', '\\b(electronics|gadget|device|phone|laptop|tablet|charger|cable)\\b'],
+    ['tech', '\\b(tech|software|hardware|accessory|smart)\\b'],
     // P0.5 — new industry, additive only. Placed before 'artisan'/'general'
     // fallbacks so a logistics-shaped prompt doesn't get misread as generic.
-    ['logistics', 'logistics|courier|shipping|freight|haulage|delivery service|dispatch|fleet|warehousing|cargo|transport|trucking|last.mile'],
-    ['artisan', 'handmade|handcrafted|artisan|craft|bespoke|custom'],
+    ['logistics', '\\b(logistics|courier|shipping|freight|haulage|delivery service|dispatch|fleet|warehousing|cargo|transport|trucking|last mile)\\b'],
+    ['artisan', '\\b(handmade|handcrafted|artisan|craft|bespoke|custom)\\b'],
   ]
 
   for (const [industry, pattern] of keywords) {

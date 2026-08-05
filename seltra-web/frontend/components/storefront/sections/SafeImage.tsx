@@ -1,3 +1,4 @@
+//seltra-web/frontend/components/storefront/sections/SafeImage.tsx
 'use client'
 import React from 'react'
 import Image, { type ImageProps } from 'next/image'

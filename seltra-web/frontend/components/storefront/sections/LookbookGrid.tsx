@@ -2,9 +2,9 @@
 'use client'
 import { motion } from 'framer-motion'
 import { SafeImage } from './SafeImage'
-import type { StoreProduct } from './types'
+import type { SelectedVariants, StoreProduct } from './types'
 
-interface Props { headline?: string; images?: Array<{ url: string; caption?: string }>; variant?: 'masonry'|'editorial'|'uniform'; products: StoreProduct[]; onAddToCart: (p: StoreProduct) => void }
+interface Props { headline?: string; images?: Array<{ url: string; caption?: string }>; variant?: 'masonry'|'editorial'|'uniform'; products: StoreProduct[]; onAddToCart: (p: StoreProduct, selectedVariants?: SelectedVariants) => void }
 
 export function LookbookGrid({ headline, images, variant='editorial', products }: Props) {
   const productImgs = products.flatMap((p) => (p.images??[]).map((img) => ({ url:img.url, caption:p.name }))).filter((i) => i.url && !i.url.startsWith('data:')).slice(0,6)

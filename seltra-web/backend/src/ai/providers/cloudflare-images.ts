@@ -1,3 +1,4 @@
+//ai/providers/cloudflare-images.ts
 import * as crypto from 'crypto'
 import { prisma } from '../../db'
 import { uploadImageBuffer } from '../../store/cloudinary.service'
@@ -16,6 +17,22 @@ const IMAGE_MODEL_TIMEOUT_MS: Record<string, number> = {
   '@cf/black-forest-labs/flux-2-klein-9b': 70_000,
   '@cf/black-forest-labs/flux-2-klein-4b': 60_000,
   '@cf/black-forest-labs/flux-1-schnell': 45_000,
+}
+
+const MULTIPART_MODELS = new Set([
+  '@cf/black-forest-labs/flux-2-dev',
+  '@cf/black-forest-labs/flux-2-klein-9b',
+  '@cf/black-forest-labs/flux-2-klein-4b',
+])
+
+// Every product/hero image gets this appended. Diffusion models frequently
+// render the brand name or tagline as literal typography when a prompt
+// mentions a store/brand name. Standard negative-prompt technique, costs
+// nothing when the model had no reason to draw text anyway.
+const NO_TEXT_SUFFIX = ', no text, no words, no letters, no typography, no writing, no watermark, no logo text'
+
+function withNoTextGuard(prompt: string): string {
+  return `${prompt}${NO_TEXT_SUFFIX}`
 }
 
 async function getCachedImageUrl(prompt: string, model: string): Promise<string | null> {
@@ -45,7 +62,94 @@ function isImageContentType(contentType: string | null) {
   return Boolean(contentType && contentType.toLowerCase().startsWith('image/'))
 }
 
-async function generateImageWithModel(prompt: string, model: string): Promise<string | null> {
+const SCHEMA_ERROR = /required properties.*multipart|Invalid input/i
+const FLAGGED_ERROR = /output has been flagged|flagged.*prompt.*input image/i
+
+// ── Circuit breaker ──────────────────────────────────────────────────────────
+const IMAGE_GEN_CIRCUIT_COOLDOWN_MS = 5 * 60_000
+let imageGenDisabledUntil = 0
+let imageGenDisabledLoggedAt = 0
+
+function tripImageGenCircuit(errText: string) {
+  imageGenDisabledUntil = Date.now() + IMAGE_GEN_CIRCUIT_COOLDOWN_MS
+  console.error(
+    `[CF Image] Schema error detected — disabling ALL image generation for ${IMAGE_GEN_CIRCUIT_COOLDOWN_MS / 1000}s ` +
+    `to avoid hammering a broken request shape across every product. First error:`,
+    errText.slice(0, 200),
+  )
+}
+
+function isImageGenCircuitOpen(): boolean {
+  if (Date.now() >= imageGenDisabledUntil) return false
+  if (Date.now() - imageGenDisabledLoggedAt > 30_000) {
+    const waitSec = Math.ceil((imageGenDisabledUntil - Date.now()) / 1000)
+    console.warn(`[CF Image] Circuit open — skipping image generation for ${waitSec}s more, using placeholders`)
+    imageGenDisabledLoggedAt = Date.now()
+  }
+  return true
+}
+
+export function isImageGenerationDisabled(): boolean {
+  return isImageGenCircuitOpen()
+}
+
+// A flagged prompt on one model will almost always flag on the next model
+// too, since it's a content-safety trip, not a model quirk — retrying with
+// the SAME prompt just burns the whole roster for nothing. Strips likely
+// triggers (quoted brand/product names, age descriptors) down to a generic,
+// safe descriptive prompt before falling through to the next model.
+function sanitizePromptForRetry(prompt: string): string {
+  // Aggressively strip quoted strings (brand/product names) and likely flagged
+  // descriptors (age, minors, sexualized terms). Fall back to a short,
+  // neutral photography prompt when the sanitized result is too short.
+  const stripped = prompt
+    .replace(/['"][^'"\n]{1,60}['"]/g, '') // remove quoted phrases
+    .replace(/\b(young women|young girls?|teen(agers?)?|kids?|children|boys|girls|under \d+|adult[s]? only)\b/gi, 'adults')
+    .replace(/\b(nude|naked|sex|sexual|explicit)\b/gi, '')
+    .replace(/[^a-zA-Z0-9\s,.-]/g, ' ') // remove odd punctuation
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+
+  // If the sanitized prompt still contains brand-like tokens (short words
+  // or very few words), return a safe generic photography prompt instead.
+  if (stripped.split(/\s+/).length < 6) {
+    return 'professional product photography, studio lighting, plain neutral background'
+  }
+
+  return stripped
+}
+
+function buildRequestInit(prompt: string, model: string, apiToken: string): RequestInit {
+  if (MULTIPART_MODELS.has(model)) {
+    const form = new FormData()
+    form.append('prompt', prompt)
+    form.append('width', '1024')
+    form.append('height', '1024')
+    if (model === '@cf/black-forest-labs/flux-2-dev') {
+      form.append('steps', '25')
+    }
+    return {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiToken}` },
+      body: form,
+    }
+  }
+  return {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prompt }),
+  }
+}
+
+async function generateImageWithModel(
+  rawPrompt: string,
+  model: string,
+  allowFlaggedRetry = true,
+): Promise<string | null> {
+  const prompt = withNoTextGuard(rawPrompt)
   const cached = await getCachedImageUrl(prompt, model)
   if (cached) return cached
 
@@ -60,27 +164,13 @@ async function generateImageWithModel(prompt: string, model: string): Promise<st
     return null
   }
 
+  // Direct per-model endpoint, model id NOT encoded — same fix as chat/codegen.
   const url = `${CF_API_BASE}/${accountId}/ai/run/${model}`
   const timeoutMs = IMAGE_MODEL_TIMEOUT_MS[model] ?? 60_000
 
   let res: Response
   try {
-    res = await fetchWithTimeout(
-      url,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiToken}`,
-        },
-        body: JSON.stringify({
-          prompt,
-          image_size: 'square_hd',
-          num_images: 1,
-        }),
-      },
-      timeoutMs,
-    )
+    res = await fetchWithTimeout(url, buildRequestInit(prompt, model, apiToken), timeoutMs)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     recordError(model, 15_000)
@@ -90,6 +180,20 @@ async function generateImageWithModel(prompt: string, model: string): Promise<st
 
   if (!res.ok) {
     const errText = await res.text().catch(() => `HTTP ${res.status}`)
+
+    if (SCHEMA_ERROR.test(errText)) {
+      tripImageGenCircuit(errText)
+      recordError(model, res.status === 429 ? 60_000 : 15_000)
+      console.warn(`[CF Image] ${model.split('/').pop()} request failed:`, errText.slice(0, 160))
+      return null
+    }
+
+    if (FLAGGED_ERROR.test(errText) && allowFlaggedRetry) {
+      console.warn(`[CF Image] ${model.split('/').pop()} flagged prompt, retrying once with sanitized prompt`)
+      const sanitized = sanitizePromptForRetry(rawPrompt)
+      return generateImageWithModel(sanitized, model, false)
+    }
+
     recordError(model, res.status === 429 ? 60_000 : 15_000)
     console.warn(`[CF Image] ${model.split('/').pop()} request failed:`, errText.slice(0, 160))
     return null
@@ -142,6 +246,8 @@ async function generateImageWithModel(prompt: string, model: string): Promise<st
 }
 
 async function generateWithFallback(prompt: string, candidates: string[]): Promise<string | null> {
+  if (isImageGenCircuitOpen()) return null
+
   for (const model of candidates) {
     if (!isModelAvailable(model)) {
       console.warn(`[CF Image] ${model.split('/').pop()} in cooldown, trying next model`)
@@ -150,6 +256,7 @@ async function generateWithFallback(prompt: string, candidates: string[]): Promi
     try {
       const result = await generateImageWithModel(prompt, model)
       if (result) return result
+      if (isImageGenCircuitOpen()) return null
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.warn(`[CF Image] ${model.split('/').pop()} failed:`, message)

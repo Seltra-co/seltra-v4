@@ -1,3 +1,4 @@
+//store/store-image.service.ts
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common'
 import { prisma } from '../db'
 import { validateImageUrl } from '../common/image-validation'

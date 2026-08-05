@@ -71,16 +71,33 @@ export function isModelAvailable(model: string): boolean {
 }
 
 // ── Verified against developers.cloudflare.com/workers-ai/models/ ─────────────
-// Premium/Kimi coder tier removed — "@cf/moonshotai/kimi-k2.7-code" does not
-// exist in Cloudflare's catalog (real IDs are kimi-k2.5 / kimi-k2.6, no -code
-// variant) and would 400 every time it was hit.
+// NOTE: this account has no AI Gateway configured — every call below goes
+// straight at api.cloudflare.com/.../ai/run/{model} with just account id +
+// token. Do NOT reintroduce gateway URLs (ai/v1/chat/completions) or a
+// cf-aig-gateway-id header here unless a real gateway id is provisioned —
+// that combination 400s with "Please configure AI Gateway" on this account.
 export const CF_MODELS = {
-  CODEGEN_PRIMARY:   '@cf/qwen/qwen2.5-coder-32b-instruct',
-  CODEGEN_REASONING: '@cf/openai/gpt-oss-120b',
-  CODEGEN_SECONDARY: '@cf/meta/llama-4-scout-17b-16e-instruct',
-  CHAT_FAST:         '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-  CHAT_REASONING:    '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
+  CODEGEN_PRIMARY:       '@cf/qwen/qwen2.5-coder-32b-instruct',
+  CODEGEN_QWEN3:         '@cf/qwen/qwen3-30b-a3b-fp8',
+  CODEGEN_NEMOTRON:      '@cf/nvidia/nemotron-3-120b-a12b',
+  CODEGEN_REASONING:     '@cf/openai/gpt-oss-120b',
+  CODEGEN_SECONDARY:     '@cf/meta/llama-4-scout-17b-16e-instruct',
+  CHAT_FAST:             '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  CHAT_REASONING:        '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
+  PLANNER_FAST:          '@cf/qwen/qwq-32b',
+  PLANNER_FALLBACK:      '@cf/zai-org/glm-4.7-flash',
+  DESIGN_PRIMARY:        '@cf/nvidia/nemotron-3-120b-a12b',
+  DESIGN_REASONING:      '@cf/openai/gpt-oss-120b',
+  DESIGN_FALLBACK:       '@cf/qwen/qwq-32b',
+  NAV_DESIGN_FAST:       '@cf/qwen/qwq-32b',
+  NAV_DESIGN_FALLBACK:   '@cf/zai-org/glm-4.7-flash',
+  // Workers Paid only — check isPaidTierEnabled() before ever referencing this.
+  CODEGEN_FRONTIER_PAID: '@cf/anthropic/claude-opus-5',
 } as const
+
+export function isPaidTierEnabled(): boolean {
+  return process.env.SELTRA_CF_WORKERS_PAID === 'true'
+}
 
 export type CFModel = typeof CF_MODELS[keyof typeof CF_MODELS]
 
@@ -119,6 +136,7 @@ function extractContent(data: unknown, model: string): string {
       const choice = r.choices[0] as Record<string, unknown>
       const msg = choice.message as Record<string, unknown> | undefined
       if (typeof msg?.content === 'string') return msg.content
+      if (typeof msg?.reasoning === 'string') return msg.reasoning
       if (typeof choice.text === 'string') return choice.text
     }
     if (typeof r.output_text === 'string') return r.output_text
@@ -132,6 +150,7 @@ function extractContent(data: unknown, model: string): string {
     const choice = d.choices[0] as Record<string, unknown>
     const msg = choice.message as Record<string, unknown> | undefined
     if (typeof msg?.content === 'string') return msg.content
+    if (typeof msg?.reasoning === 'string') return msg.reasoning
     if (typeof choice.text === 'string') return choice.text
   }
 
@@ -159,13 +178,20 @@ function extractTokens(data: unknown): number | undefined {
   return (usage.total_tokens ?? usage.completion_tokens ?? undefined) as number | undefined
 }
 
-// Per-model timeout in ms — larger models need more time
+// Per-model timeout in ms — larger models need more time. Entries for the
+// planner/design models too so they don't fall back to the generic 60s
+// default, which was too long for the small fast ones (gemma, glm-flash)
+// and too short for nemotron-120b.
 const MODEL_TIMEOUT_MS: Record<string, number> = {
-  '@cf/qwen/qwen2.5-coder-32b-instruct':          55_000,
+  '@cf/qwen/qwen2.5-coder-32b-instruct':          75_000,
+  '@cf/qwen/qwen3-30b-a3b-fp8':                   75_000,
   '@cf/openai/gpt-oss-120b':                      90_000,
   '@cf/meta/llama-4-scout-17b-16e-instruct':      45_000,
-  '@cf/meta/llama-3.3-70b-instruct-fp8-fast':     35_000,
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast':     45_000,
   '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b': 60_000,
+  '@cf/qwen/qwq-32b':                             45_000,
+  '@cf/zai-org/glm-4.7-flash':                    20_000,
+  '@cf/nvidia/nemotron-3-120b-a12b':              70_000,
 }
 
 export async function callCloudflare(
@@ -191,6 +217,10 @@ export async function callCloudflare(
     throw new Error(`[CF] ${model.split('/').pop()} in cooldown for ${waitSec}s`)
   }
 
+  // Direct per-model endpoint — model id goes in the PATH with real slashes,
+  // never encodeURIComponent'd. No gateway header. This is the only shape
+  // that works with just CF_ACCOUNT_ID + CF_AI_API_TOKEN and no configured
+  // AI Gateway.
   const url = `${CF_API_BASE}/${accountId}/ai/run/${model}`
   const timeoutMs = MODEL_TIMEOUT_MS[model] ?? 60_000
 
@@ -236,8 +266,6 @@ export async function callCloudflare(
     }
     if (res.status === 400) {
       console.error(`[CF] 400 bad request for ${model}:`, errText.slice(0, 300))
-      // 400s are almost always a bad model ID or malformed payload, not transient —
-      // cool it down hard so we don't keep hammering a dead route.
       recordError(model, 180_000)
       throw new Error(`[CF] 400 bad request`)
     }
@@ -271,13 +299,19 @@ export async function callCloudflare(
 export async function cfChat(
   messages: CFMessage[],
   maxTokens = 600,
+  temperature = 0.3,
 ): Promise<CFResponse> {
-  const candidates = [CF_MODELS.CHAT_FAST, CF_MODELS.CODEGEN_SECONDARY]
+  const candidates = [
+    CF_MODELS.CHAT_FAST,
+    CF_MODELS.CODEGEN_SECONDARY,
+    CF_MODELS.PLANNER_FALLBACK,
+    CF_MODELS.CHAT_REASONING,
+  ]
 
   for (const model of candidates) {
     if (!isModelAvailable(model)) continue
     try {
-      return await callCloudflare(messages, { model, maxTokens, temperature: 0.3 })
+      return await callCloudflare(messages, { model, maxTokens, temperature })
     } catch (e) {
       console.warn(
         `[CF] cfChat failed on ${model.split('/').pop()}:`,
@@ -290,25 +324,21 @@ export async function cfChat(
 }
 
 export interface CFCodegenOptions {
+  model?: CFModel | string
   skipFirstCandidate?: boolean
-  // Which chunk this call is for. Each role gets a different first-choice
-  // model so a cooldown on one model doesn't stall every store's generation,
-  // and so CF capacity is spread across the roster instead of everything
-  // queueing on the same model.
   role?: 'hero' | 'extras' | 'generic'
+  temperature?: number
 }
 
 const ROLE_CANDIDATES: Record<NonNullable<CFCodegenOptions['role']>, string[]> = {
-  // Hero is short and needs to feel punchy/on-brand — the fast coder model
-  // is plenty, with the vision/MoE model and fast chat model as backup.
   hero: [
-    CF_MODELS.CODEGEN_PRIMARY,
+    CF_MODELS.CODEGEN_QWEN3,
+    CF_MODELS.CODEGEN_NEMOTRON,
     CF_MODELS.CODEGEN_SECONDARY,
-    CF_MODELS.CHAT_FAST,
     CF_MODELS.CODEGEN_REASONING,
+    CF_MODELS.CODEGEN_PRIMARY,
+    CF_MODELS.CHAT_FAST,
   ],
-  // Extras (trust bar + footer copy) benefits from the stronger reasoning
-  // model writing industry-specific trust copy first.
   extras: [
     CF_MODELS.CODEGEN_REASONING,
     CF_MODELS.CODEGEN_PRIMARY,
@@ -323,13 +353,24 @@ const ROLE_CANDIDATES: Record<NonNullable<CFCodegenOptions['role']>, string[]> =
   ],
 }
 
+export function getRoleCandidates(role: NonNullable<CFCodegenOptions['role']>): string[] {
+  const base = ROLE_CANDIDATES[role]
+  if (role === 'hero' && isPaidTierEnabled()) {
+    return [CF_MODELS.CODEGEN_FRONTIER_PAID, ...base]
+  }
+  return base
+}
+
 export async function cfCodegen(
   messages: CFMessage[],
   maxTokens = 6144,
   options: CFCodegenOptions = {},
 ): Promise<CFResponse> {
-  let candidates = ROLE_CANDIDATES[options.role ?? 'generic']
-  if (options.skipFirstCandidate) {
+  let candidates = options.model
+    ? [options.model]
+    : getRoleCandidates(options.role ?? 'generic')
+
+  if (!options.model && options.skipFirstCandidate) {
     candidates = candidates.slice(1)
   }
 
@@ -342,11 +383,11 @@ export async function cfCodegen(
       const result = await callCloudflare(messages, {
         model,
         maxTokens,
-        temperature: 0.55,
+        temperature: options.temperature ?? 0.55,
       })
       const shortModel = model.split('/').pop() ?? model
       console.log(
-        `[CF] Codegen via ${shortModel} (${options.role ?? 'generic'}) -- ${result.content.length} chars, ~${result.tokensUsed ?? '?'} tokens`,
+        `[CF] Codegen via ${shortModel} (${options.model ? 'override' : options.role ?? 'generic'}) -- ${result.content.length} chars, ~${result.tokensUsed ?? '?'} tokens`,
       )
       return result
     } catch (e) {

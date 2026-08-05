@@ -1,12 +1,15 @@
+//ai/agents/product.agent.ts
 import { chat } from '../client'
 import type { CanonicalStore, GeneratedProduct } from '../../types'
 import { sourceImage } from './image-sourcing.agent'
 import { planLimits } from '../../common/plan-limits'
 import type { StoreDNA } from '../../types/store-dna'
+import { cleanJSON, repairTruncatedJSON } from '../utils/json-repair.util'
 
-// ── System prompt — now takes a dynamic count ──────────────────────────────
+const BATCH_SIZE = 15
+
 function buildProductSystemPrompt(count: number): string {
-  return `You are Seltra's Product Generator AI.
+  return `You are Seltra's Product Generator AI. Creator: Seltra Inc.
 Given a store blueprint, generate a realistic product catalog.
 
 Rules:
@@ -34,14 +37,6 @@ Rules:
 ]`
 }
 
-function cleanJSON(raw: string): string {
-  let s = raw.trim()
-  if (s.startsWith('```json')) s = s.slice(7)
-  else if (s.startsWith('```')) s = s.slice(3)
-  if (s.endsWith('```')) s = s.slice(0, -3)
-  return s.trim()
-}
-
 const BASE_NAMES = [
   'Starter Set', 'Daily Essential', 'Signature Bundle', 'Premium Kit',
   'Travel Pack', 'Gift Box', 'Limited Drop', 'Refill Pack',
@@ -50,14 +45,12 @@ const BASE_NAMES = [
   'Bestseller Box', 'New Arrival', 'Classic Set', 'Exclusive Drop',
 ]
 
-// count now drives how many fallback products get generated — cycles through
-// BASE_NAMES with a numeric suffix once count exceeds the name pool so names
-// stay unique instead of repeating verbatim.
-function fallbackProducts(blueprint: CanonicalStore, count: number): GeneratedProduct[] {
+function fallbackProducts(blueprint: CanonicalStore, count: number, startIndex = 0): GeneratedProduct[] {
   const categories = blueprint.productCategories.length > 0 ? blueprint.productCategories : ['Featured']
   const brand = blueprint.brandName || blueprint.businessName.split(' ').slice(0, 2).join(' ')
 
-  return Array.from({ length: count }, (_, index) => {
+  return Array.from({ length: count }, (_, i) => {
+    const index = startIndex + i
     const category = categories[index % categories.length]
     const cycle = Math.floor(index / BASE_NAMES.length)
     const baseName = BASE_NAMES[index % BASE_NAMES.length]
@@ -78,28 +71,32 @@ function fallbackProducts(blueprint: CanonicalStore, count: number): GeneratedPr
   })
 }
 
-async function attachProductImages(products: GeneratedProduct[], dna?: StoreDNA) {
-  console.log(
-    `[ProductAgent] Resolving product images for ${products.length} products...`,
-  )
+async function attachProductImages(
+  products: GeneratedProduct[],
+  dna?: StoreDNA,
+  onImage?: (url: string, index: number) => void,
+) {
+  console.log(`[ProductAgent] Resolving product images for ${products.length} products...`)
 
   const imageUrls: string[] = []
   const batchSize = 3
+  const maxStreamed = 5
+  let streamed = 0
 
   for (let i = 0; i < products.length; i += batchSize) {
     const batch = products.slice(i, i + batchSize)
-
     const urls = await Promise.all(
-      batch.map((product) =>
-        sourceImage(
-          product.name,
-          product.category,
-          dna,
-        )
-      ),
+      batch.map((product) => sourceImage(product.name, product.category, dna)),
     )
-
     imageUrls.push(...urls)
+
+    for (const url of urls) {
+      if (!url) continue
+      if (streamed < maxStreamed) {
+        onImage?.(url, streamed)
+        streamed += 1
+      }
+    }
 
     if (i + batchSize < products.length) {
       await new Promise((resolve) => setTimeout(resolve, 200))
@@ -108,73 +105,28 @@ async function attachProductImages(products: GeneratedProduct[], dna?: StoreDNA)
 
   const productsWithImages = products.map((product, i) => ({
     ...product,
-    price:
-      typeof product.price === 'string'
-        ? parseFloat(product.price)
-        : product.price,
-    images: [
-      {
-        url: imageUrls[i],
-        isPrimary: true,
-      },
-    ],
+    price: typeof product.price === 'string' ? parseFloat(product.price) : product.price,
+    images: [{ url: imageUrls[i], isPrimary: true }],
   }))
 
-  const generated = productsWithImages.filter(
-    (p) => !!p.images?.[0]?.url,
-  ).length
-
-  console.log(
-    `[ProductAgent] Done - ${generated}/${products.length} product images`,
-  )
+  const generated = productsWithImages.filter((p) => !!p.images?.[0]?.url).length
+  console.log(`[ProductAgent] Done - ${generated}/${products.length} product images`)
 
   return {
     products: productsWithImages,
-    imageStats: {
-      total: products.length,
-      generated,
-      failed: products.length - generated,
-    },
+    imageStats: { total: products.length, generated, failed: products.length - generated },
   }
 }
 
-// maxProducts is now a required-in-spirit param — defaults to the free tier
-// limit (via planLimits(undefined)) so existing callers that don't pass it
-// (e.g. tenant.service.ts) keep working, but every tier-aware caller should
-// pass planLimits(owner?.plan).maxProductsPerStore explicitly.
-export async function generateProducts(
+// Generates one LLM batch of `count` products (count <= BATCH_SIZE), with its
+// own truncation-repair path. Returns deterministic fallback products for
+// just this batch on unrecoverable failure, so a bad batch never nukes the
+// whole catalog.
+async function generateBatch(
   blueprint: CanonicalStore,
-  maxProducts: number = planLimits(undefined).maxProductsPerStore,
-  dna?: StoreDNA,
-): Promise<{
-  success: boolean
-  products: GeneratedProduct[]
-  provider: string
-  imageStats: { total: number; generated: number; failed: number }
-  error: string | null
-}> {
-  const count = Math.max(1, maxProducts)
-
-  if (process.env.SELTRA_LLM_PRODUCTS !== 'true') {
-    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count), dna)
-    return {
-      success: true,
-      products,
-      provider: 'deterministic',
-      imageStats,
-      error: null,
-    }
-  }
-
-  const FAILED = (provider: string, error: string) => ({
-    success: false,
-    products: [],
-    provider,
-    imageStats: { total: 0, generated: 0, failed: 0 },
-    error,
-  })
-
-  //Generate product catalog
+  count: number,
+  startIndex: number,
+): Promise<{ products: GeneratedProduct[]; provider: string }> {
   let llmResult
   try {
     llmResult = await chat([
@@ -186,42 +138,74 @@ export async function generateProducts(
           `Type: ${blueprint.businessType}\n` +
           `Target Audience: ${blueprint.targetAudience}\n` +
           `Categories: ${blueprint.productCategories.join(', ')}\n\n` +
-          `Generate ${count} realistic products for this store.`,
+          `Generate ${count} realistic products for this store. This is batch starting at item ${startIndex + 1} — do not repeat names from earlier batches.`,
       },
-    ], { maxTokens: Math.min(4000, 200 + count * 60) })
+    ], { maxTokens: Math.min(6000, 500 + count * 130), temperature: 0.2 })
   } catch (error) {
-    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count), dna)
-    return {
-      success: true,
-      products,
-      provider: 'ollama',
-      imageStats,
-      error: error instanceof Error ? error.message : null,
-    }
+    console.warn(`[ProductAgent] Batch at index ${startIndex} LLM call failed, using deterministic fallback for this batch:`, error)
+    return { products: fallbackProducts(blueprint, count, startIndex), provider: 'fallback' }
   }
 
+  const cleaned = cleanJSON(llmResult.content)
   let rawProducts: GeneratedProduct[]
   try {
-    rawProducts = JSON.parse(cleanJSON(llmResult.content))
-    if (!Array.isArray(rawProducts) || rawProducts.length === 0) {
-      return FAILED(llmResult.provider, 'LLM returned empty or non-array product list')
-    }
+    rawProducts = JSON.parse(cleaned)
   } catch {
-    return FAILED(
-      llmResult.provider,
-      'Failed to parse product JSON: ' + cleanJSON(llmResult.content).slice(0, 200),
-    )
+    try {
+      rawProducts = JSON.parse(repairTruncatedJSON(cleaned))
+      console.warn(`[ProductAgent] Batch at index ${startIndex} JSON repaired after truncation — recovered ${Array.isArray(rawProducts) ? rawProducts.length : 0} products`)
+    } catch {
+      console.warn(`[ProductAgent] Batch at index ${startIndex} JSON unrecoverable — raw snippet:`, cleaned.slice(0, 300))
+      return { products: fallbackProducts(blueprint, count, startIndex), provider: 'fallback' }
+    }
   }
 
-  // Enforce the cap even if the LLM over/under-generates relative to count.
-  const capped = rawProducts.slice(0, count)
+  if (!Array.isArray(rawProducts) || rawProducts.length === 0) {
+    return { products: fallbackProducts(blueprint, count, startIndex), provider: 'fallback' }
+  }
 
-  const { products: productsWithImages, imageStats } = await attachProductImages(capped, dna)
+  return { products: rawProducts.slice(0, count), provider: llmResult.provider }
+}
+
+export async function generateProducts(
+  blueprint: CanonicalStore,
+  maxProducts: number = planLimits(undefined).maxProductsPerStore,
+  dna?: StoreDNA,
+  onImage?: (url: string, index: number) => void,
+): Promise<{
+  success: boolean
+  products: GeneratedProduct[]
+  provider: string
+  imageStats: { total: number; generated: number; failed: number }
+  error: string | null
+}> {
+  const count = Math.max(1, maxProducts)
+
+  if (process.env.SELTRA_LLM_PRODUCTS !== 'true') {
+    const { products, imageStats } = await attachProductImages(fallbackProducts(blueprint, count), dna, onImage)
+    return { success: true, products, provider: 'deterministic', imageStats, error: null }
+  }
+
+  const batchCount = Math.ceil(count / BATCH_SIZE)
+  const allProducts: GeneratedProduct[] = []
+  const providersUsed = new Set<string>()
+
+  for (let b = 0; b < batchCount; b++) {
+    const startIndex = b * BATCH_SIZE
+    const thisBatchSize = Math.min(BATCH_SIZE, count - startIndex)
+    const { products, provider } = await generateBatch(blueprint, thisBatchSize, startIndex)
+    allProducts.push(...products)
+    providersUsed.add(provider)
+    console.log(`[ProductAgent] Batch ${b + 1}/${batchCount} done — ${products.length} products via ${provider}`)
+  }
+
+  const capped = allProducts.slice(0, count)
+  const { products: productsWithImages, imageStats } = await attachProductImages(capped, dna, onImage)
 
   return {
     success: true,
     products: productsWithImages,
-    provider: llmResult.provider,
+    provider: [...providersUsed].join(','),
     imageStats,
     error: null,
   }

@@ -1,7 +1,14 @@
 //seltra-web/backend/src/ai/client.ts
 
+import {
+  cfChat,
+  cfCodegen,
+  isCFAvailable,
+  type CFMessage,
+  type CFCodegenOptions,
+} from '../providers/cloudflare'
+
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const OLLAMA_API_URL = 'http://localhost:11434/api/chat'
 
 // Standard chat rate limiting
 let groqCooldownUntil = 0
@@ -35,12 +42,13 @@ export interface ChatMessage {
 
 export interface AIResponse {
   content: string
-  provider: 'groq' | 'ollama'
+  provider: 'cloudflare' | 'groq'
 }
 
 export interface ChatOptions {
   maxTokens?: number
   preferLocal?: boolean
+  temperature?: number
 }
 
 function estimateTokens(messages: ChatMessage[], maxTokens: number) {
@@ -85,6 +93,7 @@ async function callGroq(
   messages: ChatMessage[],
   maxTokens: number,
   model: string,
+  temperature = 0.4,
 ): Promise<AIResponse> {
   const res = await fetch(GROQ_API_URL, {
     method: 'POST',
@@ -95,7 +104,7 @@ async function callGroq(
     body: JSON.stringify({
       model,
       messages,
-      temperature: 0.4,
+      temperature,
       max_tokens: maxTokens,
     }),
   })
@@ -124,24 +133,31 @@ async function callGroq(
   return { content: data.choices[0].message.content, provider: 'groq' }
 }
 
-async function callOllama(messages: ChatMessage[]): Promise<AIResponse> {
-  const res = await fetch(OLLAMA_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'qwen2.5:3b', messages, stream: false }),
-  })
-  const data = await res.json()
-  return { content: data.message.content, provider: 'ollama' }
+function toCFMessages(messages: ChatMessage[]): CFMessage[] {
+  return messages.map((m) => ({ role: m.role, content: m.content }))
 }
 
 // ── Standard chat: blueprint, products, agent messages ────────────────────
+// Order: Cloudflare Workers AI -> Groq.
 export async function chat(
   messages: ChatMessage[],
   options: ChatOptions = {},
 ): Promise<AIResponse> {
   const maxTokens = options.maxTokens ?? GROQ_DEFAULT_MAX_TOKENS
-  const estimated = estimateTokens(messages, maxTokens)
+  const temperature = options.temperature ?? 0.3
 
+  // ── Try Cloudflare first ──────────────────────────────────────────────
+  if (!options.preferLocal && isCFAvailable()) {
+    try {
+      const result = await cfChat(toCFMessages(messages), maxTokens, temperature)
+      return { content: result.content, provider: 'cloudflare' }
+    } catch (e) {
+      console.warn('[AI] chat: Cloudflare failed, trying Groq:', (e as Error).message)
+    }
+  }
+
+  // ── Try Groq ──────────────────────────────────────────────────────────
+  const estimated = estimateTokens(messages, maxTokens)
   const { allowed, newUsed, newWindowStart } = reserveBudget(
     estimated,
     GROQ_TPM_BUDGET,
@@ -158,25 +174,36 @@ export async function chat(
     allowed
 
   if (canUseGroq) {
-    try {
-      return await callGroq(messages, maxTokens, GROQ_MODEL)
-    } catch (e) {
-      console.warn('[Groq] chat fallback to Ollama:', e)
-    }
+    return callGroq(messages, maxTokens, GROQ_MODEL, temperature)
   }
 
-  return callOllama(messages)
+  throw new Error('[AI] chat: no provider available (Cloudflare and Groq both unavailable)')
 }
 
 // ── Codegen chat: storefront HTML generation ──────────────────────────────
-// Tries llama-4-scout (30K TPM) → llama-3.3-70b-versatile (12K TPM) → Ollama
+// Order: Cloudflare (role-aware roster) -> Groq primary -> Groq fallback.
 export async function codegenChat(
   messages: ChatMessage[],
   maxTokens = 1800,
   role: 'storefront' | 'hero' | 'nav' | 'generic' = 'storefront',
+  temperature?: number,
 ): Promise<AIResponse> {
-  const estimated = estimateTokens(messages, maxTokens)
   const hasGroqKey = Boolean(process.env.GROQ_API_KEY)
+  const resolvedTemperature = temperature ?? (role === 'hero' ? 0.18 : role === 'nav' ? 0.1 : 0.2)
+
+  // ── Try Cloudflare first ──────────────────────────────────────────────
+  if (isCFAvailable()) {
+    const cfRole: NonNullable<CFCodegenOptions['role']> =
+      role === 'hero' ? 'hero' : role === 'nav' ? 'extras' : 'generic'
+    try {
+      const result = await cfCodegen(toCFMessages(messages), maxTokens, { role: cfRole, temperature: resolvedTemperature })
+      return { content: result.content, provider: 'cloudflare' }
+    } catch (e) {
+      console.warn(`[AI] codegenChat(${role}): Cloudflare failed, trying Groq:`, (e as Error).message)
+    }
+  }
+
+  const estimated = estimateTokens(messages, maxTokens)
 
   // ── Try primary model (llama-4-scout, 30K TPM) ──────────────────────────
   if (hasGroqKey && Date.now() > codegenPrimaryCooldownUntil) {
@@ -191,7 +218,7 @@ export async function codegenChat(
 
     if (allowed) {
       try {
-        return await callGroq(messages, maxTokens, GROQ_CODEGEN_MODEL)
+        return await callGroq(messages, maxTokens, GROQ_CODEGEN_MODEL, resolvedTemperature)
       } catch (e) {
         console.warn(`[Groq] codegenChat(${role}) primary failed, trying fallback model:`, e)
       }
@@ -212,16 +239,13 @@ export async function codegenChat(
     codegenFallbackWindowStartedAt = newWindowStart
 
     if (allowed) {
-      try {
-        return await callGroq(messages, maxTokens, GROQ_CODEGEN_FALLBACK_MODEL)
-      } catch (e) {
-        console.warn(`[Groq] codegenChat(${role}) fallback model failed, using Ollama:`, e)
-      }
+      return callGroq(messages, maxTokens, GROQ_CODEGEN_FALLBACK_MODEL, resolvedTemperature)
     } else {
-      console.warn(`[Groq] codegenChat(${role}) fallback TPM budget exceeded, using Ollama`)
+      console.warn(`[Groq] codegenChat(${role}) fallback TPM budget exceeded, no provider left`)
     }
   }
 
-  // ── Final fallback: local Ollama ─────────────────────────────────────────
-  return callOllama(messages)
+  throw new Error(
+    `[AI] codegenChat(${role}): no provider available (Cloudflare, Groq primary/fallback all unavailable)`,
+  )
 }

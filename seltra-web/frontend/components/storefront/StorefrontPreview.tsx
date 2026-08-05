@@ -1,4 +1,4 @@
-// seltra-web/frontend/components/storefront/StorefrontPreview.tsx
+//seltra-web/frontend/components/storefront/StorefrontPreview.tsx
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { StorefrontCanvas } from './StorefrontCanvas'
@@ -12,13 +12,20 @@ export type StoreData = {
   payoutMethod?: string | null; payoutProvider?: string | null; payoutProviderCode?: string | null
   payoutAccount?: string | null; payoutAccountName?: string | null; payoutValidatedAt?: string | null
   heroTitle?: string; heroSubtitle?: string
-  canonical?: { brandName?: string; businessName?: string; storeFeatures?: string[]; productCategories?: string[]; layoutVariant?: string; recommendedTechStack?: { paymentGateways?: string[] } }
+  canonical?: { brandName?: string; businessName?: string; storeFeatures?: string[]; productCategories?: string[]; layoutVariant?: string; recommendedTechStack?: { paymentGateways?: string[] }; heroImageUrl?: string; storyImageUrl?: string; heroSpec?: { imageTreatment?: string } }
   storeDNA?: { brandPersonality?: string; industry?: string }
   products?: Array<{ id: string; name: string; description?: string | null; price: string | number; currency?: string; category?: string | null; images?: Array<{ url: string; isPrimary?: boolean }>; variants?: Array<{ name: string; value: string }> }>
   manifest?: StoreManifest | null
   heroSource?: string | null
   navSource?: string | null
   storefrontCode?: string | null; storefrontVersion?: number
+  fulfillmentMode?: 'delivery' | 'pickup' | 'both' | null
+  contactPhone?: string | null
+  pickupAddress?: string | null
+  pickupInstructions?: string | null
+  deliveryDays?: string | null
+  deliveryEstimate?: string | null
+  deliveryFeeNote?: string | null
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
@@ -34,6 +41,7 @@ function fallback(slug: string): StoreData {
       { id: `${slug}-2`, name: 'Daily Essential', description: 'Your hero product.', price: 28, currency: 'GHS', category: 'Starter' },
       { id: `${slug}-3`, name: 'Gift Box', description: 'A premium giftable option.', price: 72, currency: 'GHS', category: 'Gift' },
     ],
+    fulfillmentMode: 'delivery',
   }
 }
 
@@ -57,6 +65,16 @@ export default function StorefrontPreview({
   const lastRev     = useRef(0)
 
   useEffect(() => {
+    if (suppressFallback && !activeStore) {
+      fetchedSlug.current = null
+      lastRev.current = rev
+      pollCount.current = 0
+      if (pollTimer.current) clearTimeout(pollTimer.current)
+      setStore(null)
+      setLoading(false)
+      return
+    }
+
     // Skip re-fetch if nothing meaningful changed
     const slugUnchanged = fetchedSlug.current === storeSlug
     const revUnchanged  = rev === lastRev.current
@@ -80,8 +98,8 @@ export default function StorefrontPreview({
           const d = await res.json()
           setStore(d)
           setLoading(false)
-          // Keep polling until the deterministic manifest is generated.
-          if (!d.manifest && pollCount.current < 20) {
+          // Keep polling until the manifest and generated micro-sources are visible.
+          if ((!d.manifest || !d.heroSource || !d.navSource) && pollCount.current < 20) {
             pollCount.current++
             if (pollTimer.current) clearTimeout(pollTimer.current)
             pollTimer.current = setTimeout(() => { if (!cancelled) void load() }, 3000)
@@ -109,7 +127,7 @@ export default function StorefrontPreview({
       cancelled = true
       if (pollTimer.current) clearTimeout(pollTimer.current)
     }
-  }, [storeSlug, rev]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [storeSlug, rev, suppressFallback, activeStore]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading && !store) {
     return (

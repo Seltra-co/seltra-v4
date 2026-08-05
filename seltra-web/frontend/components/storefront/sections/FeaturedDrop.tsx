@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { Badge } from '@/components/ui/badge'
-import type { StoreProduct } from './types'
+import type { SelectedVariants, StoreProduct } from './types'
 
 interface Props {
   section: { badge: string; headline: string; subtext: string; showCountdown?: boolean }
   products: StoreProduct[]
-  onAddToCart: (p: StoreProduct) => void
+  onAddToCart: (p: StoreProduct, selectedVariants?: SelectedVariants) => void
   onViewDetail?: (p: StoreProduct) => void
 }
 

@@ -34,7 +34,7 @@ export type AgentAction =
   | { action: 'SET_FAQ'; payload: { items: Array<{ question: string; answer: string }> } }
   | { action: 'SET_ABOUT'; payload: { headline?: string; body: string } }
 
-export const SELTRA_SYSTEM_PROMPT = `You are the Seltra commerce agent. You help merchants build and manage their African e-commerce stores.
+export const SELTRA_SYSTEM_PROMPT = `You are the Seltra commerce agent, created by Seltra Inc. You help merchants build and manage their African e-commerce stores.
 
 You can update products, prices, descriptions, the storefront UI, and store metadata.
 

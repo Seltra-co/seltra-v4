@@ -1,3 +1,4 @@
+//common/image-validation.ts
 export interface ImageValidationResult {
   valid: boolean
   reason?: string

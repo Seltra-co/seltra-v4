@@ -592,6 +592,26 @@ type CheckoutItem = {
   name?: string
   quantity: number
   price?: string | number
+  selectedVariants?: Record<string, string>
+  type?: string
+  deliveryTier?: DeliveryTierSelection
+}
+
+type DeliveryTierSelection = {
+  id: string
+  label: string
+  priceFrom: number
+  currency: string
+}
+
+type NormalizedCheckoutItem = {
+  type?: string
+  productId?: string
+  productName: string
+  quantity: number
+  price: number
+  selectedVariants?: Record<string, string>
+  deliveryTier?: DeliveryTierSelection
 }
 
 type CustomerDetails = {
@@ -600,6 +620,7 @@ type CustomerDetails = {
   shippingCity?: string
   shippingCountry?: string
   marketingOptIn?: boolean
+  deliveryTier?: DeliveryTierSelection
 }
 
 type WebhookPayload = {
@@ -709,7 +730,7 @@ export class PaymentService {
     const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } })
     if (!tenant) throw new NotFoundException('Store not found')
 
-    const normalizedItems = this.normalizeItems(items)
+    const normalizedItems = this.withDeliveryTier(this.normalizeItems(items), customerDetails.deliveryTier)
     const totalAmount = normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
     const reference = this.generateReference(tenant.slug)
 
@@ -784,7 +805,7 @@ private async initializePaymentPaystack(
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } })
   if (!tenant) throw new NotFoundException('Store not found')
 
-  const normalizedItems = this.normalizeItems(items)
+  const normalizedItems = this.withDeliveryTier(this.normalizeItems(items), customerDetails.deliveryTier)
   const totalAmount = normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const reference = this.generateReference(tenant.slug)
   const currency = 'GHS'
@@ -1639,17 +1660,36 @@ async handleMoolreWebhook(body: MoolreWebhookBody) {
     return tenant.id
   }
 
-  private normalizeItems(items: CheckoutItem[]) {
+  private normalizeItems(items: CheckoutItem[]): NormalizedCheckoutItem[] {
     return (items || []).map((item) => {
       const product = item.product || {}
       const price = Number(item.price ?? product.price ?? 0)
       const quantity = Number(item.quantity || 1)
       return {
+        ...(item.type ? { type: item.type } : {}),
         productId: item.productId || product.id,
         productName: item.name || product.name || 'Product',
         quantity, price,
+        ...(item.selectedVariants ? { selectedVariants: item.selectedVariants } : {}),
+        ...(item.deliveryTier ? { deliveryTier: item.deliveryTier } : {}),
       }
     })
+  }
+
+  private withDeliveryTier(items: NormalizedCheckoutItem[], deliveryTier?: DeliveryTierSelection): NormalizedCheckoutItem[] {
+    if (!deliveryTier?.id) return items
+    const price = Number(deliveryTier.priceFrom || 0)
+    return [
+      ...items,
+      {
+        type: 'delivery_tier',
+        productId: `delivery:${deliveryTier.id}`,
+        productName: deliveryTier.label,
+        quantity: 1,
+        price,
+        deliveryTier,
+      },
+    ]
   }
 
   private verifyWebhookSignature(payload: WebhookPayload, signature?: string) {

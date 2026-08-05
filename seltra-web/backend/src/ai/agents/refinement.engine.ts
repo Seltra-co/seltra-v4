@@ -17,6 +17,10 @@ export interface RefinementResult {
   fixesApplied: string[]
 }
 
+export interface RefinementOptions {
+  expectHero?: boolean
+}
+
 // ── Fix implementations ───────────────────────────────────────────────────────
 
 type Section = { type: string; [key: string]: unknown }
@@ -296,8 +300,9 @@ function applyFix(
 export async function refineManifest(
   manifest: ManifestForCritic,
   blueprint: CanonicalStore,
+  options: RefinementOptions = {},
 ): Promise<RefinementResult> {
-  const initialReport = runCritic(manifest, blueprint)
+  const initialReport = runCritic(manifest, blueprint, options)
   const fixesApplied:  string[] = []
   let   current  = manifest
   let   report   = initialReport
@@ -325,7 +330,7 @@ export async function refineManifest(
     }
 
     // Re-evaluate after fixes
-    report = runCritic(current, blueprint)
+    report = runCritic(current, blueprint, options)
   }
 
   if (fixesApplied.length > 0) {
