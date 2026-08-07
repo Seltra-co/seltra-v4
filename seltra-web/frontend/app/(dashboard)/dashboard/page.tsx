@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
+import { ThinkingOrb } from 'thinking-orbs'
 import { Button } from '@/components/ui/button'
 import StorefrontPreview, { type StoreData } from '@/components/storefront/StorefrontPreview'
 import { StorefrontShell } from '@/components/storefront/StorefrontShell'
@@ -138,6 +139,65 @@ const NAV_TABS = [
   { id: 'home',      label: 'Agent',     icon: Bot        },
 ]
 
+type OrbState = 'working' | 'searching' | 'solving' | 'listening' | 'composing' | 'shaping'
+
+interface ActivityStage {
+  label: string
+  orbState: OrbState
+  minMs: number
+  maxMs: number
+}
+
+const ACTIVITY_STAGES: ActivityStage[] = [
+  { label: 'Thinking…',    orbState: 'listening', minMs: 1300, maxMs: 2100 },
+  { label: 'Analyzing…',   orbState: 'searching', minMs: 1300, maxMs: 2100 },
+  { label: 'Planning…',    orbState: 'shaping',   minMs: 1300, maxMs: 2100 },
+  { label: 'Composing…',   orbState: 'composing', minMs: 1300, maxMs: 2100 },
+  { label: 'Refactoring…', orbState: 'shaping',   minMs: 1300, maxMs: 2100 },
+  { label: 'Refining…',    orbState: 'solving',   minMs: 1300, maxMs: 2100 },
+  { label: 'Optimizing…',  orbState: 'working',   minMs: 1300, maxMs: 2100 },
+  { label: 'Rendering…',   orbState: 'composing', minMs: 1300, maxMs: 2100 },
+  { label: 'Validating…',  orbState: 'solving',   minMs: 1300, maxMs: 2100 },
+  { label: 'Launching…',   orbState: 'working',   minMs: 1300, maxMs: 2100 },
+]
+
+const ACTIVITY_PHASE_RANGES = {
+  waiting: { start: 0, end: 2 },
+  streaming: { start: 3, end: 8 },
+  building: { start: 0, end: 8 },
+} as const
+
+const BUILDING_PHASE_MULTIPLIER = 4
+
+type ActivityPhase = 'waiting' | 'streaming' | 'building'
+
+function deriveActivityStage(
+  phase: ActivityPhase,
+  tick: number,
+  launchStarted: boolean,
+): ActivityStage {
+  if (phase === 'waiting' || phase === 'streaming') {
+    return ACTIVITY_STAGES[0]
+  }
+
+  if (phase === 'building' && launchStarted) {
+    return ACTIVITY_STAGES[9]
+  }
+
+  const range = ACTIVITY_PHASE_RANGES[phase]
+  const count = range.end - range.start + 1
+  if (phase === 'building') {
+    return ACTIVITY_STAGES[range.start + (tick % count)]
+  }
+  const index = Math.min(range.start + tick, range.end)
+  return ACTIVITY_STAGES[index]
+}
+
+function getActivityStageDuration(stage: ActivityStage, phase: ActivityPhase): number {
+  const base = stage.minMs + Math.floor(Math.random() * (stage.maxMs - stage.minMs + 1))
+  return phase === 'building' ? base * BUILDING_PHASE_MULTIPLIER : base
+}
+
 // ── Business Planner Agent types (mirrors backend/src/ai/agents/business-planner.agent.ts) ──
 type PlannerQuestion = { id: string; question: string; why: string; options?: string[] }
 type PlannerResult = { readyToBuild: boolean; questions: PlannerQuestion[]; inferredSummary: string }
@@ -170,12 +230,18 @@ function UserPromptBubble({ content }: { content: string }) {
   )
 }
 
-function AgentReply({ content }: { content: string }) {
+function AgentReply({ content, stage }: { content: string; stage?: ActivityStage }) {
   const [expanded, setExpanded] = useState(false)
   const isLong = content.length > 500 || content.split('\n').length > 6
 
   return (
     <div className="max-w-[92%] rounded-2xl border border-border/60 bg-card/20 px-4 py-3 text-[13px] leading-relaxed text-foreground/90">
+      {stage && (
+        <div className="mb-2 flex items-center gap-2 rounded-full border border-border/60 bg-card/10 px-3 py-1 text-[11px] text-muted-foreground">
+          <ThinkingOrb state={stage.orbState} size={20} aria-label={stage.label} />
+          <span>{stage.label}</span>
+        </div>
+      )}
       <div className={`whitespace-pre-wrap ${isLong && !expanded ? 'line-clamp-6' : ''}`}>
         {content}
       </div>
@@ -347,6 +413,17 @@ export default function DashboardPage() {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [activityTick, setActivityTick] = useState(0)
+  const [buildId, setBuildId] = useState<string | null>(null)
+  const [buildLaunchStarted, setBuildLaunchStarted] = useState(false)
+  const activityPhase: 'idle' | ActivityPhase = buildId
+    ? 'building'
+    : !sending
+      ? 'idle'
+      : msgs[msgs.length - 1]?.role === 'user'
+        ? 'waiting'
+        : 'streaming'
+  const activityStage = activityPhase === 'idle' ? null : deriveActivityStage(activityPhase, activityTick, buildLaunchStarted)
   const [tab, setTab] = useState('home')
   const [rev, setRev] = useState(0)
   const [convId, setConvId] = useState<string | undefined>()
@@ -356,7 +433,6 @@ export default function DashboardPage() {
   const [mobileView, setMobileView] = useState<'chat' | 'store'>('chat')
   const [stores, setStores] = useState<StoreData[]>([])
   const [pendingAttachment, setPendingAttachment] = useState<{ name: string; url: string } | null>(null)
-  const [buildId, setBuildId] = useState<string | null>(null)
   const [credits, setCredits] = useState<{ used: number; limit: number; resetsAt: string } | null>(null)
   const [buildConversationId, setBuildConversationId] = useState<string | undefined>()
 
@@ -368,6 +444,26 @@ export default function DashboardPage() {
   const [plannerAnswers, setPlannerAnswers] = useState<Record<string, string>>({})
 
   useEffect(() => { if (sending) setSidebarOpen(false) }, [sending])
+
+  useEffect(() => {
+    if (activityPhase === 'idle') {
+      setActivityTick(0)
+      return
+    }
+    setActivityTick(0)
+  }, [activityPhase])
+
+  useEffect(() => {
+    if (activityPhase === 'idle') return
+    if (!activityStage) return
+
+    const timeout = window.setTimeout(
+      () => setActivityTick((tick) => tick + 1),
+      getActivityStageDuration(activityStage, activityPhase as ActivityPhase),
+    )
+
+    return () => window.clearTimeout(timeout)
+  }, [activityPhase, activityTick, activityStage])
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -702,13 +798,19 @@ const send = async () => {
   )
   const previewKey = `${storeSlug}:${rev}:${activeStore?.id ?? 'pending'}:${activeStore?.heroSource ? 'hero' : 'no-hero'}:${activeStore?.manifest ? 'manifest' : 'no-manifest'}`
   const handleBuildPreview = useCallback((store?: StoreData | null) => {
+    setBuildLaunchStarted(true)
     if (!store) return
     setActiveStore(store)
     setStores((prev) => [store, ...prev.filter((item) => item.id !== store.id && item.slug !== store.slug)])
     setRev((v) => v + 1)
   }, [])
 
+  const handleBuildLaunchStart = useCallback(() => {
+    setBuildLaunchStarted(true)
+  }, [])
+
   const handleBuildDone = useCallback(async (store?: StoreData | null) => {
+    setBuildLaunchStarted(true)
     let confirmedStore = store ?? null
     const hasGeneratedAssets = (candidate?: StoreData | null) =>
       Boolean(candidate?.manifest && candidate.heroSource && candidate.navSource)
@@ -739,6 +841,7 @@ const send = async () => {
     await saveMessage(buildConversationId ?? convId, 'assistant', reply, user?.id)
     setSending(false)
     setBuildId(null)
+    setBuildLaunchStarted(false)
     setBuildConversationId(undefined)
     setTimeout(() => setSidebarOpen(true), 1200)
     void loadStores()
@@ -748,6 +851,7 @@ const send = async () => {
     toast.error(message)
     setSending(false)
     setBuildId(null)
+    setBuildLaunchStarted(false)
     setBuildConversationId(undefined)
     setTimeout(() => setSidebarOpen(true), 1200)
   }, [])
@@ -934,12 +1038,20 @@ const handleAgentAttach = async (f: File) => {
                     return <UserPromptBubble key={i} content={m.content} />
                   }
 
-                  return <AgentReply key={i} content={m.content} />
+                  const isActiveStreaming = sending && i === msgs.length - 1
+                  return (
+                    <AgentReply
+                      key={i}
+                      content={m.content}
+                      stage={isActiveStreaming ? activityStage ?? undefined : undefined}
+                    />
+                  )
                 })}
-                {sending && msgs[msgs.length - 1]?.role === 'user' && (
+                {(buildId || (sending && msgs[msgs.length - 1]?.role === 'user')) && activityStage && (
                   <div className="flex justify-start">
-                    <div className="rounded-full border border-border/60 bg-card/20 px-3 py-2">
-                      <span className="agent-thinking-text text-[13px]">Thinking…</span>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/20 px-3 py-2 text-[13px] text-foreground/90">
+                      <ThinkingOrb state={activityStage.orbState} size={20} aria-label={activityStage.label} />
+                      <span>{activityStage.label}</span>
                     </div>
                   </div>
                 )}
@@ -959,7 +1071,7 @@ const handleAgentAttach = async (f: File) => {
             <div className={mobileView === 'chat' ? 'hidden lg:block' : 'block'}>
               <StorefrontShell slug={storeSlug} isStream={Boolean(buildId)}>
                 {buildId ? (
-                  <AgentBuildStream storeName={storeTitle} buildId={buildId} onPreview={handleBuildPreview} onDone={handleBuildDone} onError={handleBuildError} />
+                  <AgentBuildStream storeName={storeTitle} buildId={buildId} onPreview={handleBuildPreview} onLaunchStart={handleBuildLaunchStart} onDone={handleBuildDone} onError={handleBuildError} />
                 ) : (
                   <StorefrontPreview key={previewKey} storeSlug={storeSlug} suppressFallback={!activeStore} rev={rev} />
                 )}

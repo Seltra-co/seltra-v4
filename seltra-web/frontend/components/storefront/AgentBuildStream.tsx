@@ -61,17 +61,41 @@ function deriveDoneTitle(step: string, label?: string) {
   return label ?? step
 }
 
+function sanitizeBuildLogMessage(raw: string, step: string | null): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return 'Processing build output…'
+
+  const technicalPatterns = [
+    /\b(?:attempt|retry|rejected|unavailable|cooldown|status|Error|error|failed|timeout|403|404|429|500|502|503|504)\b/i,
+    /\[CF\]/i,
+    /\bqwen[0-9a-z-]+\b/i,
+    /\bhero-nav-builder\b/i,
+    /\bmodel\b/i,
+  ]
+
+  if (technicalPatterns.some((pattern) => pattern.test(trimmed))) {
+    if (step) {
+      return `Working on ${step}. This may take a moment.`
+    }
+    return 'Processing build updates. Please hold on while the storefront is generated.'
+  }
+
+  return trimmed
+}
+
 export function AgentBuildStream({
   storeName,
   buildId,
   onDone,
   onPreview,
+  onLaunchStart,
   onError,
 }: {
   storeName: string
   buildId?: string | null
   onDone?: (store?: StoreData | null) => void
   onPreview?: (store?: StoreData | null) => void
+  onLaunchStart?: () => void
   onError?: (message: string) => void
 }) {
   const [priorThought, setPriorThought] = useState<string | null>(null)
@@ -168,13 +192,21 @@ export function AgentBuildStream({
         const parsed = JSON.parse(event.data) as BuildEvent
 
         if (parsed.type === 'log') {
-          const message = typeof parsed.message === 'string' ? parsed.message.trim() : ''
-          if (!message) return
+          const rawMessage = typeof parsed.message === 'string' ? parsed.message.trim() : ''
+          if (!rawMessage) return
+
           const thought = formatThoughtLabel(lastEventAt.current)
           const currentThoughtText = currentRef.current?.kind === 'thinking' ? currentRef.current.text : null
           if (currentThoughtText) {
             setPriorThought((prev) => prev ?? (thought ? `${thought}: ${currentThoughtText}` : null))
           }
+
+          const normalized = rawMessage.toLowerCase()
+          if (normalized.includes('rendering and compiling your store') || normalized.includes('saving generated assets and refreshing preview')) {
+            onLaunchStart?.()
+          }
+          const actionTitle = currentRef.current?.kind === 'action' ? currentRef.current.title : null
+          const message = sanitizeBuildLogMessage(rawMessage, actionTitle)
           const next = { kind: 'thinking' as const, text: message }
           setCurrent(next)
           currentRef.current = next
@@ -200,6 +232,9 @@ export function AgentBuildStream({
             }
             setCurrent(next)
             currentRef.current = next
+            if (['compile', 'deploy'].includes(parsed.step.toLowerCase())) {
+              onLaunchStart?.()
+            }
           }
 
           if (parsed.status === 'completed') {
@@ -265,13 +300,8 @@ export function AgentBuildStream({
           }
           setCurrent(next)
           currentRef.current = next
+          onLaunchStart?.()
           onPreview?.(previewStore)
-          lastEventAt.current = Date.now()
-          resetTimeout()
-          return
-        }
-
-        if (parsed.type === 'heartbeat') {
           lastEventAt.current = Date.now()
           resetTimeout()
           return
